@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "harness-starter",
+      "devDependencies": {
+        "typescript": "^5.7.0",
+      },
     },
     "packages/_smoke": {
       "name": "@harness/_smoke",
@@ -12,5 +15,7 @@
   },
   "packages": {
     "@harness/_smoke": ["@harness/_smoke@workspace:packages/_smoke"],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
   }
 }

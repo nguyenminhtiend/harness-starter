@@ -14,5 +14,8 @@
     "format": "biome format --write .",
     "eval": "bun run --filter @harness/cli dev -- eval",
     "ci": "bun run lint && bun run typecheck && bun run build && bun test"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
   }
 }
