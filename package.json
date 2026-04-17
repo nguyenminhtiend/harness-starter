@@ -1,0 +1,18 @@
+{
+  "name": "harness-starter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "chat": "bun run --filter @harness/example-cli-chat dev",
+    "server": "bun run --filter @harness/example-http-server dev",
+    "build": "bun run --filter '*' build",
+    "test": "bun test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "eval": "bun run --filter @harness/cli dev -- eval",
+    "ci": "bun run lint && bun run typecheck && bun run build && bun test"
+  }
+}

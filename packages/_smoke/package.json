@@ -1,0 +1,10 @@
+{
+  "name": "@harness/_smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "echo '[_smoke] typecheck ok'",
+    "build": "echo '[_smoke] build ok'"
+  }
+}
