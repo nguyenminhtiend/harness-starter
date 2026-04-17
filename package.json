@@ -16,12 +16,14 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "eval": "bun run --filter @harness/cli dev -- eval",
-    "ci": "bun run lint && bun run typecheck && bun run build && bun test"
+    "ci": "bun run lint && bun run typecheck && bun run build && bun test",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",
     "@commitlint/cli": "20.5.0",
     "@commitlint/config-conventional": "20.5.0",
+    "lefthook": "2.1.6",
     "typescript": "^5.7.0"
   }
 }
