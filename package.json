@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "chat": "bun run --filter @harness/example-cli-chat dev",
     "server": "bun run --filter @harness/example-http-server dev",
@@ -16,6 +19,7 @@
     "ci": "bun run lint && bun run typecheck && bun run build && bun test"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.12",
     "typescript": "^5.7.0"
   }
 }
