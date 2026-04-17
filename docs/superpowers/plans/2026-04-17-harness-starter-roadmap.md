@@ -30,9 +30,16 @@ Phases follow this DAG. `tools` has no hard dep on `agent` internals beyond the 
 
 ---
 
-## Phase 0 — Monorepo scaffold
+## Phase 0 — Monorepo scaffold ✅
 
 **Delivers:** empty but fully-wired monorepo; `bun run ci` green with zero packages.
+
+**Detailed plan executed:** `/Users/messi/.claude/plans/for-phase-0-at-dynamic-bonbon.md` (completed 2026-04-17).
+
+**Deviations from roadmap:**
+- `bun --filter '*' run <script>` → `bun run --filter '*' <script>` (Bun 1.3 CLI change).
+- Added `packages/_smoke/` placeholder so empty-scaffold CI is green; deleted in Phase 1 when `@harness/core` lands.
+- Biome `noRestrictedImports` rule deferred to Phase 1 (no referents yet).
 
 **Detailed plan to write:** `docs/superpowers/plans/<date>-phase-0-monorepo-scaffold.md`
 
