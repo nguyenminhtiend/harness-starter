@@ -200,7 +200,7 @@ Phases follow this DAG. `tools` has no hard dep on `agent` internals beyond the 
 
 ---
 
-## Phase 5 — `@harness/observability`
+## Phase 5 — `@harness/observability` ✅
 
 **Delivers:** OTel + Langfuse event-bus adapters; `consoleSink` + `jsonlSink` (if not already in core).
 
@@ -216,7 +216,7 @@ Phases follow this DAG. `tools` has no hard dep on `agent` internals beyond the 
 
 ---
 
-## Phase 6 — `@harness/mcp`
+## Phase 6 — `@harness/mcp` ✅
 
 **Delivers:** `mcpTools(client, opts)` — adapts any MCP server (stdio / http / websocket) into `@harness/agent` `Tool[]`.
 

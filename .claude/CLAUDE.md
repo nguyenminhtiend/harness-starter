@@ -2,38 +2,57 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project status
-
-**Pre-implementation.** The repo currently contains only design docs; `packages/` and `apps/` do not exist yet. The source of truth is:
-
-- Spec: `docs/superpowers/specs/2026-04-17-harness-starter-design.md`
-- Roadmap: `docs/superpowers/plans/2026-04-17-harness-starter-roadmap.md`
-
-The roadmap is **not** directly executable. It is an index of 13 phases (0–12). For each phase, write a detailed per-phase plan via `superpowers:writing-plans` **immediately before** executing it, then run it with `superpowers:subagent-driven-development` or `superpowers:executing-plans`. Tick phases off in the roadmap as exit criteria pass.
-
 ## What this starter is
 
 TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems. Layered modular monorepo on Bun workspaces.
 
-**Tech stack:** TypeScript 5.7 strict · Bun workspaces · Vercel AI SDK v5 · Zod v4 · Biome · Lefthook · Commitlint · Changesets · Evalite (Vitest) · Hono · `bun:sqlite` · `gpt-tokenizer`.
+**Tech stack:** TypeScript 5.7 strict · Bun workspaces · Vercel AI SDK v5 · Zod v4 · Biome · Lefthook · Commitlint · Changesets · Hono · `bun:sqlite` · `gpt-tokenizer`.
 
 ## Architecture — dependency DAG
 
 ```
-core ─┬─> agent ─┬─> memory-sqlite
-      │          ├─> tools
+core ─┬─> agent ─┬─> tools
       │          ├─> mcp
-      │          ├─> observability
-      │          ├─> eval ─> cli
-      │          └─> apps/*
-      └─> (apps/*)
+      │          └─> memory-sqlite
+      └─> observability
 ```
 
-Enforced by tsconfig `references` + a Biome `noRestrictedImports` rule. Do not add a cross-package import that violates this DAG.
+**Implemented packages (6):**
+
+| Package | Path | Depends on |
+|---------|------|-----------|
+| `@harness/core` | `packages/core/` | — |
+| `@harness/agent` | `packages/agent/` | `core` |
+| `@harness/tools` | `packages/tools/` | `agent`, `core` |
+| `@harness/mcp` | `packages/mcp/` | `agent`, `core` |
+| `@harness/memory-sqlite` | `packages/memory-sqlite/` | `agent`, `core` |
+| `@harness/observability` | `packages/observability/` | `core` |
+
+**Not yet implemented:** `@harness/eval`, `@harness/cli`, any `apps/*`.
+
+Layering enforced by Biome `noRestrictedImports` rules in `biome.json`. No tsconfig `references` yet. Do not add cross-package imports that violate this DAG.
 
 **Runtime boundary:** `@harness/core` uses only Web-standard APIs (`fetch`, `ReadableStream`, `AbortSignal`). Node/Bun-only functionality (SQLite, fs, OTel exporters) must live in sibling packages — never in `core`.
 
-**Clone-and-own invariant:** deleting any of `packages/eval/`, `packages/mcp/`, `packages/memory-sqlite/`, or `apps/http-server/` must leave the rest building and testing cleanly. This is a tested success criterion (Phase 12).
+**Clone-and-own invariant:** deleting any of `packages/eval/`, `packages/mcp/`, `packages/memory-sqlite/`, or `apps/http-server/` must leave the rest building and testing cleanly.
+
+## Commands
+
+```bash
+bun install
+bun run ci         # lint + typecheck + build + test
+bun run lint       # biome check .
+bun run format     # biome format --write .
+bun run typecheck  # runs across all workspaces
+bun run build      # runs across all workspaces (tsc --noEmit)
+bun test           # all unit tests
+bun test path/to/file.test.ts  # single test
+```
+
+**Not yet wired** (scripts exist in root `package.json` but target missing workspace packages):
+- `bun run chat` → needs `@harness/example-cli-chat` in `apps/`
+- `bun run server` → needs `@harness/example-http-server` in `apps/`
+- `bun run eval` → needs `@harness/cli` package
 
 ## Shape invariants (non-negotiable)
 
@@ -46,37 +65,26 @@ Enforced by tsconfig `references` + a Biome `noRestrictedImports` rule. Do not a
 
 ## Testing
 
-- Unit tests colocated: `foo.ts` + `foo.test.ts`.
-- Eval specs in `*.eval.ts`; excluded from `bun test`.
-- **TDD enforced for `packages/*`** (use `superpowers:test-driven-development`). Pragmatic / tests-after for `apps/*`.
+- Unit tests colocated: `foo.ts` + `foo.test.ts` (31 test files across all packages).
+- Eval specs in `*.eval.ts`; excluded from `bun test`. None exist yet.
+- **TDD enforced for `packages/*`**. Pragmatic / tests-after for `apps/*`.
 - **No mocks of `Provider`.** Use `fakeProvider()` from `@harness/core/testing` — scripted stream replay.
 - Live-provider tests gated behind `HARNESS_LIVE=1`.
 
-## Commands (target — not yet wired)
+## CI
 
-These land in Phase 0. Do not run them expecting them to work until Phase 0 ships.
-
-```
-bun install
-bun run ci         # lint + typecheck + build + test (target: <30s on a laptop)
-bun run chat       # apps/cli-chat demo (OpenRouter by default)
-bun run server     # apps/http-server (Hono, SSE)
-bun run eval       # harness-eval CLI
-bun test           # single test: bun test path/to/file.test.ts
-```
+GitHub Actions (`.github/workflows/ci.yml`): checkout → Bun (latest) + Node 22 → `bun install --frozen-lockfile` → lint → typecheck → build → test.
 
 ## Repository conventions
 
 - **Conventional Commits** enforced by Commitlint + Lefthook `commit-msg`.
 - **Changesets** manage CHANGELOG entries (no npm publishing).
-- **Lefthook** runs Biome + typecheck on staged files pre-commit.
-- **Biome** is the only linter/formatter — no ESLint.
-- **ADRs** in `docs/adr/` for every load-bearing decision from spec §2.
-- **README per package** with purpose, import examples, public API table, test command.
+- **Lefthook** pre-commit: Biome check + typecheck on staged files.
+- **Biome** is the only linter/formatter — no ESLint, no Prettier.
+- **`bunfig.toml`**: `exact = true` for lockfile determinism.
+- **Docs:** `docs/spec.md` (design spec), `docs/plan.md` (phase roadmap).
 
 ## Non-goals — do not build these
-
-From spec §9. Call them out in per-phase plans to prevent drift:
 
 - No vector DB or dedicated RAG primitives (RAG is a user-land compactor or tool).
 - No bundled PII/jailbreak/toxicity classifiers — guardrail interfaces only.
