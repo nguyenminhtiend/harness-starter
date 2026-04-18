@@ -107,6 +107,27 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/tools/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/memory-sqlite": "tools must not import from @harness/memory-sqlite (dependency direction violation)",
+                  "@harness/mcp": "tools must not import from @harness/mcp (dependency direction violation)",
+                  "@harness/observability": "tools must not import from @harness/observability (dependency direction violation)",
+                  "@harness/eval": "tools must not import from @harness/eval (dependency direction violation)",
+                  "@harness/cli": "tools must not import from @harness/cli (dependency direction violation)"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
