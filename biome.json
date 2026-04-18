@@ -130,6 +130,31 @@
       }
     },
     {
+      "includes": ["packages/observability/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/agent": "observability must not import from @harness/agent (dependency direction violation)",
+                  "@harness/tools": "observability must not import from @harness/tools (dependency direction violation)",
+                  "@harness/memory-sqlite": "observability must not import from @harness/memory-sqlite (dependency direction violation)",
+                  "@harness/mcp": "observability must not import from @harness/mcp (dependency direction violation)",
+                  "@harness/eval": "observability must not import from @harness/eval (dependency direction violation)",
+                  "@harness/cli": "observability must not import from @harness/cli (dependency direction violation)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/memory-sqlite/**"],
       "linter": {
         "rules": {
