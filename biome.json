@@ -197,6 +197,27 @@
       }
     },
     {
+      "includes": ["packages/eval/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/cli": "eval must not import from @harness/cli (dependency direction violation)",
+                  "@harness/tools": "eval must not import from @harness/tools (dependency direction violation)",
+                  "@harness/memory-sqlite": "eval must not import from @harness/memory-sqlite (dependency direction violation)",
+                  "@harness/mcp": "eval must not import from @harness/mcp (dependency direction violation)",
+                  "@harness/observability": "eval must not import from @harness/observability (dependency direction violation)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/cli/**"],
       "linter": {
         "rules": {

@@ -13,11 +13,12 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 ```
 core ─┬─> agent ─┬─> tools
       │          ├─> mcp
-      │          └─> memory-sqlite
+      │          ├─> memory-sqlite
+      │          └─> eval ─> cli
       └─> observability
 ```
 
-**Implemented packages (6):**
+**Implemented packages (7):**
 
 | Package | Path | Depends on |
 |---------|------|-----------|
@@ -27,8 +28,9 @@ core ─┬─> agent ─┬─> tools
 | `@harness/mcp` | `packages/mcp/` | `agent`, `core` |
 | `@harness/memory-sqlite` | `packages/memory-sqlite/` | `agent`, `core` |
 | `@harness/observability` | `packages/observability/` | `core` |
+| `@harness/cli` | `packages/cli/` | `core` (+ optional: `eval`, `evalite`) |
 
-**Not yet implemented:** `@harness/eval`, `@harness/cli`, any `apps/*`.
+**Not yet implemented:** `@harness/eval`, any `apps/*`.
 
 Layering enforced by Biome `noRestrictedImports` rules in `biome.json`. No tsconfig `references` yet. Do not add cross-package imports that violate this DAG.
 
@@ -65,7 +67,7 @@ bun test path/to/file.test.ts  # single test
 
 ## Testing
 
-- Unit tests colocated: `foo.ts` + `foo.test.ts` (31 test files across all packages).
+- Unit tests colocated: `foo.ts` + `foo.test.ts` (38 test files across all packages).
 - Eval specs in `*.eval.ts`; excluded from `bun test`. None exist yet.
 - **TDD enforced for `packages/*`**. Pragmatic / tests-after for `apps/*`.
 - **No mocks of `Provider`.** Use `fakeProvider()` from `@harness/core/testing` — scripted stream replay.
