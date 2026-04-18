@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "dev": "bun run src/bin.ts --",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },
