@@ -5,6 +5,7 @@ export interface CliConfig {
   readonly exportAdapters: readonly string[];
   readonly outputDir: string;
   readonly scoreThreshold: number | undefined;
+  readonly help: boolean;
 }
 
 export interface ScoreEntry {
