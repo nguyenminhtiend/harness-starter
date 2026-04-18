@@ -1,0 +1,22 @@
+{
+  "name": "@harness/example-cli-chat",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@harness/agent": "workspace:*",
+    "@harness/core": "workspace:*",
+    "@harness/observability": "workspace:*",
+    "@openrouter/ai-sdk-provider": "1.5.4",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

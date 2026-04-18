@@ -218,6 +218,16 @@
       }
     },
     {
+      "includes": ["apps/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/cli/**"],
       "linter": {
         "rules": {
