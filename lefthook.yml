@@ -1,3 +1,5 @@
+rc: ~/.zshrc
+
 pre-commit:
   parallel: true
   jobs:
