@@ -195,6 +195,30 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/cli/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/agent": "cli must not import from @harness/agent (dependency direction violation)",
+                  "@harness/tools": "cli must not import from @harness/tools (dependency direction violation)",
+                  "@harness/memory-sqlite": "cli must not import from @harness/memory-sqlite (dependency direction violation)",
+                  "@harness/mcp": "cli must not import from @harness/mcp (dependency direction violation)",
+                  "@harness/observability": "cli must not import from @harness/observability (dependency direction violation)"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
