@@ -53,7 +53,6 @@ export function consoleSink(bus: EventBus, opts?: ConsoleSinkOpts): () => void {
 
   for (const eventName of allowed) {
     const unsub = bus.on(eventName, (payload: HarnessEvents[typeof eventName]) => {
-      // biome-ignore lint/suspicious/noConsole: consoleSink is explicitly for console output
       console.log(`[harness:${eventName}] ${JSON.stringify(payload)}`);
     });
     unsubs.push(unsub);

@@ -28,7 +28,7 @@ describe('consoleSink', () => {
     bus.emit('run.start', { runId: 'r1', conversationId: 'c1', input: {} });
 
     expect(logSpy).toHaveBeenCalledTimes(1);
-    const msg = logSpy.mock.calls[0]![0] as string;
+    const msg = logSpy.mock.calls[0]?.[0] as string;
     expect(msg).toContain('[harness:run.start]');
   });
 
@@ -37,7 +37,7 @@ describe('consoleSink', () => {
     bus.emit('tool.finish', { runId: 'r1', toolName: 'fs', result: 'ok', durationMs: 42 });
 
     expect(logSpy).toHaveBeenCalledTimes(1);
-    const msg = logSpy.mock.calls[0]![0] as string;
+    const msg = logSpy.mock.calls[0]?.[0] as string;
     expect(msg).toContain('[harness:tool.finish]');
   });
 
@@ -53,7 +53,7 @@ describe('consoleSink', () => {
     bus.emit('provider.call', { runId: 'r1', providerId: 'p1', request: { messages: [] } });
 
     expect(logSpy).toHaveBeenCalledTimes(1);
-    const msg = logSpy.mock.calls[0]![0] as string;
+    const msg = logSpy.mock.calls[0]?.[0] as string;
     expect(msg).toContain('[harness:provider.call]');
   });
 
@@ -86,7 +86,7 @@ describe('consoleSink', () => {
     consoleSink(bus);
     bus.emit('run.finish', { runId: 'r1', result: { turns: 3 } });
 
-    const msg = logSpy.mock.calls[0]![0] as string;
+    const msg = logSpy.mock.calls[0]?.[0] as string;
     expect(msg).toContain('[harness:run.finish]');
     expect(msg).toContain('"runId"');
     expect(msg).toContain('"r1"');
