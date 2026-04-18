@@ -4,9 +4,8 @@ import { ValidationError } from '../errors.ts';
 export function defineConfig<S extends ZodType>(schema: S, value: unknown): output<S> {
   const result = schema.safeParse(value);
   if (!result.success) {
-    const issues = 'error' in result ? (result.error as { issues?: unknown }).issues : result;
     throw new ValidationError('Config validation failed', {
-      zodIssues: issues,
+      zodIssues: (result as { error?: { issues?: unknown } }).error?.issues ?? null,
     });
   }
   return result.data as output<S>;

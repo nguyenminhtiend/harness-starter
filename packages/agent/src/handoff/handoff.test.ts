@@ -37,7 +37,7 @@ describe('handoff', () => {
       systemPrompt: 'I am A',
     });
 
-    const orchestrator = createHandoffAgent(agentA, [handoffTool]);
+    const orchestrator = createHandoffAgent(agentA);
     const result = await orchestrator.run({ userMessage: 'Help me' });
 
     expect(result.finalMessage).toBe('Agent B here!');
@@ -54,7 +54,7 @@ describe('handoff', () => {
     ]);
     const agentA = createAgent({ provider: agentAProvider, tools: [handoffTool] });
 
-    const orchestrator = createHandoffAgent(agentA, [handoffTool]);
+    const orchestrator = createHandoffAgent(agentA);
     const events: AgentEvent[] = [];
     for await (const ev of orchestrator.stream({ userMessage: 'test' })) {
       events.push(ev);
@@ -82,7 +82,7 @@ describe('handoff', () => {
     ]);
     const agentA = createAgent({ provider: agentAProvider, tools: [handoffToBTool] });
 
-    const orchestrator = createHandoffAgent(agentA, [handoffToBTool]);
+    const orchestrator = createHandoffAgent(agentA);
     const result = await orchestrator.run({ userMessage: 'test' });
 
     expect(result.finalMessage).toBe('Final answer from A');

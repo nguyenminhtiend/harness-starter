@@ -147,6 +147,8 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
         if (st.size > MAX_READ_BYTES) {
           throwFs(`File exceeds maximum read size of ${MAX_READ_BYTES} bytes`);
         }
+        // Note: TOCTOU gap — file may grow between stat and read. The size
+        // check is best-effort; a concurrent writer could exceed MAX_READ_BYTES.
         assertNotAborted(ctx.signal);
         try {
           return await readFile(realPath, 'utf8');
@@ -178,10 +180,17 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
         } catch (e) {
           throwFs('Failed to list directory', e);
         }
-        const entries: { name: string; type: 'file' | 'directory' }[] = dents.map((d) => ({
-          name: d.name,
-          type: d.isDirectory() ? 'directory' : 'file',
-        }));
+        const entries: { name: string; type: 'file' | 'directory' | 'symlink' | 'other' }[] =
+          dents.map((d) => ({
+            name: d.name,
+            type: d.isDirectory()
+              ? 'directory'
+              : d.isFile()
+                ? 'file'
+                : d.isSymbolicLink()
+                  ? 'symlink'
+                  : 'other',
+          }));
         return JSON.stringify(entries);
       }
 

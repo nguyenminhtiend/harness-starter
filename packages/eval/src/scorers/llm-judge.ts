@@ -17,13 +17,29 @@ export function llmJudge(opts: LlmJudgeOpts) {
     name: 'llmJudge',
     description: 'Uses an LLM to judge output quality on a 0-1 scale.',
     scorer: async ({ input, output, expected }) => {
-      const judgePrompt = opts.prompt
-        .replace('{{input}}', String(input ?? ''))
-        .replace('{{output}}', String(output ?? ''))
-        .replace('{{expected}}', String(expected ?? ''));
-
       const result = await opts.provider.generate({
-        messages: [{ role: 'user', content: [{ type: 'text', text: judgePrompt }] }],
+        messages: [
+          {
+            role: 'system',
+            content: [{ type: 'text', text: opts.prompt }],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: [
+                  '=== INPUT ===',
+                  String(input ?? ''),
+                  '=== OUTPUT ===',
+                  String(output ?? ''),
+                  '=== EXPECTED ===',
+                  String(expected ?? ''),
+                ].join('\n'),
+              },
+            ],
+          },
+        ],
         responseFormat: JudgeResponseSchema,
       });
 
@@ -35,8 +51,12 @@ export function llmJudge(opts: LlmJudgeOpts) {
               .map((p) => p.text)
               .join('');
 
-      const parsed = JudgeResponseSchema.parse(JSON.parse(text));
-      return { score: parsed.score, metadata: { rationale: parsed.rationale } };
+      try {
+        const parsed = JudgeResponseSchema.parse(JSON.parse(text));
+        return { score: parsed.score, metadata: { rationale: parsed.rationale } };
+      } catch {
+        return { score: 0, metadata: { rationale: 'Failed to parse judge response', raw: text } };
+      }
     },
   });
 }

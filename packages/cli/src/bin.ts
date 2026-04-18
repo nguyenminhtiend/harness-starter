@@ -58,12 +58,17 @@ async function main(): Promise<void> {
     console.log('evalite not installed — using no-op runner');
   }
 
+  const effectiveConcurrency = config.models.length > 1 ? 1 : config.concurrency;
+  if (effectiveConcurrency !== config.concurrency) {
+    console.log(`Forcing concurrency=1 (multiple models share process.env.HARNESS_EVAL_MODEL)`);
+  }
+
   const tmpDir = `${config.outputDir}/.tmp-${Date.now()}`;
 
   const result = await runMatrix({
     files,
     models: [...config.models],
-    concurrency: config.concurrency,
+    concurrency: effectiveConcurrency,
     runEval: async (opts: { file: string; model: string | undefined }): Promise<EvalRunResult> => {
       if (evaliteRunner) {
         return runSingleEval({ ...opts, tmpDir, evaliteRunner });
@@ -79,6 +84,11 @@ async function main(): Promise<void> {
       };
     },
   });
+
+  try {
+    const { rmSync } = await import('node:fs');
+    rmSync(tmpDir, { recursive: true, force: true });
+  } catch {}
 
   console.log(`\nCompleted ${result.results.length} eval run(s) in ${result.totalDurationMs}ms`);
 
@@ -101,12 +111,15 @@ async function main(): Promise<void> {
   }
 
   if (config.scoreThreshold != null) {
+    if (result.results.length === 0) {
+      console.log('\nNo eval results to check against threshold — skipping');
+    }
     const avgScore =
       result.results.length > 0
         ? result.results.reduce((s, r) => s + r.averageScore, 0) / result.results.length
         : 0;
     const pct = avgScore * 100;
-    if (pct < config.scoreThreshold) {
+    if (result.results.length > 0 && pct < config.scoreThreshold) {
       console.log(
         `\nScore ${pct.toFixed(1)}% below threshold ${config.scoreThreshold}% — exiting with code 1`,
       );

@@ -67,7 +67,7 @@ export async function runSingleEval(opts: RunSingleEvalOpts): Promise<EvalRunRes
       if (prevModel != null) {
         process.env.HARNESS_EVAL_MODEL = prevModel;
       } else {
-        process.env.HARNESS_EVAL_MODEL = undefined as unknown as string;
+        delete process.env.HARNESS_EVAL_MODEL;
       }
     }
     try {

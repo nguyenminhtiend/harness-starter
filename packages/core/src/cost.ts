@@ -33,19 +33,21 @@ export function trackCost(bus: EventBus, prices: PriceBook): () => void {
     const cachedInputTokens = e.tokens.cachedInputTokens ?? 0;
     const reasoningTokens = e.tokens.reasoningTokens ?? 0;
 
-    const regularInput = inputTokens - cachedInputTokens;
+    const clampedCached = Math.min(cachedInputTokens, inputTokens);
+    const regularInput = Math.max(0, inputTokens - clampedCached);
     const cachedInputCost =
       entry.cachedInputPerMTok != null
-        ? (cachedInputTokens / 1e6) * entry.cachedInputPerMTok
-        : (cachedInputTokens / 1e6) * entry.inputPerMTok;
+        ? (clampedCached / 1e6) * entry.cachedInputPerMTok
+        : (clampedCached / 1e6) * entry.inputPerMTok;
     const inputCost = (regularInput / 1e6) * entry.inputPerMTok + cachedInputCost;
 
     let outputCost: number;
     if (reasoningTokens > 0 && entry.thinkingPerMTok != null) {
-      const regularOutput = outputTokens - reasoningTokens;
+      const clampedReasoning = Math.min(reasoningTokens, outputTokens);
+      const regularOutput = Math.max(0, outputTokens - clampedReasoning);
       outputCost =
         (regularOutput / 1e6) * entry.outputPerMTok +
-        (reasoningTokens / 1e6) * entry.thinkingPerMTok;
+        (clampedReasoning / 1e6) * entry.thinkingPerMTok;
     } else {
       outputCost = (outputTokens / 1e6) * entry.outputPerMTok;
     }

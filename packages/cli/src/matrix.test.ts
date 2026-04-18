@@ -84,8 +84,8 @@ describe('runMatrix', () => {
     });
 
     expect(callLog).toHaveLength(2);
-    expect(callLog[0]!.model).toBeUndefined();
-    expect(callLog[1]!.model).toBeUndefined();
+    expect(callLog[0]?.model).toBeUndefined();
+    expect(callLog[1]?.model).toBeUndefined();
   });
 
   it('returns all results even if some fail', async () => {

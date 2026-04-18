@@ -28,7 +28,7 @@ export function handoff(target: Agent, carry?: HandoffState): Tool<{ reason: str
   };
 }
 
-export function createHandoffAgent(sourceAgent: Agent, _handoffTools: Tool[]): Agent {
+export function createHandoffAgent(sourceAgent: Agent): Agent {
   async function run(input: RunInput, opts?: RunOptions): Promise<RunResult> {
     let currentAgent = sourceAgent;
     let currentInput = input;

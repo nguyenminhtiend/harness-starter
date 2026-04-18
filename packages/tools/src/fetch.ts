@@ -60,13 +60,43 @@ export function assertUrlAllowed(urlString: string, policy: FetchUrlPolicy): voi
   }
 }
 
-function truncateBody(text: string): string {
-  const enc = new TextEncoder();
-  const buf = enc.encode(text);
-  if (buf.length <= MAX_BODY_BYTES) {
-    return text;
+async function readBodyCapped(res: Response): Promise<string> {
+  if (!res.body) {
+    return '';
   }
-  return new TextDecoder('utf-8', { fatal: false }).decode(buf.subarray(0, MAX_BODY_BYTES));
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const remaining = MAX_BODY_BYTES - totalBytes;
+      if (remaining <= 0) {
+        break;
+      }
+      if (value.length > remaining) {
+        chunks.push(value.subarray(0, remaining));
+        totalBytes += remaining;
+        break;
+      }
+      chunks.push(value);
+      totalBytes += value.length;
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(merged);
 }
 
 function headersToRecord(headers: Headers): Record<string, string> {
@@ -161,7 +191,7 @@ export function fetchTool(opts?: FetchUrlPolicy): Tool<FetchArgs, string> {
         globalThis.fetch,
       );
 
-      const text = truncateBody(await res.text());
+      const text = await readBodyCapped(res);
       const payload = {
         status: res.status,
         headers: headersToRecord(res.headers),

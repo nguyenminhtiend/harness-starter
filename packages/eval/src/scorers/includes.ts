@@ -13,8 +13,8 @@ export function includes(opts?: IncludesOpts) {
       if (expected === undefined) {
         return 0;
       }
-      const a = ignoreCase ? output.toLowerCase() : output;
-      const b = ignoreCase ? expected.toLowerCase() : expected;
+      const a = ignoreCase ? String(output).toLowerCase() : String(output);
+      const b = ignoreCase ? String(expected).toLowerCase() : String(expected);
       return a.includes(b) ? 1 : 0;
     },
   });

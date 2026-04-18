@@ -53,7 +53,11 @@ export function sqliteCheckpointer(opts: { path: string }): Checkpointer {
       if (!row) {
         return null;
       }
-      return JSON.parse(row.state) as RunState;
+      try {
+        return JSON.parse(row.state) as RunState;
+      } catch {
+        return null;
+      }
     },
 
     async list(conversationId: string): Promise<CheckpointRef[]> {

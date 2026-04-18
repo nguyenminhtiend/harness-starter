@@ -6,7 +6,7 @@ export async function discoverEvalFiles(pattern: string, cwd: string): Promise<s
   const matches: string[] = [];
 
   for await (const match of glob.scan({ cwd, absolute: true })) {
-    if (match.includes('node_modules')) {
+    if (match.split('/').includes('node_modules') || match.split('\\').includes('node_modules')) {
       continue;
     }
     matches.push(resolve(match));

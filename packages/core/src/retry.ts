@@ -1,4 +1,4 @@
-import { ProviderError } from './errors.ts';
+import { ProviderError, ValidationError } from './errors.ts';
 import type { EventBus } from './events/bus.ts';
 
 export interface RetryPolicy {
@@ -17,6 +17,8 @@ const DEFAULT_POLICY: RetryPolicy = {
   retryOn: (e: unknown) => (e instanceof ProviderError && e.retriable) || isNetworkError(e),
 };
 
+const MIN_JITTER_DELAY_MS = 1;
+
 function isNetworkError(e: unknown): boolean {
   if (e instanceof TypeError && typeof e.message === 'string') {
     const msg = e.message.toLowerCase();
@@ -29,7 +31,7 @@ function computeDelay(attempt: number, policy: RetryPolicy, retryAfterMs?: numbe
   const exponential = Math.min(policy.baseDelayMs * 2 ** attempt, policy.maxDelayMs);
   const base = retryAfterMs != null ? Math.max(exponential, retryAfterMs) : exponential;
   if (policy.jitter === 'full') {
-    return Math.floor(Math.random() * base);
+    return Math.max(MIN_JITTER_DELAY_MS, Math.floor(Math.random() * base));
   }
   return base;
 }
@@ -53,6 +55,11 @@ export async function withRetry<T>(
   opts: WithRetryOpts = {},
 ): Promise<T> {
   const resolved: RetryPolicy = { ...DEFAULT_POLICY, ...policy };
+
+  if (resolved.maxAttempts < 1) {
+    throw new ValidationError('maxAttempts must be >= 1', { zodIssues: null });
+  }
+
   const { signal, bus, runId } = opts;
 
   let lastError: unknown;
@@ -83,9 +90,17 @@ export async function withRetry<T>(
       }
 
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, delayMs);
+        let onAbort: (() => void) | undefined;
+
+        const timer = setTimeout(() => {
+          if (onAbort) {
+            signal?.removeEventListener('abort', onAbort);
+          }
+          resolve();
+        }, delayMs);
+
         if (signal) {
-          const onAbort = () => {
+          onAbort = () => {
             clearTimeout(timer);
             reject(new DOMException(signal.reason ?? 'The operation was aborted', 'AbortError'));
           };

@@ -15,7 +15,6 @@
     "@harness/core": "workspace:*",
     "@harness/agent": "workspace:*",
     "evalite": "^0.19.0",
-    "vitest": "^3.2.1",
     "zod": "^4.0.0"
   },
   "peerDependencies": {

@@ -1,10 +1,6 @@
 import type { EvalResults, InspectLog, InspectLogSample } from './types.ts';
 
-export interface ToInspectLogOpts {
-  outputPath?: string | undefined;
-}
-
-export function toInspectLog(results: EvalResults, _opts?: ToInspectLogOpts): InspectLog {
+export function toInspectLog(results: EvalResults): InspectLog {
   const samples: InspectLogSample[] = results.samples.map((s) => ({
     id: s.id,
     input: s.input,

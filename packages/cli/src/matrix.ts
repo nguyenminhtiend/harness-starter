@@ -43,7 +43,7 @@ async function pooled<T, R>(items: T[], limit: number, fn: (item: T) => Promise<
   async function worker(): Promise<void> {
     while (nextIndex < items.length) {
       const idx = nextIndex++;
-      results[idx] = await fn(items[idx]!);
+      results[idx] = await fn(items[idx] as T);
     }
   }
 

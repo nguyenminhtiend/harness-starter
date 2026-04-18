@@ -196,6 +196,9 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
     }),
   );
 
+  let toolCallSeq = 0;
+  const activeToolKey = new Map<string, string>();
+
   unsubs.push(
     bus.on('tool.start', (payload) => {
       const { runId, toolName } = payload;
@@ -203,29 +206,30 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
       if (!runSpan) {
         return;
       }
-      const toolKey = `${runId}:${toolName}`;
-      const existing = toolSpans.get(toolKey);
-      if (existing) {
-        existing.end();
-        toolSpans.delete(toolKey);
-      }
+      const toolKey = `${runId}:${toolName}:${++toolCallSeq}`;
       const turn = currentTurnByRun.get(runId);
       const turnSpan = turn !== undefined ? turnSpans.get(`${runId}:${turn}`) : undefined;
       const parent = turnSpan ?? runSpan;
       const span = startChildSpan(tracer, parent, 'harness.tool', { toolName });
       toolSpans.set(toolKey, span);
+      const stackKey = `${runId}:${toolName}`;
+      activeToolKey.set(stackKey, toolKey);
     }),
   );
 
   unsubs.push(
     bus.on('tool.finish', (payload) => {
       const { runId, toolName, durationMs } = payload;
-      const toolKey = `${runId}:${toolName}`;
-      const span = toolSpans.get(toolKey);
+      const stackKey = `${runId}:${toolName}`;
+      const toolKey = activeToolKey.get(stackKey);
+      const span = toolKey ? toolSpans.get(toolKey) : undefined;
       if (span) {
         span.setAttribute('durationMs', durationMs);
         span.end();
-        toolSpans.delete(toolKey);
+        if (toolKey) {
+          toolSpans.delete(toolKey);
+        }
+        activeToolKey.delete(stackKey);
       }
     }),
   );
@@ -233,13 +237,17 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
   unsubs.push(
     bus.on('tool.error', (payload) => {
       const { runId, toolName, error } = payload;
-      const toolKey = `${runId}:${toolName}`;
-      const span = toolSpans.get(toolKey);
+      const stackKey = `${runId}:${toolName}`;
+      const toolKey = activeToolKey.get(stackKey);
+      const span = toolKey ? toolSpans.get(toolKey) : undefined;
       if (span) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         span.recordException(error);
         span.end();
-        toolSpans.delete(toolKey);
+        if (toolKey) {
+          toolSpans.delete(toolKey);
+        }
+        activeToolKey.delete(stackKey);
       }
     }),
   );

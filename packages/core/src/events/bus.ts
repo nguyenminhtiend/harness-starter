@@ -62,7 +62,11 @@ export function createEventBus(): EventBus {
         return;
       }
       for (const h of handlers) {
-        h(payload as never);
+        try {
+          h(payload as never);
+        } catch {
+          // Isolate handler failures so subsequent listeners still run
+        }
       }
     },
 

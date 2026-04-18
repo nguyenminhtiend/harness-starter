@@ -89,7 +89,13 @@ export async function* runLoop(
     input: { conversationId, ...(userMessage != null ? { userMessage } : {}) },
   });
 
-  const toolMap = new Map(tools.map((t) => [t.name, t]));
+  const toolMap = new Map<string, Tool>();
+  for (const t of tools) {
+    if (toolMap.has(t.name)) {
+      throw new ValidationError(`Duplicate tool name: "${t.name}"`, { zodIssues: null });
+    }
+    toolMap.set(t.name, t);
+  }
   const toolSchemas = tools.map((t) => ({
     name: t.name,
     description: t.description,
@@ -223,20 +229,22 @@ export async function* runLoop(
       }
     }
 
-    // Execute approved tools in parallel
-    const { results: toolResults, events: toolEvents } = await executeToolCalls(
-      approvedCalls.filter((a) => a.args !== '__DENIED__').map((a) => ({ ...a.tc, args: a.args })),
+    // Execute approved tools in parallel, preserving original call order
+    const approvedOnly = approvedCalls.filter((a) => a.args !== '__DENIED__');
+    const { results: executedResults, events: toolEvents } = await executeToolCalls(
+      approvedOnly.map((a) => ({ ...a.tc, args: a.args })),
       toolMap,
       { runId, conversationId, signal },
       bus,
     );
 
-    // Add denied results
-    for (const a of approvedCalls) {
+    const executedById = new Map(executedResults.map((r) => [r.toolCallId, r]));
+    const toolResults: ToolResultPart[] = approvedCalls.map((a) => {
       if (a.args === '__DENIED__') {
-        toolResults.push(errorResult(a.tc, 'Error: Tool approval denied'));
+        return errorResult(a.tc, 'Error: Tool approval denied');
       }
-    }
+      return executedById.get(a.tc.toolCallId) ?? errorResult(a.tc, 'Error: Missing tool result');
+    });
 
     for (const ev of toolEvents) {
       yield ev;
@@ -412,7 +420,14 @@ async function executeSingleTool(
     });
     events.push({ type: 'tool-error', id: tc.toolCallId, error: err });
     bus?.emit('tool.error', { runId: ctx.runId, toolName: tc.toolName, error: err });
-    return errorResult(tc, `Validation error: ${JSON.stringify(parseResult.error?.issues)}`);
+    const issuesSummary =
+      parseResult.error?.issues
+        ?.map(
+          (i: { path?: unknown[]; message?: string }) =>
+            `${(i.path ?? []).join('.')}: ${i.message ?? 'invalid'}`,
+        )
+        .join('; ') ?? 'invalid arguments';
+    return errorResult(tc, `Validation error: ${issuesSummary}`);
   }
 
   try {

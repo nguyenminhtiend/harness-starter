@@ -37,6 +37,14 @@ function toAiSdkMessages(messages: Message[]): CoreMessage[] {
         switch (part.type) {
           case 'text':
             return { type: 'text' as const, text: part.text };
+          case 'image':
+            return {
+              type: 'image' as const,
+              image:
+                (part as { data?: string; url?: string }).data ??
+                (part as { url?: string }).url ??
+                '',
+            };
           case 'tool-call':
             return {
               type: 'tool-call' as const,

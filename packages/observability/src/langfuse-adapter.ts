@@ -83,17 +83,23 @@ export function langfuseAdapter(bus: EventBus, client: LangfuseClient): () => vo
     turnSpans.delete(`${runId}:${turn}`);
   });
 
+  let generationSeq = 0;
+  const activeGenerationKey = new Map<string, string>();
+
   subscribe('provider.call', ({ runId, providerId, request }) => {
     const trace = traces.get(runId);
     if (!trace) {
       return;
     }
+    const key = `${runId}:${++generationSeq}`;
     const generation = trace.generation({ name: providerId, input: request });
-    generations.set(runId, generation);
+    generations.set(key, generation);
+    activeGenerationKey.set(runId, key);
   });
 
   subscribe('provider.usage', ({ runId, tokens, costUSD, cache }) => {
-    const generation = generations.get(runId);
+    const key = activeGenerationKey.get(runId);
+    const generation = key ? generations.get(key) : undefined;
     if (!generation) {
       return;
     }
@@ -108,7 +114,10 @@ export function langfuseAdapter(bus: EventBus, client: LangfuseClient): () => vo
       usage: usageToLangfuse(tokens),
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     });
-    generations.delete(runId);
+    if (key) {
+      generations.delete(key);
+      activeGenerationKey.delete(runId);
+    }
   });
 
   subscribe('tool.start', ({ runId, toolName, args }) => {
@@ -142,6 +151,30 @@ export function langfuseAdapter(bus: EventBus, client: LangfuseClient): () => vo
     }
     span.end({ metadata: { error: serializeHarnessError(error) } });
   });
+
+  subscribe('run.finish', ({ runId }) => {
+    cleanupRun(runId);
+  });
+
+  subscribe('run.error', ({ runId }) => {
+    cleanupRun(runId);
+  });
+
+  function cleanupRun(runId: string) {
+    traces.delete(runId);
+    for (const [k] of [...turnSpans.entries()]) {
+      if (k.startsWith(`${runId}:`)) {
+        turnSpans.delete(k);
+      }
+    }
+    for (const [k] of [...generations.entries()]) {
+      if (k.startsWith(`${runId}:`)) {
+        generations.delete(k);
+      }
+    }
+    activeGenerationKey.delete(runId);
+    toolStacks.delete(runId);
+  }
 
   return () => {
     for (const unsub of unsubs) {

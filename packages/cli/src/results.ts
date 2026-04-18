@@ -17,13 +17,22 @@ export async function writeJsonlResults(
   return outputDir;
 }
 
+/** Parses JSONL from a trusted local file. Malformed lines are skipped. */
 export async function readJsonlResults(path: string): Promise<EvalRunResult[]> {
   const content = await Bun.file(path).text();
   if (!content.trim()) {
     return [];
   }
-  return content
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line) as EvalRunResult);
+  const results: EvalRunResult[] = [];
+  for (const line of content.trim().split('\n')) {
+    try {
+      const parsed = JSON.parse(line) as EvalRunResult;
+      if (typeof parsed.file === 'string' && typeof parsed.averageScore === 'number') {
+        results.push(parsed);
+      }
+    } catch {
+      // Skip malformed lines
+    }
+  }
+  return results;
 }

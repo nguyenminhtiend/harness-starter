@@ -24,12 +24,12 @@ interface McpCallResult {
 
 export type CallToolFn = (name: string, args: Record<string, unknown>) => Promise<McpCallResult>;
 
-function extractText(content: McpContentPart[]): { allText: boolean; text: string } {
+function extractText(content: McpContentPart[]): string {
   const textParts = content.filter((c) => c.type === 'text' && c.text != null);
   if (textParts.length === content.length && textParts.length > 0) {
-    return { allText: true, text: textParts.map((c) => c.text).join('') };
+    return textParts.map((c) => c.text).join('');
   }
-  return { allText: false, text: JSON.stringify(content) };
+  return JSON.stringify(content);
 }
 
 export function convertMcpTool(mcpTool: McpToolDef, callTool: CallToolFn): Tool {
@@ -43,7 +43,7 @@ export function convertMcpTool(mcpTool: McpToolDef, callTool: CallToolFn): Tool 
     parameters,
     async execute(args: unknown, _ctx: ToolContext): Promise<string> {
       const result = await callTool(mcpTool.name, (args ?? {}) as Record<string, unknown>);
-      const { text } = extractText(result.content);
+      const text = extractText(result.content);
 
       if (result.isError) {
         throw new ToolError(text || 'MCP tool returned an error', {

@@ -56,16 +56,22 @@ function estimateTokens(messages: Message[]): number {
   return total;
 }
 
+const MAX_SUMMARIZE_CHARS = 200_000;
+
 async function summarize(
   messages: Message[],
   provider: Provider,
   signal: AbortSignal,
 ): Promise<string> {
-  const content = messages
+  let content = messages
     .map(
       (m) => `${m.role}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`,
     )
     .join('\n');
+
+  if (content.length > MAX_SUMMARIZE_CHARS) {
+    content = `${content.slice(0, MAX_SUMMARIZE_CHARS)}\n[...truncated]`;
+  }
 
   const result = await provider.generate(
     {

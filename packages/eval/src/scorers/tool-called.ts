@@ -27,6 +27,8 @@ export function toolCalled(toolName: string, expectedArgs?: Record<string, unkno
         }
       }
 
+      // Matches the first call to this tool name. If the same tool is called
+      // multiple times, only the first is checked against expectedArgs.
       const match = calls.find((c) => c.name === toolName);
       if (!match) {
         return { score: 0, metadata: { found: calls.map((c) => c.name) } };

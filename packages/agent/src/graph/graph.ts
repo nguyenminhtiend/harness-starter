@@ -22,6 +22,11 @@ export function graph(def: GraphDef): Agent {
   const nodeMap = new Map(def.nodes.map((n) => [n.id, n]));
   const edgeMap = new Map<string, GraphEdge>();
   for (const edge of def.edges) {
+    if (edgeMap.has(edge.from)) {
+      throw new Error(
+        `Duplicate edge from node "${edge.from}". Each node may have at most one outgoing edge; use a function-based \`to\` for conditional routing.`,
+      );
+    }
     edgeMap.set(edge.from, edge);
   }
 
@@ -122,6 +127,11 @@ export function graph(def: GraphDef): Agent {
   async function run(input: RunInput, opts?: RunOptions): Promise<RunResult> {
     let finalMessage: unknown;
     let turns = 0;
+    let totalUsage: { inputTokens: number; outputTokens: number; totalTokens: number } = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    };
 
     for await (const event of stream(input, opts)) {
       switch (event.type) {
@@ -135,10 +145,23 @@ export function graph(def: GraphDef): Agent {
             finalMessage = event.delta;
           }
           break;
+        case 'usage':
+          totalUsage = {
+            inputTokens:
+              totalUsage.inputTokens +
+              ((event.tokens as { inputTokens?: number }).inputTokens ?? 0),
+            outputTokens:
+              totalUsage.outputTokens +
+              ((event.tokens as { outputTokens?: number }).outputTokens ?? 0),
+            totalTokens:
+              totalUsage.totalTokens +
+              ((event.tokens as { totalTokens?: number }).totalTokens ?? 0),
+          };
+          break;
       }
     }
 
-    return { finalMessage, turns };
+    return { finalMessage, turns, usage: totalUsage };
   }
 
   return { run, stream };

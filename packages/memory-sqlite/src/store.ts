@@ -45,16 +45,21 @@ export function sqliteStore(opts: { path: string }): ConversationStore {
   return {
     async load(conversationId: string): Promise<Message[]> {
       const rows = loadStmt.all(conversationId);
-      return rows.map((row) => {
-        const msg: Message = {
-          role: row.role as Message['role'],
-          content: JSON.parse(row.content) as Message['content'],
-        };
-        if (row.cache_boundary === 1) {
-          msg.cacheBoundary = true;
+      return rows.reduce<Message[]>((acc, row) => {
+        try {
+          const msg: Message = {
+            role: row.role as Message['role'],
+            content: JSON.parse(row.content) as Message['content'],
+          };
+          if (row.cache_boundary === 1) {
+            msg.cacheBoundary = true;
+          }
+          acc.push(msg);
+        } catch {
+          // Skip corrupted rows
         }
-        return msg;
-      });
+        return acc;
+      }, []);
     },
 
     async append(conversationId: string, messages: Message[]): Promise<void> {

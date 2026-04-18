@@ -79,6 +79,7 @@ export function createAgent(cfg: AgentConfig): Agent {
     );
   }
 
+  /** Only text-delta events are concatenated into finalMessage; non-text/multimodal content must be consumed via stream(). */
   async function run(input: RunInput, opts?: RunOptions): Promise<RunResult> {
     let finalMessage: unknown;
     let turns = 0;

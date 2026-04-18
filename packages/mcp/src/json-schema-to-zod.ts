@@ -15,19 +15,29 @@ export interface JsonSchema {
 
 function convertProperty(schema: JsonSchema): ZodType {
   if (schema.enum && Array.isArray(schema.enum) && schema.enum.length > 0) {
-    const vals = schema.enum as [string, ...string[]];
-    if (vals.length === 1) {
-      return z.literal(vals[0] as string);
+    const allStrings = schema.enum.every((v) => typeof v === 'string');
+    if (allStrings) {
+      const vals = schema.enum as [string, ...string[]];
+      if (vals.length === 1) {
+        return z.literal(vals[0] as string);
+      }
+      return z.enum(vals as [string, ...string[]]);
     }
-    return z.enum(vals as [string, ...string[]]);
+    const literals = schema.enum.map((v) => z.literal(v as string | number | boolean));
+    const first = literals[0];
+    if (literals.length === 1 && first) {
+      return first;
+    }
+    return z.union(literals as unknown as [ZodType, ZodType, ...ZodType[]]);
   }
 
   switch (schema.type) {
     case 'string':
       return z.string();
     case 'number':
-    case 'integer':
       return z.number();
+    case 'integer':
+      return z.number().int();
     case 'boolean':
       return z.boolean();
     case 'null':
@@ -43,7 +53,7 @@ function convertProperty(schema: JsonSchema): ZodType {
       if (schema.properties) {
         return convertObject(schema);
       }
-      return z.record(z.string(), z.unknown());
+      return z.unknown();
   }
 }
 
@@ -64,5 +74,5 @@ export function jsonSchemaToZod(schema: JsonSchema): ZodType {
   if (schema.type === 'object' || schema.properties) {
     return convertObject(schema);
   }
-  return z.record(z.string(), z.unknown());
+  return convertProperty(schema);
 }

@@ -64,7 +64,12 @@ export class ProviderError extends HarnessError {
   }
 
   override toJSON(): Record<string, unknown> {
-    return { ...super.toJSON(), kind: this.kind, status: this.status };
+    return {
+      ...super.toJSON(),
+      kind: this.kind,
+      status: this.status,
+      ...(this.retryAfter != null ? { retryAfter: this.retryAfter } : {}),
+    };
   }
 }
 
