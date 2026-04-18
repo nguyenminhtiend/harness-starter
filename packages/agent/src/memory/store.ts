@@ -6,7 +6,7 @@ export function inMemoryStore(): ConversationStore {
 
   return {
     async load(conversationId: string): Promise<Message[]> {
-      return data.get(conversationId) ?? [];
+      return [...(data.get(conversationId) ?? [])];
     },
     async append(conversationId: string, messages: Message[]): Promise<void> {
       const existing = data.get(conversationId) ?? [];

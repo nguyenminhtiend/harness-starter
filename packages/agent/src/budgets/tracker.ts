@@ -51,6 +51,7 @@ export function createBudgetTracker(limits: BudgetLimits, bus?: EventBus): Budge
     bus.on('provider.usage', (e) => {
       if (e.costUSD != null) {
         spentUsd += e.costUSD;
+        check();
       }
     });
   }

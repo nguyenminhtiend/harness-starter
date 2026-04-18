@@ -153,7 +153,6 @@ export type AgentEvent =
   | { type: 'tool-error'; id: string; error: HarnessError }
   | { type: 'compaction'; droppedTurns: number; summaryTokens: number }
   | { type: 'structured.repair'; attempt: number; issues: unknown }
-  | { type: 'guardrail-blocked'; phase: 'input' | 'output'; reason: string }
   | { type: 'handoff'; from: string; to: string }
   | { type: 'checkpoint'; runId: string; turn: number }
   | { type: 'budget.exceeded'; kind: 'usd' | 'tokens'; spent: number; limit: number }
@@ -178,7 +177,6 @@ export interface LoopHooks {
 export interface SubagentSpec {
   name: string;
   description: string;
-  budget?: { usd?: number; tokens?: number };
 }
 
 export interface HandoffState {

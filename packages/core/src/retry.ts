@@ -36,6 +36,12 @@ function computeDelay(attempt: number, policy: RetryPolicy, retryAfterMs?: numbe
   return base;
 }
 
+/**
+ * Returns the retry-after value in milliseconds.
+ * `ProviderError.retryAfter` is expected to be in **milliseconds**.
+ * If sourcing from an HTTP `Retry-After` header (which uses seconds),
+ * convert to ms before constructing `ProviderError`.
+ */
 function getRetryAfterMs(error: unknown): number | undefined {
   if (error instanceof ProviderError && error.retryAfter != null) {
     return error.retryAfter;

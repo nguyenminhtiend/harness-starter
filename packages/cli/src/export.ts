@@ -65,16 +65,42 @@ async function runAdapter(
 
 async function loadEvalPackage(): Promise<Record<string, unknown> | null> {
   try {
-    // @ts-expect-error — @harness/eval may not be installed yet (Phase 7)
     return await import('@harness/eval');
   } catch {
     return null;
   }
 }
 
+function toEvalResults(results: readonly EvalRunResult[]): {
+  name: string;
+  model?: string | undefined;
+  samples: Array<{
+    id: string;
+    input: unknown;
+    output: unknown;
+    scores: Record<string, { score: number; metadata?: Record<string, unknown> | undefined }>;
+    durationMs?: number | undefined;
+  }>;
+  createdAt?: string | undefined;
+} {
+  const first = results[0];
+  return {
+    name: first?.file ?? 'eval',
+    ...(first?.model != null ? { model: first.model } : {}),
+    samples: results.map((r, i) => ({
+      id: `${r.file}:${r.model ?? 'default'}:${i}`,
+      input: r.file,
+      output: r.model ?? 'default',
+      scores: Object.fromEntries(r.scores.map((s) => [s.name, { score: s.score }])),
+      durationMs: r.durationMs,
+    })),
+    ...(first?.timestamp != null ? { createdAt: first.timestamp } : {}),
+  };
+}
+
 async function runInspectExport(
   results: readonly EvalRunResult[],
-  _outputDir: string,
+  outputDir: string,
 ): Promise<void> {
   const evalPkg = await loadEvalPackage();
   if (!evalPkg) {
@@ -82,7 +108,11 @@ async function runInspectExport(
     return;
   }
   if (typeof evalPkg.toInspectLog === 'function') {
-    await (evalPkg.toInspectLog as (r: readonly EvalRunResult[]) => Promise<void>)(results);
+    const mapped = toEvalResults(results);
+    const log = (evalPkg.toInspectLog as (r: typeof mapped) => unknown)(mapped);
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(`${outputDir}/inspect-log.json`, JSON.stringify(log, null, 2), 'utf8');
   }
 }
 
@@ -92,7 +122,18 @@ async function runLangfuseExport(results: readonly EvalRunResult[]): Promise<voi
     console.log('[export:langfuse] @harness/eval not available — skipping Langfuse export');
     return;
   }
-  if (typeof evalPkg.toLangfuse === 'function') {
-    await (evalPkg.toLangfuse as (r: readonly EvalRunResult[]) => Promise<void>)(results);
+  if (typeof evalPkg.toLangfuse !== 'function') {
+    return;
   }
+  let langfuseClient: unknown;
+  try {
+    // @ts-expect-error — langfuse is an optional peer dependency
+    const langfuse = await import('langfuse');
+    langfuseClient = new (langfuse as { Langfuse: new () => unknown }).Langfuse();
+  } catch {
+    console.log('[export:langfuse] langfuse package not installed — skipping');
+    return;
+  }
+  const mapped = toEvalResults(results);
+  (evalPkg.toLangfuse as (r: typeof mapped, client: unknown) => void)(mapped, langfuseClient);
 }

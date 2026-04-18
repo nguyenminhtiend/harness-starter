@@ -18,7 +18,7 @@ export {
   ToolError,
   ValidationError,
 } from './errors.ts';
-export type { EventBus, HarnessEvents, RunInput, RunResult } from './events/bus.ts';
+export type { EventBus, EventBusOpts, HarnessEvents, RunInput, RunResult } from './events/bus.ts';
 // Event bus
 export { createEventBus } from './events/bus.ts';
 // AI SDK provider

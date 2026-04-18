@@ -40,10 +40,8 @@ function toAiSdkMessages(messages: Message[]): CoreMessage[] {
           case 'image':
             return {
               type: 'image' as const,
-              image:
-                (part as { data?: string; url?: string }).data ??
-                (part as { url?: string }).url ??
-                '',
+              image: part.image,
+              ...(part.mimeType ? { mimeType: part.mimeType } : {}),
             };
           case 'tool-call':
             return {

@@ -11,16 +11,16 @@ export function defineConfig<S extends ZodType>(schema: S, value: unknown): outp
   return result.data as output<S>;
 }
 
-export function envConfig<S extends ZodType>(schema: S): output<S> {
-  const result = schema.safeParse(process.env);
+export function envConfig<S extends ZodType>(
+  schema: S,
+  env?: Record<string, string | undefined>,
+): output<S> {
+  const source = env ?? (typeof process !== 'undefined' ? process.env : {});
+  const result = schema.safeParse(source);
   if (!result.success) {
-    const error =
-      'error' in result
-        ? (result.error as { issues?: Array<{ path?: unknown[]; message?: string }> })
-        : undefined;
-    const issues = error?.issues ?? [];
+    const issues = result.error?.issues ?? [];
     const missing = issues
-      .map((i) => {
+      .map((i: { path?: unknown[]; message?: string }) => {
         const path = Array.isArray(i.path) ? i.path.join('.') : 'unknown';
         return `  ${path}: ${i.message ?? 'invalid'}`;
       })

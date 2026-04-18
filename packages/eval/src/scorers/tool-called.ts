@@ -35,12 +35,13 @@ export function toolCalled(toolName: string, expectedArgs?: Record<string, unkno
       }
 
       if (expectedArgs) {
-        const argsMatch = Object.entries(expectedArgs).every(
-          ([k, v]) =>
-            match.args != null &&
-            typeof match.args === 'object' &&
-            (match.args as Record<string, unknown>)[k] === v,
-        );
+        const argsMatch = Object.entries(expectedArgs).every(([k, v]) => {
+          if (match.args == null || typeof match.args !== 'object') {
+            return false;
+          }
+          const actual = (match.args as Record<string, unknown>)[k];
+          return JSON.stringify(actual) === JSON.stringify(v);
+        });
         return {
           score: argsMatch ? 1 : 0,
           metadata: { found: match.name, actualArgs: match.args, expectedArgs },

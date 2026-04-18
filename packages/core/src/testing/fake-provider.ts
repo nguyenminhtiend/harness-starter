@@ -74,7 +74,7 @@ export function fakeProvider(script: ScriptedStream[], opts?: FakeProviderOpts):
   ): AsyncGenerator<StreamEvent> {
     for (const event of scripted.events) {
       if (signal?.aborted) {
-        return;
+        throw new DOMException('The operation was aborted', 'AbortError');
       }
       if (scripted.delayMs) {
         await delay(scripted.delayMs, signal);

@@ -12,7 +12,8 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@harness/core": "workspace:*"
+    "@harness/core": "workspace:*",
+    "@harness/eval": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

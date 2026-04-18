@@ -25,6 +25,14 @@ export abstract class HarnessError extends Error {
       class: this.class,
       retriable: this.retriable,
       context: this.context,
+      ...(this.cause != null
+        ? {
+            cause:
+              this.cause instanceof Error
+                ? { name: this.cause.name, message: this.cause.message }
+                : this.cause,
+          }
+        : {}),
     };
   }
 }

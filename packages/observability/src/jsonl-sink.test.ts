@@ -30,6 +30,7 @@ describe('jsonlSink', () => {
     jsonlSink(bus, { path: logPath });
     bus.emit('run.start', { runId: 'r1', conversationId: 'c1', input: {} });
 
+    await new Promise((r) => setTimeout(r, 50));
     const raw = await readFile(logPath, 'utf8');
     const line = raw.trim().split('\n')[0];
     expect(line).toBeDefined();
@@ -50,6 +51,7 @@ describe('jsonlSink', () => {
     bus.emit('run.start', { runId: 'r1', conversationId: 'c1', input: {} });
     bus.emit('turn.start', { runId: 'r1', turn: 1 });
 
+    await new Promise((r) => setTimeout(r, 50));
     const raw = await readFile(logPath, 'utf8');
     const lines = raw.trim().split('\n').filter(Boolean);
     expect(lines.length).toBe(2);
@@ -63,9 +65,11 @@ describe('jsonlSink', () => {
   test('unsubscribe stops writes; later emits are ignored', async () => {
     const unsub = jsonlSink(bus, { path: logPath });
     bus.emit('run.finish', { runId: 'r1', result: {} });
+    await new Promise((r) => setTimeout(r, 50));
     unsub();
     bus.emit('run.start', { runId: 'r2', conversationId: 'c2', input: {} });
 
+    await new Promise((r) => setTimeout(r, 50));
     const raw = await readFile(logPath, 'utf8');
     const lines = raw.trim().split('\n').filter(Boolean);
     expect(lines.length).toBe(1);
@@ -81,6 +85,7 @@ describe('jsonlSink', () => {
       request: { messages: [] },
     });
 
+    await new Promise((r) => setTimeout(r, 50));
     const raw = await readFile(logPath, 'utf8');
     const row = JSON.parse(raw.trim()) as { event: string; payload: { providerId: string } };
     expect(row.event).toBe('provider.call');
@@ -92,6 +97,7 @@ describe('jsonlSink', () => {
     const err = new ToolError('nope', { toolName: 'fs' });
     bus.emit('run.error', { runId: 'r1', error: err });
 
+    await new Promise((r) => setTimeout(r, 50));
     const raw = await readFile(logPath, 'utf8');
     const row = JSON.parse(raw.trim()) as {
       event: string;

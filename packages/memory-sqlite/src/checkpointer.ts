@@ -11,7 +11,11 @@ interface RefRow {
   created_at: string;
 }
 
-export function sqliteCheckpointer(opts: { path: string }): Checkpointer {
+export interface SqliteCheckpointerResult extends Checkpointer {
+  close(): void;
+}
+
+export function sqliteCheckpointer(opts: { path: string }): SqliteCheckpointerResult {
   const db = openDb(opts.path);
 
   db.run(`
@@ -55,8 +59,10 @@ export function sqliteCheckpointer(opts: { path: string }): Checkpointer {
       }
       try {
         return JSON.parse(row.state) as RunState;
-      } catch {
-        return null;
+      } catch (e) {
+        throw new Error(
+          `Corrupt checkpoint for runId="${runId}": ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     },
 
@@ -66,6 +72,10 @@ export function sqliteCheckpointer(opts: { path: string }): Checkpointer {
         turn: row.turn,
         createdAt: row.created_at,
       }));
+    },
+
+    close() {
+      db.close();
     },
   };
 }

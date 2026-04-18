@@ -17,9 +17,14 @@ export class HandoffSignal {
   ) {}
 }
 
-export function handoff(target: Agent, carry?: HandoffState): Tool<{ reason: string }, string> {
+export function handoff(
+  target: Agent,
+  carry?: HandoffState,
+  opts?: { name?: string },
+): Tool<{ reason: string }, string> {
+  const targetId = (target as { id?: string }).id ?? 'agent';
   return {
-    name: `handoff_to_${(target as { id?: string }).id ?? 'agent'}`,
+    name: opts?.name ?? `handoff_to_${targetId}`,
     description: 'Transfer the conversation to another agent',
     parameters: z.object({ reason: z.string() }),
     async execute(_args: { reason: string }, _ctx: ToolContext): Promise<string> {

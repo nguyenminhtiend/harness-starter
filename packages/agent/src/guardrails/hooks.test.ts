@@ -126,26 +126,31 @@ describe('guardrail integration with createAgent', () => {
     expect(guardrailEvents.length).toBeGreaterThan(0);
   });
 
-  test('guardrail-blocked event emitted on stream', async () => {
+  test('input guardrail block throws on stream and emits bus event', async () => {
     const blockHook: InputHook = async () => ({ action: 'block', reason: 'nope' });
     const provider = fakeProvider([{ events: textScript('nope') }]);
+    const bus = createEventBus();
+
+    const guardrailEvents: unknown[] = [];
+    bus.on('guardrail', (e) => guardrailEvents.push(e));
 
     const agent = createAgent({
       provider,
       guardrails: { input: [blockHook] },
+      events: bus,
     });
 
     const events: AgentEvent[] = [];
+    let thrownError: unknown;
     try {
       for await (const ev of agent.stream({ userMessage: 'test' })) {
         events.push(ev);
       }
-    } catch {
-      // expected GuardrailError
+    } catch (e) {
+      thrownError = e;
     }
 
-    // The error is thrown from inside the generator, so we catch it
-    // The guardrail event goes to the bus, not the stream
-    // This is correct per the architecture — bus events are for observability
+    expect(thrownError).toBeInstanceOf(GuardrailError);
+    expect(guardrailEvents.length).toBeGreaterThan(0);
   });
 });

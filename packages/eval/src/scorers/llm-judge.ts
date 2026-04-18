@@ -55,7 +55,11 @@ export function llmJudge(opts: LlmJudgeOpts) {
         const parsed = JudgeResponseSchema.parse(JSON.parse(text));
         return { score: parsed.score, metadata: { rationale: parsed.rationale } };
       } catch {
-        return { score: 0, metadata: { rationale: 'Failed to parse judge response', raw: text } };
+        const truncatedRaw = text.length > 500 ? `${text.slice(0, 500)}...[truncated]` : text;
+        return {
+          score: 0,
+          metadata: { rationale: 'Failed to parse judge response', raw: truncatedRaw },
+        };
       }
     },
   });

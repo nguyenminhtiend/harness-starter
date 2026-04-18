@@ -18,6 +18,14 @@ export function trackCost(bus: EventBus, prices: PriceBook): () => void {
     modelByRun.set(e.runId, e.providerId);
   });
 
+  const unsubFinish = bus.on('run.finish', (e) => {
+    modelByRun.delete(e.runId);
+  });
+
+  const unsubError = bus.on('run.error', (e) => {
+    modelByRun.delete(e.runId);
+  });
+
   const unsubUsage = bus.on('provider.usage', (e) => {
     const modelId = modelByRun.get(e.runId);
     if (!modelId) {
@@ -58,6 +66,8 @@ export function trackCost(bus: EventBus, prices: PriceBook): () => void {
   return () => {
     unsubCall();
     unsubUsage();
+    unsubFinish();
+    unsubError();
     modelByRun.clear();
   };
 }

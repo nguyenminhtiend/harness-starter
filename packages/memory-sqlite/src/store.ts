@@ -8,7 +8,11 @@ interface MessageRow {
   cache_boundary: number | null;
 }
 
-export function sqliteStore(opts: { path: string }): ConversationStore {
+export interface SqliteStoreResult extends ConversationStore {
+  close(): void;
+}
+
+export function sqliteStore(opts: { path: string }): SqliteStoreResult {
   const db = openDb(opts.path);
 
   db.run(`
@@ -55,8 +59,10 @@ export function sqliteStore(opts: { path: string }): ConversationStore {
             msg.cacheBoundary = true;
           }
           acc.push(msg);
-        } catch {
-          // Skip corrupted rows
+        } catch (e) {
+          throw new Error(
+            `Corrupt message row in conversation="${conversationId}": ${e instanceof Error ? e.message : String(e)}`,
+          );
         }
         return acc;
       }, []);
@@ -64,6 +70,10 @@ export function sqliteStore(opts: { path: string }): ConversationStore {
 
     async append(conversationId: string, messages: Message[]): Promise<void> {
       insertMany(conversationId, messages);
+    },
+
+    close() {
+      db.close();
     },
   };
 }

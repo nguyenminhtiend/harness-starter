@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { fileURLToPath } from 'node:url';
 import { mcpTools } from './mcp-tools.ts';
 import type { McpClientConfig } from './types.ts';
 
-const echoServerPath = new URL('./test-fixtures/echo-server.ts', import.meta.url).pathname;
+const echoServerPath = fileURLToPath(new URL('./test-fixtures/echo-server.ts', import.meta.url));
 
 function stdioConfig(): McpClientConfig {
   return { transport: 'stdio', command: 'bun', args: [echoServerPath] };

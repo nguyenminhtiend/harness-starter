@@ -7,6 +7,7 @@ import { assertNotAborted, ToolError } from '@harness/core';
 import { z } from 'zod';
 
 const MAX_READ_BYTES = 1024 * 1024;
+const MAX_LIST_ENTRIES = 10_000;
 
 const readOp = z.object({
   operation: z.literal('read'),
@@ -180,8 +181,10 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
         } catch (e) {
           throwFs('Failed to list directory', e);
         }
+        const truncated = dents.length > MAX_LIST_ENTRIES;
+        const limited = truncated ? dents.slice(0, MAX_LIST_ENTRIES) : dents;
         const entries: { name: string; type: 'file' | 'directory' | 'symlink' | 'other' }[] =
-          dents.map((d) => ({
+          limited.map((d) => ({
             name: d.name,
             type: d.isDirectory()
               ? 'directory'
@@ -191,7 +194,7 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
                   ? 'symlink'
                   : 'other',
           }));
-        return JSON.stringify(entries);
+        return JSON.stringify({ entries, truncated, total: dents.length });
       }
 
       if (mode === 'rw' && args.operation === 'write') {

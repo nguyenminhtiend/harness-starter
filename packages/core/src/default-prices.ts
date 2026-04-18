@@ -1,5 +1,6 @@
 import type { PriceBook } from './cost.ts';
 
+/** As of 2025-06 — verify against provider pricing pages periodically. */
 export const defaultPrices: PriceBook = {
   'gpt-4o': {
     inputPerMTok: 2.5,

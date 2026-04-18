@@ -33,19 +33,51 @@ function matchesEntry(urlString: string, hostname: string, entry: string | RegEx
   return entry.test(urlString);
 }
 
+const ALLOWED_SCHEMES = new Set(['http:', 'https:']);
+
+const PRIVATE_IP_PATTERNS = [
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^0\./,
+  /^169\.254\./,
+  /^\[::1\]$/,
+  /^\[fc/i,
+  /^\[fd/i,
+  /^\[fe80:/i,
+];
+
+function isPrivateHost(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname.endsWith('.local')) {
+    return true;
+  }
+  return PRIVATE_IP_PATTERNS.some((p) => p.test(hostname));
+}
+
 /** Exported for unit tests of URL policy matching. */
 export function assertUrlAllowed(urlString: string, policy: FetchUrlPolicy): void {
-  let hostname: string;
+  let parsed: URL;
   try {
-    hostname = new URL(urlString).hostname;
+    parsed = new URL(urlString);
   } catch {
     throw new ToolError(`Invalid URL: ${urlString}`, { toolName: 'fetch' });
+  }
+
+  if (!ALLOWED_SCHEMES.has(parsed.protocol)) {
+    throw new ToolError(`URL scheme not allowed: ${parsed.protocol}`, { toolName: 'fetch' });
+  }
+
+  if (isPrivateHost(parsed.hostname)) {
+    throw new ToolError(`URL targets a private/reserved address: ${parsed.hostname}`, {
+      toolName: 'fetch',
+    });
   }
 
   const { allow, deny } = policy;
 
   if (allow != null && allow.length > 0) {
-    const ok = allow.some((entry) => matchesEntry(urlString, hostname, entry));
+    const ok = allow.some((entry) => matchesEntry(urlString, parsed.hostname, entry));
     if (!ok) {
       throw new ToolError(`URL not allowed by policy: ${urlString}`, { toolName: 'fetch' });
     }
@@ -53,7 +85,7 @@ export function assertUrlAllowed(urlString: string, policy: FetchUrlPolicy): voi
 
   if (deny != null) {
     for (const entry of deny) {
-      if (matchesEntry(urlString, hostname, entry)) {
+      if (matchesEntry(urlString, parsed.hostname, entry)) {
         throw new ToolError(`URL denied by policy: ${urlString}`, { toolName: 'fetch' });
       }
     }
@@ -179,13 +211,12 @@ export function fetchTool(opts?: FetchUrlPolicy): Tool<FetchArgs, string> {
     parameters,
     execute: async (args, ctx) => {
       assertNotAborted(ctx.signal);
-      const parsed = parameters.parse(args);
 
       const res = await fetchWithRedirectPolicy(
-        parsed.url,
-        parsed.method,
-        parsed.headers,
-        parsed.body,
+        args.url,
+        args.method,
+        args.headers,
+        args.body,
         ctx,
         policy,
         globalThis.fetch,

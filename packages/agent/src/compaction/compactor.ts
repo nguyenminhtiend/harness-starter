@@ -38,7 +38,7 @@ export function summarizingCompactor(opts?: SummarizingCompactorOpts): Compactor
       );
 
       const summaryMsg: Message = {
-        role: 'user',
+        role: 'system',
         content: `[Summary of previous ${toSummarize.length} messages]: ${summaryText}`,
       };
 

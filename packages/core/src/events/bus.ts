@@ -52,7 +52,11 @@ export interface EventBus {
 
 type Handler = (payload: never) => void;
 
-export function createEventBus(): EventBus {
+export interface EventBusOpts {
+  onError?: (event: string, error: unknown) => void;
+}
+
+export function createEventBus(opts?: EventBusOpts): EventBus {
   const listeners = new Map<string, Handler[]>();
 
   return {
@@ -64,8 +68,10 @@ export function createEventBus(): EventBus {
       for (const h of handlers) {
         try {
           h(payload as never);
-        } catch {
-          // Isolate handler failures so subsequent listeners still run
+        } catch (err) {
+          if (opts?.onError) {
+            opts.onError(ev as string, err);
+          }
         }
       }
     },

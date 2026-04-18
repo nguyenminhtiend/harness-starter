@@ -91,6 +91,12 @@ export function langfuseAdapter(bus: EventBus, client: LangfuseClient): () => vo
     if (!trace) {
       return;
     }
+    const prevKey = activeGenerationKey.get(runId);
+    if (prevKey) {
+      const prev = generations.get(prevKey);
+      prev?.end({});
+      generations.delete(prevKey);
+    }
     const key = `${runId}:${++generationSeq}`;
     const generation = trace.generation({ name: providerId, input: request });
     generations.set(key, generation);

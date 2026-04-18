@@ -71,6 +71,20 @@ function convertObject(schema: JsonSchema): ZodType {
 }
 
 export function jsonSchemaToZod(schema: JsonSchema): ZodType {
+  if (schema.oneOf && Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+    const variants = schema.oneOf.map((s) => convertProperty(s));
+    if (variants.length === 1 && variants[0]) {
+      return variants[0];
+    }
+    return z.union(variants as [ZodType, ZodType, ...ZodType[]]);
+  }
+  if (schema.anyOf && Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
+    const variants = schema.anyOf.map((s) => convertProperty(s));
+    if (variants.length === 1 && variants[0]) {
+      return variants[0];
+    }
+    return z.union(variants as [ZodType, ZodType, ...ZodType[]]);
+  }
   if (schema.type === 'object' || schema.properties) {
     return convertObject(schema);
   }

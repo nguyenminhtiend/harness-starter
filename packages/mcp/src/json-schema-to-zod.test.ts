@@ -71,9 +71,11 @@ describe('jsonSchemaToZod', () => {
     expect(schema.safeParse({ address: {} }).success).toBe(false);
   });
 
-  test('falls back to z.record for unsupported schemas', () => {
+  test('converts oneOf to z.union', () => {
     const schema = jsonSchemaToZod({ oneOf: [{ type: 'string' }, { type: 'number' }] });
-    expect(schema.safeParse({ anything: 'goes' }).success).toBe(true);
+    expect(schema.safeParse('hello').success).toBe(true);
+    expect(schema.safeParse(42).success).toBe(true);
+    expect(schema.safeParse({ anything: 'goes' }).success).toBe(false);
   });
 
   test('handles missing type with properties as object', () => {

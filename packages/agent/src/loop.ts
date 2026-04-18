@@ -206,7 +206,6 @@ export async function* runLoop(
             conversationId,
             turn,
             messages,
-            pendingApprovals: [{ approvalId, toolName: tc.toolName, args: tc.args }],
           });
         }
 
@@ -439,7 +438,7 @@ async function executeSingleTool(
       type: 'tool-result',
       toolCallId: tc.toolCallId,
       toolName: tc.toolName,
-      result: typeof result === 'string' ? result : JSON.stringify(result),
+      result: typeof result === 'string' ? result : safeStringify(result),
     };
   } catch (e) {
     if (e instanceof HandoffSignal) {
@@ -466,6 +465,14 @@ function errorResult(tc: ToolCallPart, message: string): ToolResultPart {
     result: message,
     isError: true,
   };
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function needsApproval(tool: Tool, args: unknown): boolean {

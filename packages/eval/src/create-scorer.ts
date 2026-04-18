@@ -32,11 +32,20 @@ export function createScorer<TInput, TOutput, TExpected = TOutput>(
   opts: ScorerOpts<TInput, TOutput, TExpected>,
 ): Scorer<TInput, TOutput, TExpected> {
   return async (input) => {
-    const score = await opts.scorer(input);
-    if (typeof score === 'object') {
+    const raw = await opts.scorer(input);
+    const score = typeof raw === 'object' ? raw.score : raw;
+    if (!Number.isFinite(score)) {
       return {
-        score: score.score,
-        metadata: score.metadata,
+        score: 0,
+        name: opts.name,
+        description: opts.description,
+        metadata: { error: `Invalid score value: ${score}` },
+      };
+    }
+    if (typeof raw === 'object') {
+      return {
+        score,
+        metadata: raw.metadata,
         description: opts.description,
         name: opts.name,
       };

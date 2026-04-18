@@ -92,15 +92,20 @@ describe('fsTool', () => {
     );
     expect(typeof raw).toBe('string');
     const parsed = z
-      .array(
-        z.object({
-          name: z.string(),
-          type: z.enum(['file', 'directory']),
-        }),
-      )
+      .object({
+        entries: z.array(
+          z.object({
+            name: z.string(),
+            type: z.enum(['file', 'directory', 'symlink', 'other']),
+          }),
+        ),
+        truncated: z.boolean(),
+        total: z.number(),
+      })
       .parse(JSON.parse(raw as string));
-    parsed.sort((a, b) => a.name.localeCompare(b.name));
-    expect(parsed).toEqual([{ name: 'f.txt', type: 'file' }]);
+    parsed.entries.sort((a, b) => a.name.localeCompare(b.name));
+    expect(parsed.entries).toEqual([{ name: 'f.txt', type: 'file' }]);
+    expect(parsed.truncated).toBe(false);
     await rm(ws, { recursive: true, force: true });
   });
 

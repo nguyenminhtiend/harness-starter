@@ -197,7 +197,7 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
   );
 
   let toolCallSeq = 0;
-  const activeToolKey = new Map<string, string>();
+  const toolKeyStacks = new Map<string, string[]>();
 
   unsubs.push(
     bus.on('tool.start', (payload) => {
@@ -213,7 +213,12 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
       const span = startChildSpan(tracer, parent, 'harness.tool', { toolName });
       toolSpans.set(toolKey, span);
       const stackKey = `${runId}:${toolName}`;
-      activeToolKey.set(stackKey, toolKey);
+      let stack = toolKeyStacks.get(stackKey);
+      if (!stack) {
+        stack = [];
+        toolKeyStacks.set(stackKey, stack);
+      }
+      stack.push(toolKey);
     }),
   );
 
@@ -221,7 +226,8 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
     bus.on('tool.finish', (payload) => {
       const { runId, toolName, durationMs } = payload;
       const stackKey = `${runId}:${toolName}`;
-      const toolKey = activeToolKey.get(stackKey);
+      const stack = toolKeyStacks.get(stackKey);
+      const toolKey = stack?.pop();
       const span = toolKey ? toolSpans.get(toolKey) : undefined;
       if (span) {
         span.setAttribute('durationMs', durationMs);
@@ -229,7 +235,6 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
         if (toolKey) {
           toolSpans.delete(toolKey);
         }
-        activeToolKey.delete(stackKey);
       }
     }),
   );
@@ -238,7 +243,8 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
     bus.on('tool.error', (payload) => {
       const { runId, toolName, error } = payload;
       const stackKey = `${runId}:${toolName}`;
-      const toolKey = activeToolKey.get(stackKey);
+      const stack = toolKeyStacks.get(stackKey);
+      const toolKey = stack?.pop();
       const span = toolKey ? toolSpans.get(toolKey) : undefined;
       if (span) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
@@ -247,7 +253,6 @@ export function otelAdapter(bus: EventBus, tracer: Tracer): () => void {
         if (toolKey) {
           toolSpans.delete(toolKey);
         }
-        activeToolKey.delete(stackKey);
       }
     }),
   );

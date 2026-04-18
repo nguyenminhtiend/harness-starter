@@ -20,12 +20,23 @@ const END_NODE = '__end__';
 
 export function graph(def: GraphDef): Agent {
   const nodeMap = new Map(def.nodes.map((n) => [n.id, n]));
+
+  if (!nodeMap.has(def.entryNode)) {
+    throw new Error(`entryNode "${def.entryNode}" does not exist in nodes`);
+  }
+
   const edgeMap = new Map<string, GraphEdge>();
   for (const edge of def.edges) {
     if (edgeMap.has(edge.from)) {
       throw new Error(
         `Duplicate edge from node "${edge.from}". Each node may have at most one outgoing edge; use a function-based \`to\` for conditional routing.`,
       );
+    }
+    if (!nodeMap.has(edge.from)) {
+      throw new Error(`Edge references unknown source node "${edge.from}"`);
+    }
+    if (typeof edge.to === 'string' && edge.to !== '__end__' && !nodeMap.has(edge.to)) {
+      throw new Error(`Edge references unknown target node "${edge.to}"`);
     }
     edgeMap.set(edge.from, edge);
   }
