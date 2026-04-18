@@ -59,7 +59,7 @@ Cannot reproduce on demand:
 │   ├── Try with artificial delays (setTimeout, sleep) to widen race windows
 │   └── Run under load or concurrency to increase collision probability
 ├── Environment-dependent?
-│   ├── Compare Node/browser versions, OS, environment variables
+│   ├── Compare Bun/Node versions, OS, environment variables
 │   ├── Check for differences in data (empty vs populated database)
 │   └── Try reproducing in CI where the environment is clean
 ├── State-dependent?
@@ -75,13 +75,13 @@ Cannot reproduce on demand:
 For test failures:
 ```bash
 # Run the specific failing test
-npm test -- --grep "test name"
+bun test path/to/file.test.ts
 
 # Run with verbose output
-npm test -- --verbose
+bun test --verbose
 
-# Run in isolation (rules out test pollution)
-npm test -- --testPathPattern="specific-file" --runInBand
+# Run all tests
+bun test
 ```
 
 ### Step 2: Localize
@@ -90,10 +90,10 @@ Narrow down WHERE the failure happens:
 
 ```
 Which layer is failing?
-├── UI/Frontend     → Check console, DOM, network tab
-├── API/Backend     → Check server logs, request/response
-├── Database        → Check queries, schema, data integrity
-├── Build tooling   → Check config, dependencies, environment
+├── Provider/AI SDK → Check model response, stream events, abort signals
+├── Agent loop      → Check event bus, tool dispatch, conversation state
+├── Package boundary → Check cross-package imports, type contracts
+├── Build tooling   → Check tsconfig, biome.json, dependencies
 ├── External service → Check connectivity, API changes, rate limits
 └── Test itself     → Check if the test is correct (false negative)
 ```
@@ -105,7 +105,7 @@ git bisect start
 git bisect bad                    # Current commit is broken
 git bisect good <known-good-sha> # This commit worked
 # Git will checkout midpoint commits; run your test at each
-git bisect run npm test -- --grep "failing test"
+git bisect run bun test path/to/failing.test.ts
 ```
 
 ### Step 3: Reduce
@@ -157,16 +157,16 @@ After fixing, verify the complete scenario:
 
 ```bash
 # Run the specific test
-npm test -- --grep "specific test"
+bun test path/to/file.test.ts
 
 # Run the full test suite (check for regressions)
-npm test
+bun test
 
 # Build the project (check for type/compilation errors)
-npm run build
+bun run build
 
-# Manual spot check if applicable
-npm run dev  # Verify in browser
+# Full CI pipeline
+bun run ci
 ```
 
 ## Error-Specific Patterns
@@ -191,9 +191,9 @@ Test fails after code change:
 Build fails:
 ├── Type error → Read the error, check the types at the cited location
 ├── Import error → Check the module exists, exports match, paths are correct
-├── Config error → Check build config files for syntax/schema issues
-├── Dependency error → Check package.json, run npm install
-└── Environment error → Check Node version, OS compatibility
+├── Config error → Check tsconfig.json, biome.json for syntax/schema issues
+├── Dependency error → Check package.json, run bun install
+└── Cross-package error → Check dependency DAG (core → agent → tools/mcp/memory-sqlite)
 ```
 
 ### Runtime Error Triage
@@ -203,10 +203,10 @@ Runtime error:
 ├── TypeError: Cannot read property 'x' of undefined
 │   └── Something is null/undefined that shouldn't be
 │       → Check data flow: where does this value come from?
-├── Network error / CORS
-│   └── Check URLs, headers, server CORS config
-├── Render error / White screen
-│   └── Check error boundary, console, component tree
+├── Stream/async error
+│   └── Check AbortSignal propagation, AsyncIterable consumption
+├── Provider error (AI SDK)
+│   └── Check model config, API keys, retry policy, rate limits
 └── Unexpected behavior (no error)
     └── Add logging at key points, verify data at each step
 ```

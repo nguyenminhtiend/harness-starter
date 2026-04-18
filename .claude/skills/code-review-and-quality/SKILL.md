@@ -260,8 +260,9 @@ Part of code review is dependency review:
 1. Does the existing stack solve this? (Often it does.)
 2. How large is the dependency? (Check bundle impact.)
 3. Is it actively maintained? (Check last commit, open issues.)
-4. Does it have known vulnerabilities? (`npm audit`)
+4. Does it have known vulnerabilities?
 5. What's the license? (Must be compatible with the project.)
+6. Does it work with Bun? (Check runtime compatibility.)
 
 **Rule:** Prefer standard library and existing utilities over new dependencies. Every dependency is a liability.
 
@@ -310,11 +311,6 @@ Part of code review is dependency review:
 - [ ] **Approve** — Ready to merge
 - [ ] **Request changes** — Issues must be addressed
 ```
-## See Also
-
-- For detailed security review guidance, see `references/security-checklist.md`
-- For performance review checks, see `references/performance-checklist.md`
-
 ## Common Rationalizations
 
 | Rationalization | Reality |

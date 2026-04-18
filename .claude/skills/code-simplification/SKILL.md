@@ -235,63 +235,36 @@ function isValid(input: string): boolean {
 }
 ```
 
-### Python
+### Async / Streams (common in this codebase)
 
-```python
-# SIMPLIFY: Verbose dictionary building
-# Before
-result = {}
-for item in items:
-    result[item.id] = item.name
-# After
-result = {item.id: item.name for item in items}
-
-# SIMPLIFY: Nested conditionals with early return
-# Before
-def process(data):
-    if data is not None:
-        if data.is_valid():
-            if data.has_permission():
-                return do_work(data)
-            else:
-                raise PermissionError("No permission")
-        else:
-            raise ValueError("Invalid data")
-    else:
-        raise TypeError("Data is None")
-# After
-def process(data):
-    if data is None:
-        raise TypeError("Data is None")
-    if not data.is_valid():
-        raise ValueError("Invalid data")
-    if not data.has_permission():
-        raise PermissionError("No permission")
-    return do_work(data)
-```
-
-### React / JSX
-
-```tsx
-// SIMPLIFY: Verbose conditional rendering
+```typescript
+// SIMPLIFY: Unnecessary wrapper around AsyncIterable
 // Before
-function UserBadge({ user }: Props) {
-  if (user.isAdmin) {
-    return <Badge variant="admin">Admin</Badge>;
-  } else {
-    return <Badge variant="default">User</Badge>;
+async function* wrapStream(inner: AsyncIterable<Event>): AsyncIterable<Event> {
+  for await (const event of inner) {
+    yield event;
   }
 }
-// After
-function UserBadge({ user }: Props) {
-  const variant = user.isAdmin ? 'admin' : 'default';
-  const label = user.isAdmin ? 'Admin' : 'User';
-  return <Badge variant={variant}>{label}</Badge>;
-}
+// After — just use the inner iterable directly if no transformation is needed
 
-// SIMPLIFY: Prop drilling through intermediate components
-// Before — consider whether context or composition solves this better.
-// This is a judgment call — flag it, don't auto-refactor.
+// SIMPLIFY: Verbose error type narrowing
+// Before
+if (error instanceof HarnessError) {
+  if (error instanceof ProviderError) {
+    handleProvider(error);
+  } else if (error instanceof ValidationError) {
+    handleValidation(error);
+  } else {
+    handleGeneric(error);
+  }
+} else {
+  handleUnknown(error);
+}
+// After — guard clauses
+if (error instanceof ProviderError) return handleProvider(error);
+if (error instanceof ValidationError) return handleValidation(error);
+if (error instanceof HarnessError) return handleGeneric(error);
+return handleUnknown(error);
 ```
 
 ## Common Rationalizations

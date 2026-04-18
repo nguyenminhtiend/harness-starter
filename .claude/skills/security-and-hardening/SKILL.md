@@ -29,7 +29,7 @@ Security-first development practices for web applications. Treat every external 
 - **Hash passwords** with bcrypt/scrypt/argon2 (never store plaintext)
 - **Set security headers** (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
 - **Use httpOnly, secure, sameSite cookies** for sessions
-- **Run `npm audit`** (or equivalent) before every release
+- **Audit dependencies** regularly for known vulnerabilities
 
 ### Ask First (Requires Human Approval)
 
@@ -59,11 +59,8 @@ Security-first development practices for web applications. Treat every external 
 // BAD: SQL injection via string concatenation
 const query = `SELECT * FROM users WHERE id = '${userId}'`;
 
-// GOOD: Parameterized query
-const user = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
-
-// GOOD: ORM with parameterized input
-const user = await prisma.user.findUnique({ where: { id: userId } });
+// GOOD: Parameterized query (bun:sqlite)
+const user = db.query('SELECT * FROM users WHERE id = ?').get(userId);
 ```
 
 ### 2. Broken Authentication
@@ -96,12 +93,8 @@ app.use(session({
 // BAD: Rendering user input as HTML
 element.innerHTML = userInput;
 
-// GOOD: Use framework auto-escaping (React does this by default)
-return <div>{userInput}</div>;
-
-// If you MUST render HTML, sanitize first
-import DOMPurify from 'dompurify';
-const clean = DOMPurify.sanitize(userInput);
+// GOOD: Always encode/escape output before including in responses
+// Use framework auto-escaping when available
 ```
 
 ### 4. Broken Access Control
@@ -127,24 +120,18 @@ app.patch('/api/tasks/:id', authenticate, async (req, res) => {
 ### 5. Security Misconfiguration
 
 ```typescript
-// Security headers (use helmet for Express)
-import helmet from 'helmet';
-app.use(helmet());
+import { Hono } from 'hono';
+import { secureHeaders } from 'hono/secure-headers';
+import { cors } from 'hono/cors';
 
-// Content Security Policy
-app.use(helmet.contentSecurityPolicy({
-  directives: {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'"],
-    styleSrc: ["'self'", "'unsafe-inline'"],  // Tighten if possible
-    imgSrc: ["'self'", 'data:', 'https:'],
-    connectSrc: ["'self'"],
-  },
-}));
+const app = new Hono();
+
+// Security headers
+app.use('*', secureHeaders());
 
 // CORS — restrict to known origins
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
+app.use('*', cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3000'],
   credentials: true,
 }));
 ```
@@ -158,9 +145,9 @@ function sanitizeUser(user: UserRecord): PublicUser {
   return publicFields;
 }
 
-// Use environment variables for secrets
-const API_KEY = process.env.STRIPE_API_KEY;
-if (!API_KEY) throw new Error('STRIPE_API_KEY not configured');
+// Use environment variables for secrets (validated at startup via Zod)
+const API_KEY = process.env.OPENROUTER_API_KEY;
+if (!API_KEY) throw new Error('OPENROUTER_API_KEY not configured');
 ```
 
 ## Input Validation Patterns
@@ -168,30 +155,29 @@ if (!API_KEY) throw new Error('STRIPE_API_KEY not configured');
 ### Schema Validation at Boundaries
 
 ```typescript
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 const CreateTaskSchema = z.object({
   title: z.string().min(1).max(200).trim(),
   description: z.string().max(2000).optional(),
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
-  dueDate: z.string().datetime().optional(),
+  dueDate: z.iso.datetime().optional(),
 });
 
-// Validate at the route handler
-app.post('/api/tasks', async (req, res) => {
-  const result = CreateTaskSchema.safeParse(req.body);
+// Validate at the route handler (Hono)
+app.post('/api/tasks', async (c) => {
+  const result = CreateTaskSchema.safeParse(await c.req.json());
   if (!result.success) {
-    return res.status(422).json({
+    return c.json({
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Invalid input',
         details: result.error.flatten(),
       },
-    });
+    }, 422);
   }
-  // result.data is now typed and validated
   const task = await taskService.create(result.data);
-  return res.status(201).json(task);
+  return c.json(task, 201);
 });
 ```
 
@@ -213,12 +199,12 @@ function validateUpload(file: UploadedFile) {
 }
 ```
 
-## Triaging npm audit Results
+## Triaging Dependency Vulnerabilities
 
-Not all audit findings require immediate action. Use this decision tree:
+Not all findings require immediate action. Use this decision tree:
 
 ```
-npm audit reports a vulnerability
+Vulnerability reported
 ├── Severity: critical or high
 │   ├── Is the vulnerable code reachable in your app?
 │   │   ├── YES --> Fix immediately (update, patch, or replace the dependency)
@@ -236,27 +222,20 @@ npm audit reports a vulnerability
 **Key questions:**
 - Is the vulnerable function actually called in your code path?
 - Is the dependency a runtime dependency or dev-only?
-- Is the vulnerability exploitable given your deployment context (e.g., a server-side vulnerability in a client-only app)?
+- Is the vulnerability exploitable given your deployment context?
 
 When you defer a fix, document the reason and set a review date.
 
 ## Rate Limiting
 
 ```typescript
-import rateLimit from 'express-rate-limit';
+import { rateLimiter } from 'hono-rate-limiter';
 
-// General API rate limit
-app.use('/api/', rateLimit({
+// General API rate limit (Hono middleware)
+app.use('/api/*', rateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,                   // 100 requests per window
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
-
-// Stricter limit for auth endpoints
-app.use('/api/auth/', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,  // 10 attempts per 15 minutes
+  limit: 100,               // 100 requests per window
+  standardHeaders: 'draft-6',
 }));
 ```
 
@@ -279,7 +258,7 @@ app.use('/api/auth/', rateLimit({
 **Always check before committing:**
 ```bash
 # Check for accidentally staged secrets
-git diff --cached | grep -i "password\|secret\|api_key\|token"
+git diff --cached | rg -i "password|secret|api_key|token"
 ```
 
 ## Security Review Checklist
@@ -312,10 +291,6 @@ git diff --cached | grep -i "password\|secret\|api_key\|token"
 - [ ] Dependencies audited for vulnerabilities
 - [ ] Error messages don't expose internals
 ```
-## See Also
-
-For detailed security checklists and pre-commit verification steps, see `references/security-checklist.md`.
-
 ## Common Rationalizations
 
 | Rationalization | Reality |
@@ -340,10 +315,10 @@ For detailed security checklists and pre-commit verification steps, see `referen
 
 After implementing security-relevant code:
 
-- [ ] `npm audit` shows no critical or high vulnerabilities
+- [ ] No known critical or high dependency vulnerabilities
 - [ ] No secrets in source code or git history
 - [ ] All user input validated at system boundaries
 - [ ] Authentication and authorization checked on every protected endpoint
-- [ ] Security headers present in response (check with browser DevTools)
+- [ ] Security headers present in response
 - [ ] Error responses don't expose internal details
 - [ ] Rate limiting active on auth endpoints

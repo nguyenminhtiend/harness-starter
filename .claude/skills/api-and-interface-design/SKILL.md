@@ -1,6 +1,6 @@
 ---
 name: api-and-interface-design
-description: Guides stable API and interface design. Use when designing APIs, module boundaries, or any public interface. Use when creating REST or GraphQL endpoints, defining type contracts between modules, or establishing boundaries between frontend and backend.
+description: Guides stable API and interface design. Use when designing APIs, module boundaries, or any public interface. Use when defining type contracts between packages, creating Hono endpoints, or establishing boundaries between layers.
 ---
 
 # API and Interface Design
@@ -90,22 +90,22 @@ interface APIError {
 Trust internal code. Validate at system edges where external input enters:
 
 ```typescript
-// Validate at the API boundary
-app.post('/api/tasks', async (req, res) => {
-  const result = CreateTaskSchema.safeParse(req.body);
+// Validate at the API boundary (Hono)
+app.post('/api/tasks', async (c) => {
+  const result = CreateTaskSchema.safeParse(await c.req.json());
   if (!result.success) {
-    return res.status(422).json({
+    return c.json({
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Invalid task data',
         details: result.error.flatten(),
       },
-    });
+    }, 422);
   }
 
   // After validation, internal code trusts the types
   const task = await taskService.create(result.data);
-  return res.status(201).json(task);
+  return c.json(task, 201);
 });
 ```
 

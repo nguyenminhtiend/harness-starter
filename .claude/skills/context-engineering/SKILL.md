@@ -44,36 +44,34 @@ Create a rules file that persists across sessions. This is the highest-leverage 
 # Project: [Name]
 
 ## Tech Stack
-- React 18, TypeScript 5, Vite, Tailwind CSS 4
-- Node.js 22, Express, PostgreSQL, Prisma
+- TypeScript 5.7 strict, Bun workspaces
+- Zod v4, Biome, Lefthook, Commitlint, Changesets
 
 ## Commands
-- Build: `npm run build`
-- Test: `npm test`
-- Lint: `npm run lint --fix`
-- Dev: `npm run dev`
-- Type check: `npx tsc --noEmit`
+- CI: `bun run ci` (lint + typecheck + build + test)
+- Test: `bun test` / `bun test path/to/file.test.ts`
+- Lint: `bun run lint`
+- Format: `bun run format`
+- Type check: `bun run typecheck`
 
 ## Code Conventions
-- Functional components with hooks (no class components)
+- Plain interfaces, no classes for extension points
 - Named exports (no default exports)
-- colocate tests next to source: `Button.tsx` → `Button.test.tsx`
-- Use `cn()` utility for conditional classNames
-- Error boundaries at route level
+- Colocate tests next to source: `foo.ts` → `foo.test.ts`
+- Stream-first: everything is AsyncIterable<AgentEvent>
 
 ## Boundaries
 - Never commit .env files or secrets
-- Never add dependencies without checking bundle size impact
-- Ask before modifying database schema
+- Never add cross-package imports that violate the dependency DAG
+- Ask before modifying shared interfaces in @harness/core
 - Always run tests before committing
 
 ## Patterns
-[One short example of a well-written component in your style]
+[One short example of a well-written module in your style]
 ```
 
 **Equivalent files for other tools:**
-- `.cursorrules` or `.cursor/rules/*.md` (Cursor)
-- `.windsurfrules` (Windsurf)
+- `.cursor/rules/*.md` (Cursor)
 - `.github/copilot-instructions.md` (GitHub Copilot)
 - `AGENTS.md` (OpenAI Codex)
 
@@ -184,8 +182,6 @@ For richer context, use Model Context Protocol servers:
 | MCP Server | What It Provides |
 |-----------|-----------------|
 | **Context7** | Auto-fetches relevant documentation for libraries |
-| **Chrome DevTools** | Live browser state, DOM, console, network |
-| **PostgreSQL** | Direct database schema and query results |
 | **Filesystem** | Project file access and search |
 | **GitHub** | Issue, PR, and repository context |
 

@@ -39,10 +39,10 @@ Start with a high-level vision. Ask the human clarifying questions until require
 
 ```
 ASSUMPTIONS I'M MAKING:
-1. This is a web application (not native mobile)
-2. Authentication uses session-based cookies (not JWT)
-3. The database is PostgreSQL (based on existing Prisma schema)
-4. We're targeting modern browsers only (no IE11)
+1. This extends the existing harness monorepo (not a separate project)
+2. It follows the dependency DAG: core → agent → sibling packages
+3. It uses Zod v4 for validation and bun:sqlite for persistence
+4. It conforms to stream-first architecture (AsyncIterable<AgentEvent>)
 → Correct me now or I'll proceed with these.
 ```
 
@@ -54,20 +54,23 @@ Don't silently fill in ambiguous requirements. The spec's entire purpose is to s
 
 2. **Commands** — Full executable commands with flags, not just tool names.
    ```
-   Build: npm run build
-   Test: npm test -- --coverage
-   Lint: npm run lint --fix
-   Dev: npm run dev
+   CI: bun run ci
+   Test: bun test / bun test path/to/file.test.ts
+   Lint: bun run lint
+   Format: bun run format
+   Typecheck: bun run typecheck
    ```
 
 3. **Project Structure** — Where source code lives, where tests go, where docs belong.
    ```
-   src/           → Application source code
-   src/components → React components
-   src/lib        → Shared utilities
-   tests/         → Unit and integration tests
-   e2e/           → End-to-end tests
-   docs/          → Documentation
+   packages/core/       → Core primitives (Provider, events, config, errors)
+   packages/agent/      → Agent loop, composition, tools
+   packages/tools/      → Built-in tools (fs, fetch)
+   packages/mcp/        → MCP tool adapter
+   packages/memory-sqlite/ → SQLite-backed stores
+   packages/observability/ → OTel + Langfuse sinks
+   apps/                → Demo applications
+   docs/                → Specs, plans, ADRs
    ```
 
 4. **Code Style** — One real code snippet showing your style beats three paragraphs describing it. Include naming conventions, formatting rules, and examples of good output.

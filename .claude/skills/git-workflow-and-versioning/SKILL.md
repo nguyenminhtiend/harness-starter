@@ -217,35 +217,27 @@ Before every commit:
 git diff --staged
 
 # 2. Ensure no secrets
-git diff --staged | grep -i "password\|secret\|api_key\|token"
+git diff --staged | rg -i "password|secret|api_key|token"
 
 # 3. Run tests
-npm test
+bun test
 
 # 4. Run linting
-npm run lint
+bun run lint
 
 # 5. Run type checking
-npx tsc --noEmit
+bun run typecheck
 ```
 
-Automate this with git hooks:
-
-```json
-// package.json (using lint-staged + husky)
-{
-  "lint-staged": {
-    "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
-    "*.{json,md}": ["prettier --write"]
-  }
-}
-```
+Automated via Lefthook git hooks:
+- **pre-commit:** Biome check + typecheck on staged files
+- **commit-msg:** Commitlint (Conventional Commits enforced)
 
 ## Handling Generated Files
 
-- **Commit generated files** only if the project expects them (e.g., `package-lock.json`, Prisma migrations)
+- **Commit generated files** only if the project expects them (e.g., `bun.lock`, changeset files)
 - **Don't commit** build output (`dist/`, `.next/`), environment files (`.env`), or IDE config (`.vscode/settings.json` unless shared)
-- **Have a `.gitignore`** that covers: `node_modules/`, `dist/`, `.env`, `.env.local`, `*.pem`
+- **Have a `.gitignore`** that covers: `node_modules/`, `dist/`, `.env`, `.env.local`, `*.pem`, `.harness/`
 
 ## Using Git for Debugging
 

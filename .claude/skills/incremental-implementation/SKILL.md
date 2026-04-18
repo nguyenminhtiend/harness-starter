@@ -65,13 +65,13 @@ Each slice delivers working end-to-end functionality.
 
 ### Contract-First Slicing
 
-When backend and frontend need to develop in parallel:
+When multiple packages need to develop in parallel:
 
 ```
-Slice 0: Define the API contract (types, interfaces, OpenAPI spec)
-Slice 1a: Implement backend against the contract + API tests
-Slice 1b: Implement frontend against mock data matching the contract
-Slice 2: Integrate and test end-to-end
+Slice 0: Define the shared types/interfaces in @harness/core
+Slice 1a: Implement package A against the contract + tests
+Slice 1b: Implement package B against the contract + tests
+Slice 2: Integration test across packages
 ```
 
 ### Risk-First Slicing
@@ -149,11 +149,10 @@ After each increment, the project must build and existing tests must pass. Don't
 If a feature isn't ready for users but you need to merge increments:
 
 ```typescript
-// Feature flag for work-in-progress
-const ENABLE_TASK_SHARING = process.env.FEATURE_TASK_SHARING === 'true';
+const ENABLE_GRAPH_DSL = process.env.FEATURE_GRAPH_DSL === 'true';
 
-if (ENABLE_TASK_SHARING) {
-  // New sharing UI
+if (ENABLE_GRAPH_DSL) {
+  // New graph composition logic
 }
 ```
 
@@ -190,7 +189,7 @@ When directing an agent to implement incrementally:
 Start with just the database schema change and the API endpoint.
 Don't touch the UI yet — we'll do that in the next increment.
 
-After implementing, run `npm test` and `npm run build` to verify
+After implementing, run `bun test` and `bun run build` to verify
 nothing is broken."
 ```
 
@@ -201,12 +200,12 @@ Be explicit about what's in scope and what's NOT in scope for each increment.
 After each increment, verify:
 
 - [ ] The change does one thing and does it completely
-- [ ] All existing tests still pass (`npm test`)
-- [ ] The build succeeds (`npm run build`)
-- [ ] Type checking passes (`npx tsc --noEmit`)
-- [ ] Linting passes (`npm run lint`)
+- [ ] All existing tests still pass (`bun test`)
+- [ ] The build succeeds (`bun run build`)
+- [ ] Type checking passes (`bun run typecheck`)
+- [ ] Linting passes (`bun run lint`)
 - [ ] The new functionality works as expected
-- [ ] The change is committed with a descriptive message
+- [ ] The change is committed with a Conventional Commits message
 
 ## Common Rationalizations
 
