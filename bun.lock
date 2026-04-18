@@ -14,6 +14,18 @@
         "typescript": "^5.7.0",
       },
     },
+    "packages/agent": {
+      "name": "@harness/agent",
+      "version": "0.0.0",
+      "dependencies": {
+        "@harness/core": "workspace:*",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
     "packages/core": {
       "name": "@harness/core",
       "version": "0.0.0",
@@ -129,6 +141,8 @@
     "@commitlint/types": ["@commitlint/types@20.5.0", "", { "dependencies": { "conventional-commits-parser": "^6.3.0", "picocolors": "^1.1.1" } }, "sha512-ZJoS8oSq2CAZEpc/YI9SulLrdiIyXeHb/OGqGrkUP6Q7YV+0ouNAa7GjqRdXeQPncHQIDz/jbCTlHScvYvO/gA=="],
 
     "@conventional-changelog/git-client": ["@conventional-changelog/git-client@2.7.0", "", { "dependencies": { "@simple-libs/child-process-utils": "^1.0.0", "@simple-libs/stream-utils": "^1.2.0", "semver": "^7.5.2" }, "peerDependencies": { "conventional-commits-filter": "^5.0.0", "conventional-commits-parser": "^6.4.0" }, "optionalPeers": ["conventional-commits-filter", "conventional-commits-parser"] }, "sha512-j7A8/LBEQ+3rugMzPXoKYzyUPpw/0CBQCyvtTR7Lmu4olG4yRC/Tfkq79Mr3yuPs0SUitlO2HwGP3gitMJnRFw=="],
+
+    "@harness/agent": ["@harness/agent@workspace:packages/agent"],
 
     "@harness/core": ["@harness/core@workspace:packages/core"],
 
