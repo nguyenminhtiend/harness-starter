@@ -4,10 +4,11 @@ import { ToolError } from '@harness/core';
 import { z } from 'zod';
 import { type JsonSchema, jsonSchemaToZod } from './json-schema-to-zod.ts';
 
-interface McpToolDef {
+export interface McpToolDef {
   name: string;
-  description?: string;
-  inputSchema?: JsonSchema;
+  description?: string | undefined;
+  inputSchema?: JsonSchema | undefined;
+  [key: string]: unknown;
 }
 
 interface McpContentPart {
