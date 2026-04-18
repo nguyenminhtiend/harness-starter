@@ -128,6 +128,27 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/memory-sqlite/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/tools": "memory-sqlite must not import from @harness/tools (dependency direction violation)",
+                  "@harness/mcp": "memory-sqlite must not import from @harness/mcp (dependency direction violation)",
+                  "@harness/observability": "memory-sqlite must not import from @harness/observability (dependency direction violation)",
+                  "@harness/eval": "memory-sqlite must not import from @harness/eval (dependency direction violation)",
+                  "@harness/cli": "memory-sqlite must not import from @harness/cli (dependency direction violation)"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

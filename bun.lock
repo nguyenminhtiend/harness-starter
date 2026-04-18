@@ -40,6 +40,18 @@
         "typescript": "^5.7.0",
       },
     },
+    "packages/memory-sqlite": {
+      "name": "@harness/memory-sqlite",
+      "version": "0.0.0",
+      "dependencies": {
+        "@harness/agent": "workspace:*",
+        "@harness/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
     "packages/tools": {
       "name": "@harness/tools",
       "version": "0.0.0",
@@ -159,6 +171,8 @@
     "@harness/agent": ["@harness/agent@workspace:packages/agent"],
 
     "@harness/core": ["@harness/core@workspace:packages/core"],
+
+    "@harness/memory-sqlite": ["@harness/memory-sqlite@workspace:packages/memory-sqlite"],
 
     "@harness/tools": ["@harness/tools@workspace:packages/tools"],
 
