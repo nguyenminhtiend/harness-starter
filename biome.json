@@ -84,6 +84,29 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/agent": "core must not import from @harness/agent (dependency direction violation)",
+                  "@harness/tools": "core must not import from @harness/tools (dependency direction violation)",
+                  "@harness/memory-sqlite": "core must not import from @harness/memory-sqlite (dependency direction violation)",
+                  "@harness/mcp": "core must not import from @harness/mcp (dependency direction violation)",
+                  "@harness/observability": "core must not import from @harness/observability (dependency direction violation)",
+                  "@harness/eval": "core must not import from @harness/eval (dependency direction violation)",
+                  "@harness/cli": "core must not import from @harness/cli (dependency direction violation)"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
