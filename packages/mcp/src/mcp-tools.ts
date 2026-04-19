@@ -43,26 +43,31 @@ export async function mcpTools(
   const client = new Client({ name: 'harness-mcp', version: '1.0.0' });
   const transport = createTransport(config);
 
-  const connectPromise = client.connect(transport as Parameters<typeof client.connect>[0]);
-  if (opts?.signal) {
-    await Promise.race([
-      connectPromise,
-      new Promise<never>((_, reject) => {
-        if (opts.signal?.aborted) {
-          reject(new DOMException('MCP connect aborted', 'AbortError'));
-          return;
-        }
-        opts.signal?.addEventListener(
-          'abort',
-          () => {
+  try {
+    const connectPromise = client.connect(transport as Parameters<typeof client.connect>[0]);
+    if (opts?.signal) {
+      await Promise.race([
+        connectPromise,
+        new Promise<never>((_, reject) => {
+          if (opts.signal?.aborted) {
             reject(new DOMException('MCP connect aborted', 'AbortError'));
-          },
-          { once: true },
-        );
-      }),
-    ]);
-  } else {
-    await connectPromise;
+            return;
+          }
+          opts.signal?.addEventListener(
+            'abort',
+            () => {
+              reject(new DOMException('MCP connect aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        }),
+      ]);
+    } else {
+      await connectPromise;
+    }
+  } catch (err) {
+    await transport.close().catch(() => {});
+    throw err;
   }
 
   const { tools: mcpToolDefs } = await client.listTools();

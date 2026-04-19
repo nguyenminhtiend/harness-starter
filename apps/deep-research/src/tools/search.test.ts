@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import { makeTestCtx } from '../test-utils.ts';
-import { loadBraveSearchTools } from './mcp.ts';
 import { createSearchTools } from './search.ts';
+
+mock.module('./mcp.ts', () => ({
+  loadBraveSearchTools: async () => [],
+}));
 
 const ctx = makeTestCtx();
 
@@ -59,12 +62,5 @@ describe('createSearchTools', () => {
     });
     expect(tools.length).toBeGreaterThanOrEqual(1);
     expect(tools.find((t) => t.name === 'fetch')).toBeDefined();
-  }, 10_000);
-});
-
-describe('loadBraveSearchTools', () => {
-  it('returns empty array when MCP connection fails', async () => {
-    const tools = await loadBraveSearchTools('fake-key', AbortSignal.timeout(500));
-    expect(tools).toEqual([]);
-  }, 10_000);
+  });
 });

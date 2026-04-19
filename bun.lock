@@ -20,7 +20,6 @@
       "dependencies": {
         "@harness/agent": "workspace:*",
         "@harness/core": "workspace:*",
-        "@harness/observability": "workspace:*",
         "@harness/tui": "workspace:*",
         "@openrouter/ai-sdk-provider": "1.5.4",
         "picocolors": "1.1.1",

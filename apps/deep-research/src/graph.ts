@@ -66,7 +66,10 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
     id: 'research',
     fn: async (state, ctx) => {
       const s = state as ResearchState;
-      const plan = s.plan!;
+      if (!s.plan) {
+        throw new Error('research node reached without a plan');
+      }
+      const plan = s.plan;
       const researcherTool = createResearcherTool(provider, tools, {
         memory: agentStore,
         budgets: budgets?.researcher,

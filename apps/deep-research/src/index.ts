@@ -147,7 +147,10 @@ async function runResearchLoop(
   process.stdout.write(pc.dim('\n🔎 researching…\n'));
 
   summary = await renderer.render(
-    agent.stream({ userMessage: question }, { signal: streamAc.current!.signal, runId }),
+    agent.stream(
+      { userMessage: question },
+      { ...(streamAc.current && { signal: streamAc.current.signal }), runId },
+    ),
   );
   return summary;
 }
