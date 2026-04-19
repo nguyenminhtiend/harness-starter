@@ -3,6 +3,7 @@ import { createAgent, createStreamRenderer, inMemoryStore } from '@harness/agent
 import pc from 'picocolors';
 import { config } from './config.ts';
 import { provider } from './provider.ts';
+import { createSpinner } from './spinner.ts';
 
 const agent = createAgent({
   provider,
@@ -40,8 +41,19 @@ function prompt() {
 
     process.stdout.write('\n');
 
+    const spinner = createSpinner();
+    let firstToken = true;
+    spinner.start();
+
     const renderer = createStreamRenderer({
-      onTextDelta: (delta) => process.stdout.write(delta),
+      onTextDelta: (delta) => {
+        if (firstToken) {
+          spinner.stop();
+          firstToken = false;
+        }
+        process.stdout.write(delta);
+      },
+      onError: () => spinner.stop(),
     });
 
     try {
@@ -53,6 +65,7 @@ function prompt() {
       const duration = (summary.durationMs / 1000).toFixed(1);
       process.stdout.write(`\n${pc.dim(`(${tokens} tokens · ${duration}s)`)}\n\n`);
     } catch (err) {
+      spinner.stop();
       if ((err as Error).name === 'AbortError') {
         return;
       }
