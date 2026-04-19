@@ -9,6 +9,10 @@ const schema = z.object({
   BUDGET_TOKENS: z.coerce.number().int().default(200_000),
   REPORT_DIR: z.string().default('./reports'),
   DATA_DIR: z.string().default(`${process.env.HOME ?? '.'}/.deep-research`),
+  LANGFUSE_PUBLIC_KEY: z.string().optional(),
+  LANGFUSE_SECRET_KEY: z.string().optional(),
+  LANGFUSE_BASE_URL: z.string().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
 });
 
 export const config = envConfig(schema);

@@ -1,7 +1,9 @@
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createStreamRenderer } from '@harness/agent';
-import { BudgetExceededError } from '@harness/core';
+import { BudgetExceededError, createEventBus } from '@harness/core';
+import { consoleSink, jsonlSink } from '@harness/observability';
 import { promptApproval } from '@harness/tui/approval';
 import { setupSigint } from '@harness/tui/sigint';
 import { createSpinner } from '@harness/tui/spinner';
@@ -105,6 +107,35 @@ if (persistence.type === 'sqlite') {
   console.log(pc.dim(`Using sqlite storage (${config.DATA_DIR})`));
 }
 
+const slug = slugify(question);
+const bus = createEventBus();
+const sinkTeardowns: (() => void)[] = [];
+
+sinkTeardowns.push(consoleSink(bus, { level: 'silent' }));
+
+if (!noFile) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const eventsPath = path.join(outDir, `${slug}-${Date.now()}.events.jsonl`);
+  sinkTeardowns.push(jsonlSink(bus, { path: eventsPath }));
+}
+
+if (config.LANGFUSE_PUBLIC_KEY) {
+  try {
+    const { langfuseAdapter } = await import('@harness/observability');
+    const langfuseMod = await import('langfuse' as string);
+    const LangfuseCtor = langfuseMod.Langfuse ?? langfuseMod.default;
+    const client = new LangfuseCtor({
+      publicKey: config.LANGFUSE_PUBLIC_KEY,
+      secretKey: config.LANGFUSE_SECRET_KEY ?? '',
+      ...(config.LANGFUSE_BASE_URL ? { baseUrl: config.LANGFUSE_BASE_URL } : {}),
+    });
+    sinkTeardowns.push(langfuseAdapter(bus, client));
+    console.log(pc.dim('Langfuse tracing enabled'));
+  } catch {
+    console.warn(pc.yellow('Langfuse requested but langfuse package not available'));
+  }
+}
+
 const agent = createResearchGraph({
   provider,
   depth,
@@ -112,6 +143,7 @@ const agent = createResearchGraph({
   checkpointer,
   store,
   budgets,
+  events: bus,
 });
 
 let streamAc: AbortController | null = new AbortController();
@@ -211,7 +243,6 @@ try {
   process.stdout.write('\n');
 
   if (!noFile && summary.text.trim()) {
-    const slug = slugify(question);
     fs.mkdirSync(outDir, { recursive: true });
 
     const report: Report = {
@@ -224,10 +255,16 @@ try {
   }
 
   console.log(pc.dim(footer));
+  for (const teardown of sinkTeardowns) {
+    teardown();
+  }
   persistence.close();
   process.exit(0);
 } catch (err) {
   spinner.stop();
+  for (const teardown of sinkTeardowns) {
+    teardown();
+  }
   persistence.close();
   if ((err as Error).name === 'AbortError') {
     console.error(`\n${pc.dim('(cancelled)')}`);

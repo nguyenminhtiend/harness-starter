@@ -1,6 +1,6 @@
 import type { ConversationStore, Tool } from '@harness/agent';
 import { createAgent, inMemoryStore, subagentAsTool } from '@harness/agent';
-import type { Provider } from '@harness/core';
+import type { EventBus, Provider } from '@harness/core';
 import { fetchTool } from '@harness/tools';
 
 const SYSTEM_PROMPT = `You are a deep research assistant. Given a question, you:
@@ -47,19 +47,25 @@ export function createResearchAgent(provider: Provider) {
   });
 }
 
+export interface ResearcherOpts {
+  memory?: ConversationStore | undefined;
+  budgets?: { usd?: number; tokens?: number } | undefined;
+  events?: EventBus | undefined;
+}
+
 export function createResearcherTool(
   provider: Provider,
   tools: Tool[],
-  memory?: ConversationStore,
-  budgets?: { usd?: number; tokens?: number },
+  opts?: ResearcherOpts,
 ): Tool {
   const agent = createAgent({
     provider,
     systemPrompt: SUBQUESTION_PROMPT,
     tools,
-    memory: memory ?? inMemoryStore(),
+    memory: opts?.memory ?? inMemoryStore(),
     maxTurns: 15,
-    ...(budgets ? { budgets } : {}),
+    ...(opts?.budgets ? { budgets: opts.budgets } : {}),
+    ...(opts?.events ? { events: opts.events } : {}),
   });
 
   return subagentAsTool(agent, {

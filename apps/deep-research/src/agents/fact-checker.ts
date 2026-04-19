@@ -1,6 +1,6 @@
 import type { Agent, ConversationStore } from '@harness/agent';
 import { createAgent, inMemoryStore } from '@harness/agent';
-import type { Provider } from '@harness/core';
+import type { EventBus, Provider } from '@harness/core';
 
 const FACT_CHECKER_PROMPT = `You are a fact-checking assistant. You receive a research report and verify its citations.
 
@@ -19,16 +19,19 @@ Respond with ONLY valid JSON (no markdown fences, no explanation):
 
 Be strict: if any citation cannot be verified, set pass to false.`;
 
-export function createFactCheckerAgent(
-  provider: Provider,
-  memory?: ConversationStore,
-  budgets?: { usd?: number; tokens?: number },
-): Agent {
+export interface FactCheckerOpts {
+  memory?: ConversationStore | undefined;
+  budgets?: { usd?: number; tokens?: number } | undefined;
+  events?: EventBus | undefined;
+}
+
+export function createFactCheckerAgent(provider: Provider, opts?: FactCheckerOpts): Agent {
   return createAgent({
     provider,
     systemPrompt: FACT_CHECKER_PROMPT,
-    memory: memory ?? inMemoryStore(),
+    memory: opts?.memory ?? inMemoryStore(),
     maxTurns: 3,
-    ...(budgets ? { budgets } : {}),
+    ...(opts?.budgets ? { budgets: opts.budgets } : {}),
+    ...(opts?.events ? { events: opts.events } : {}),
   });
 }
