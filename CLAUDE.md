@@ -78,50 +78,21 @@ bun run eval       # @harness/cli eval
 
 GitHub Actions (`.github/workflows/ci.yml`): checkout → Bun (latest) + Node 22 → `bun install --frozen-lockfile` → lint → typecheck → build → test.
 
-## Code style (Biome-enforced — violations fail CI)
+**You must run `bun run ci` after every change and fix all errors before considering work complete.** Do not suppress with `// biome-ignore` unless there is genuinely no alternative and you add a justifying comment.
 
-These rules are **non-negotiable**. Every rule below is enforced by Biome in `biome.json`. Familiarise yourself before writing any code.
+### Biome rules that LLMs commonly violate
 
-### Assertions & nullability
+All enforced in `biome.json`. Memorise these:
 
-- **No non-null assertions (`!`).** Never write `foo!.bar`. Use optional chaining (`foo?.bar`), nullish coalescing (`foo ?? fallback`), or a proper type narrowing guard. When the result becomes `T | undefined` and the call-site requires `T`, use a conditional spread (`...(foo && { key: foo })`) or an explicit `if` guard — do **not** reintroduce `!`.
-
-### Imports
-
-- **No unused imports.** Every imported symbol must be referenced. Remove leftovers after refactoring.
-- **Use `import type` for type-only imports.** If a symbol is only used in type positions (annotations, generics, `satisfies`), import it with `import type { … }`.
-- **Use `node:` protocol** for Node.js built-ins (`import fs from 'node:fs'`, not `'fs'`).
-
-### Statements & expressions
-
-- **Always use block statements.** Braces are required for `if`, `else`, `for`, `while`, `do` — even single-line bodies.
-  ```typescript
-  // BAD
-  if (x) return y;
-
-  // GOOD
-  if (x) {
-    return y;
-  }
-  ```
-
-### Types
-
-- **No `any`.** Use `unknown` and narrow, or define a proper type/interface.
-- **No unused variables or parameters.** Prefix intentionally-unused params with `_` if needed by a callback signature.
-
-### Console & logging
-
-- **No `console.*` in packages.** `console.log/warn/error` is forbidden inside `packages/*`. Use the event bus or `@harness/observability` sinks. (`console` is allowed in `apps/*` and test files.)
-
-### Formatting (auto-enforced but good to know)
-
-- 2-space indent, single quotes, trailing commas, semicolons always, LF line endings, 100-char line width.
-- Arrow functions always have parentheses: `(x) => …`, not `x => …`.
-
-### Before submitting
-
-Run `bun run ci` (lint + typecheck + build + test). Fix all errors — do not suppress with `// biome-ignore` unless you add a justifying comment and there is genuinely no alternative.
+- **No `!` non-null assertions.** Use `?.`, `??`, or narrow with `if`. When `?.` makes a value `T | undefined` but the call-site needs `T`, use conditional spread (`...(x && { key: x })`) or an `if` guard — never reintroduce `!`.
+- **No unused imports.** Remove leftovers after refactoring.
+- **`import type` for type-only imports.**
+- **`node:` protocol** for Node built-ins (`'node:fs'`, not `'fs'`).
+- **Block statements always.** Braces required for `if`/`else`/`for`/`while` — even single-line bodies. `if (x) return y;` → `if (x) { return y; }`.
+- **No `any`.** Use `unknown` and narrow.
+- **No unused variables.** Prefix intentionally-unused callback params with `_`.
+- **No `console.*` in `packages/*`.** Use event bus or `@harness/observability`. (`console` is allowed in `apps/*` and test files.)
+- **Formatting:** 2-space indent, single quotes, trailing commas, semicolons, LF, 100-char width, arrow parens always.
 
 ## Repository conventions
 
