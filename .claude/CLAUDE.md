@@ -16,9 +16,11 @@ core ─┬─> agent ─┬─> tools
       │          ├─> memory-sqlite
       │          └─> eval ─> cli
       └─> observability
+
+tui (standalone — no harness deps)
 ```
 
-**Implemented packages (7):**
+**Implemented packages (8):**
 
 | Package | Path | Depends on |
 |---------|------|-----------|
@@ -29,6 +31,7 @@ core ─┬─> agent ─┬─> tools
 | `@harness/memory-sqlite` | `packages/memory-sqlite/` | `agent`, `core` |
 | `@harness/observability` | `packages/observability/` | `core` |
 | `@harness/cli` | `packages/cli/` | `core` (+ optional: `eval`, `evalite`) |
+| `@harness/tui` | `packages/tui/` | — (standalone, `picocolors` only) |
 
 **Not yet implemented:** `@harness/eval`, any `apps/*`.
 
@@ -36,7 +39,7 @@ Layering enforced by Biome `noRestrictedImports` rules in `biome.json`. No tscon
 
 **Runtime boundary:** `@harness/core` uses only Web-standard APIs (`fetch`, `ReadableStream`, `AbortSignal`). Node/Bun-only functionality (SQLite, fs, OTel exporters) must live in sibling packages — never in `core`.
 
-**Clone-and-own invariant:** deleting any of `packages/eval/`, `packages/mcp/`, `packages/memory-sqlite/`, or `apps/http-server/` must leave the rest building and testing cleanly.
+**Clone-and-own invariant:** deleting any of `packages/eval/`, `packages/mcp/`, `packages/memory-sqlite/`, `packages/tui/`, or `apps/http-server/` must leave the rest building and testing cleanly.
 
 ## Commands
 
