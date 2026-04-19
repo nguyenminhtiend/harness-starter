@@ -1,5 +1,16 @@
+import * as fs from 'node:fs';
 import { parseArgs } from 'node:util';
+import { createStreamRenderer } from '@harness/agent';
+import { setupSigint } from '@harness/tui/sigint';
+import { createSpinner } from '@harness/tui/spinner';
+import { formatUsage } from '@harness/tui/usage';
 import pc from 'picocolors';
+import { createResearchAgent } from './agents/researcher.ts';
+import { config } from './config.ts';
+import { createProvider } from './provider.ts';
+import { slugify } from './report/slug.ts';
+import { writeReport } from './report/write.ts';
+import type { Report } from './schemas/report.ts';
 
 const HELP = `
 ${pc.bold('deep-research')} — local-first deep research CLI
@@ -65,5 +76,81 @@ if (!question?.trim()) {
   process.exit(1);
 }
 
+const outDir = values.out ?? config.REPORT_DIR;
+const noFile = values['no-file'] ?? false;
+const modelId = values.model;
+
+const provider = createProvider(modelId);
+const agent = createResearchAgent(provider);
+
+const conversationId = crypto.randomUUID();
+let streamAc: AbortController | null = new AbortController();
+
+setupSigint({
+  isStreaming: () => streamAc !== null,
+  onAbort: () => {
+    streamAc?.abort();
+    streamAc = null;
+  },
+  onExit: () => process.exit(130),
+});
+
 console.log(pc.bold(`\ndeep-research · "${question}"\n`));
-console.log(pc.dim('(scaffold only — research pipeline not yet implemented)\n'));
+
+const spinner = createSpinner();
+let firstToken = true;
+spinner.start();
+
+const renderer = createStreamRenderer({
+  onTextDelta: (delta) => {
+    if (firstToken) {
+      spinner.stop();
+      firstToken = false;
+    }
+    process.stdout.write(delta);
+  },
+  onToolStart: (_id, name) => {
+    process.stdout.write(pc.dim(`\n[fetching: ${name}...]\n`));
+  },
+  onToolResult: (_id, _result, durationMs) => {
+    process.stdout.write(pc.dim(`[done: ${(durationMs / 1000).toFixed(1)}s]\n`));
+  },
+  onError: () => spinner.stop(),
+});
+
+try {
+  const summary = await renderer.render(
+    agent.stream({ userMessage: question, conversationId }, { signal: streamAc.signal }),
+  );
+
+  const footer = formatUsage({
+    totalTokens: summary.usage.totalTokens ?? 0,
+    durationMs: summary.durationMs,
+  });
+
+  process.stdout.write('\n');
+
+  if (!noFile && summary.text.trim()) {
+    const slug = slugify(question);
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const report: Report = {
+      title: question,
+      sections: [{ heading: 'Research', body: summary.text }],
+      references: [],
+    };
+    const filePath = await writeReport(report, outDir, slug);
+    console.log(pc.green(`\nReport saved → ${filePath}`));
+  }
+
+  console.log(pc.dim(footer));
+  process.exit(0);
+} catch (err) {
+  spinner.stop();
+  if ((err as Error).name === 'AbortError') {
+    console.error(`\n${pc.dim('(cancelled)')}`);
+    process.exit(130);
+  }
+  console.error(`\n${pc.red('[error]')} ${(err as Error).message ?? err}`);
+  process.exit(1);
+}
