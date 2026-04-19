@@ -13,7 +13,7 @@
 Build a local-first, forkable **Deep-Research CLI** — `deep-research "<question>"` produces a well-cited markdown report by orchestrating a planner, N parallel researcher subagents, a writer, and a fact-checker.
 
 ### Why this app
-- **Exercises the full harness surface.** Every package (`core`, `agent`, `tools`, `mcp`, `memory-sqlite`, `observability`, `eval`, `cli`) is touched by the happy path. Every composition primitive (`subagentAsTool`, `handoff`, `graph`) is used.
+- **Exercises the full harness surface.** Every package (`core`, `agent`, `tools`, `mcp`, `memory-sqlite`, `observability`, `eval`, `cli`, `tui`) is touched by the happy path. Every composition primitive (`subagentAsTool`, `handoff`, `graph`) is used.
 - **Usable post-build.** A local Perplexity-style tool the author will run weekly. Not yet-another-coding-assistant.
 - **Clone-and-own demo.** Anyone cloning the starter can fork `apps/deep-research` into their own domain (market research, legal summarisation, scientific lit review, etc.) by swapping tools and prompts — the skeleton stays.
 
@@ -43,7 +43,7 @@ Build a local-first, forkable **Deep-Research CLI** — `deep-research "<questio
 | D8 | **One-shot by default** (`deep-research "Q"` → report → exit). **REPL is stretch**, behind `--repl`. | Simpler MVP; REPL can reuse the existing `cli-chat` readline patterns. | Yes. |
 | D9 | **Observability:** `consoleSink` always, `jsonlSink` always (`./reports/<slug>-<ts>.events.jsonl`), Langfuse opt-in via env, OTel opt-in via env. | Console is UX; JSONL is free replay + eval fodder; Langfuse/OTel are demos. | Yes. |
 | D10 | **Evals ship with the app.** `apps/deep-research/evals/*.eval.ts` runnable via `harness-eval` from `@harness/cli`. Live-provider evals gated behind `HARNESS_LIVE=1`. | Wires `@harness/eval` + `@harness/cli` into the happy path; catches regressions on fork. | Yes. |
-| D11 | **Shared CLI UX primitives (spinner, renderer glue) live in this app**, not a new package. | Follows CLAUDE.md "three similar lines beats a premature abstraction." Spinner is ~30 lines. Extract only when a third app needs it. | Yes — extract to `apps/_shared/` or `@harness/tui` later. |
+| D11 | **Shared CLI UX primitives live in `@harness/tui`** (spinner, usage footer, SIGINT handler, HITL approval prompt). App-specific renderer glue stays local in `src/ui/render.ts`. | `@harness/tui` has zero harness deps and subpath exports for tree-shaking. Already consumed by `cli-chat`. | Yes — could inline back into each app. |
 | D12 | **Guardrails:** one output hook that flags citations with no supporting fetch result. No input hook in v1. | Factuality is the one guardrail the domain actually needs; input filtering is busywork for a local single-user CLI. | Yes. |
 | D13 | **Budget default:** `$0.50` and `200_000` tokens per report, overridable by flag + env. Planner gets 10%, researchers share 60%, writer 20%, fact-checker 10%. | Concrete defaults prevent "why did this cost $8" surprises on the first run. | Yes. |
 
@@ -75,9 +75,7 @@ apps/deep-research/
 │   │   ├── plan.ts           # Zod schemas (ResearchPlan, Subquestion, Finding, Report)
 │   │   └── report.ts
 │   ├── ui/
-│   │   ├── spinner.ts        # copy of cli-chat spinner
-│   │   ├── render.ts         # createStreamRenderer wiring (tool starts/results, compaction, handoffs)
-│   │   └── approval.ts       # readline-based y/n for HITL interrupts
+│   │   └── render.ts         # createStreamRenderer wiring (tool starts/results, compaction, handoffs)
 │   └── report/
 │       ├── slug.ts           # question → filename slug
 │       └── write.ts          # render Report (schema) → markdown on disk
@@ -109,9 +107,10 @@ apps/deep-research/
 | `@harness/memory-sqlite` | `sqliteStore`, `sqliteCheckpointer` |
 | `@harness/observability` | `consoleSink`, `jsonlSink`, optional `langfuseAdapter`, optional `otelAdapter` |
 | `@harness/eval` | `createScorer`, `evalite` |
+| `@harness/tui` | `createSpinner`, `formatUsage`, `setupSigint`, `promptApproval` — CLI UX primitives (zero harness deps) |
 | `@harness/cli` | `harness-eval` run entry (via `bun run eval`) |
 
-**Every implemented package is imported by the happy path.** Cliam checked.
+**Every implemented package is imported by the happy path.** Claim checked.
 
 **Third-party:**
 - `@openrouter/ai-sdk-provider` (already in use)
@@ -230,10 +229,10 @@ The app imports, rather than reimplements:
 
 - **`createStreamRenderer`** from `@harness/agent` — the callback dispatcher. App provides callbacks for text/thinking/tool-start/tool-result/handoff/compaction/usage/abort/error. The handoff and tool-start callbacks make multi-agent progress legible.
 - **`picocolors`** — `cyan` for prompts, `dim` for metadata, `red` for errors, `yellow` for budget warnings, `green` for "approved" / "done".
-- **`spinner.ts`** — copied verbatim from `cli-chat`. Shown between sub-phases (planning, researching, writing, verifying), not per-token.
-- **Usage footer** — identical to `cli-chat` (`(<tokens> tokens · <duration>s · $<cost>)`), emitted after the report is finalised.
-- **SIGINT handling** — first Ctrl+C aborts the current stream (graph can still checkpoint); second Ctrl+C exits.
-- **Readline** — only used for (a) HITL approval prompt (`approve plan? [y/N/edit]`), (b) the stretch REPL.
+- **`createSpinner`** from `@harness/tui/spinner` — shown between sub-phases (planning, researching, writing, verifying), not per-token.
+- **`formatUsage`** from `@harness/tui/usage` — `(<tokens> tokens · <duration>s · $<cost>)`, emitted after the report is finalised.
+- **`setupSigint`** from `@harness/tui/sigint` — first Ctrl+C aborts the current stream (graph can still checkpoint); second Ctrl+C exits.
+- **`promptApproval`** from `@harness/tui/approval` — used for HITL approval prompt (`approve plan? [y/N/edit]`). Stretch REPL uses raw readline.
 
 Rendering contract per phase:
 ```
@@ -271,7 +270,6 @@ Emojis in the UI are **intentional** (user-facing polish), not in code/docs/comm
 - Changing the graph topology (§5).
 - Changing the default budget values (D13).
 - Introducing a web UI, server mode, or auth.
-- Extracting shared CLI UX into a new package (D11 promotion).
 - Adding a new MCP server to the default wiring.
 
 ### Never
