@@ -17,6 +17,7 @@ const rl = readline.createInterface({
   input: process.stdin as unknown as NodeJS.ReadableStream,
   output: process.stdout as unknown as NodeJS.WritableStream,
   terminal: process.stdin.isTTY ?? false,
+  historySize: 100,
 });
 
 let streaming = false;
