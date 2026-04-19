@@ -1,6 +1,10 @@
 import { describe, expect, mock, test } from 'bun:test';
-import type { FinishReason, Usage } from '@harness/core';
+import type { FinishReason, StreamEvent, Usage } from '@harness/core';
+import { fakeProvider } from '@harness/core/testing';
+import { z } from 'zod';
+import { createAgent } from './create-agent.ts';
 import { createStreamRenderer } from './stream-renderer.ts';
+import { tool } from './tool.ts';
 import type { AgentEvent } from './types.ts';
 
 async function* iterableFrom(events: AgentEvent[]): AsyncIterable<AgentEvent> {
@@ -227,5 +231,80 @@ describe('createStreamRenderer', () => {
     expect(summary.text).toBe('');
     expect(summary.turns).toBe(0);
     expect(summary.usage.totalTokens).toBe(0);
+  });
+});
+
+function textScript(text: string): StreamEvent[] {
+  return [
+    { type: 'text-delta', delta: text },
+    { type: 'usage', tokens: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
+    { type: 'finish', reason: 'stop' },
+  ];
+}
+
+function toolCallScript(id: string, name: string, args: unknown): StreamEvent[] {
+  return [
+    { type: 'tool-call', id, name, args },
+    { type: 'usage', tokens: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
+    { type: 'finish', reason: 'tool-calls' },
+  ];
+}
+
+describe('createStreamRenderer + fakeProvider integration', () => {
+  test('receives events in correct order for a tool-calling agent', async () => {
+    const echoTool = tool({
+      name: 'echo',
+      description: 'Echoes input',
+      parameters: z.object({ text: z.string() }),
+      execute: async (args) => `Echo: ${args.text}`,
+    });
+
+    const provider = fakeProvider([
+      { events: toolCallScript('tc1', 'echo', { text: 'hello' }) },
+      { events: textScript('Done.') },
+    ]);
+
+    const agent = createAgent({ provider, tools: [echoTool] });
+
+    const eventTypes: string[] = [];
+    const renderer = createStreamRenderer({
+      onTurnStart: () => eventTypes.push('turn-start'),
+      onToolStart: () => eventTypes.push('tool-start'),
+      onToolResult: () => eventTypes.push('tool-result'),
+      onTextDelta: () => eventTypes.push('text-delta'),
+      onUsage: () => eventTypes.push('usage'),
+      onFinish: () => eventTypes.push('finish'),
+    });
+
+    const summary = await renderer.render(agent.stream({ userMessage: 'Echo hello' }));
+
+    expect(summary.text).toBe('Done.');
+    expect(summary.turns).toBe(2);
+    expect(summary.usage.totalTokens).toBe(30);
+    expect(summary.durationMs).toBeGreaterThanOrEqual(0);
+
+    expect(eventTypes[0]).toBe('turn-start');
+    expect(eventTypes).toContain('tool-start');
+    expect(eventTypes).toContain('tool-result');
+    expect(eventTypes).toContain('text-delta');
+    expect(eventTypes).toContain('usage');
+    expect(eventTypes).toContain('finish');
+
+    const toolStartIdx = eventTypes.indexOf('tool-start');
+    const toolResultIdx = eventTypes.indexOf('tool-result');
+    expect(toolStartIdx).toBeLessThan(toolResultIdx);
+  });
+
+  test('handles simple text response without tools', async () => {
+    const provider = fakeProvider([{ events: textScript('Hello!') }]);
+    const agent = createAgent({ provider });
+
+    const renderer = createStreamRenderer({});
+    const summary = await renderer.render(agent.stream({ userMessage: 'Hi' }));
+
+    expect(summary.text).toBe('Hello!');
+    expect(summary.turns).toBe(1);
+    expect(summary.usage.inputTokens).toBe(10);
+    expect(summary.usage.outputTokens).toBe(5);
   });
 });
