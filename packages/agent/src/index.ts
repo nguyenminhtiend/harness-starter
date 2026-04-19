@@ -23,6 +23,9 @@ export { runInputHooks, runOutputHooks } from './guardrails/hooks.ts';
 export { createHandoffAgent, HandoffSignal, handoff } from './handoff/handoff.ts';
 // --- Memory ---
 export { inMemoryStore } from './memory/store.ts';
+// --- Stream Renderer ---
+export type { StreamRenderer, StreamRendererCallbacks, StreamSummary } from './stream-renderer.ts';
+export { createStreamRenderer } from './stream-renderer.ts';
 export { tool } from './tool.ts';
 // --- Composition: subagent-as-tool ---
 export { subagentAsTool } from './tools/subagent.ts';
