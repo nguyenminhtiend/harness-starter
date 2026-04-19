@@ -6,7 +6,6 @@ import { BudgetExceededError, createEventBus } from '@harness/core';
 import { consoleSink, jsonlSink } from '@harness/observability';
 import { promptApproval } from '@harness/tui/approval';
 import { setupSigint } from '@harness/tui/sigint';
-import { createSpinner } from '@harness/tui/spinner';
 import { formatUsage } from '@harness/tui/usage';
 import pc from 'picocolors';
 import { splitBudget } from './budgets.ts';
@@ -18,6 +17,7 @@ import { slugify } from './report/slug.ts';
 import { writeReport } from './report/write.ts';
 import type { ResearchPlan } from './schemas/plan.ts';
 import type { Report } from './schemas/report.ts';
+import { createDeepResearchRenderer } from './ui/render.ts';
 
 const HELP = `
 ${pc.bold('deep-research')} — local-first deep research CLI
@@ -159,44 +159,23 @@ setupSigint({
 
 console.log(pc.bold(`\ndeep-research · "${question}"\n`));
 
-const spinner = createSpinner();
-let firstToken = true;
-
-const renderer = createStreamRenderer({
-  onTextDelta: (delta) => {
-    if (firstToken) {
-      spinner.stop();
-      firstToken = false;
-    }
-    process.stdout.write(delta);
-  },
-  onToolStart: (_id, name) => {
-    process.stdout.write(pc.dim(`\n[fetching: ${name}...]\n`));
-  },
-  onToolResult: (_id, _result, durationMs) => {
-    process.stdout.write(pc.dim(`[done: ${(durationMs / 1000).toFixed(1)}s]\n`));
-  },
-  onError: () => spinner.stop(),
-});
+const rendererCallbacks = createDeepResearchRenderer();
+const renderer = createStreamRenderer(rendererCallbacks);
 
 try {
-  spinner.start();
+  process.stdout.write(pc.dim('📋 planning…\n'));
 
-  // Phase 1: plan + possible HITL interrupt
   let summary = await renderer.render(
     agent.stream({ userMessage: question }, { signal: streamAc.signal, runId }),
   );
 
-  // If no research text was produced, the graph interrupted at the approval gate
   if (!summary.text.trim() && !skipApproval) {
-    spinner.stop();
-
     const saved = await checkpointer.load(runId);
     const gs = saved?.graphState as { data: Record<string, unknown> } | undefined;
     const plan = gs?.data?.plan as ResearchPlan | undefined;
 
     if (plan) {
-      console.log(pc.bold('Research Plan:\n'));
+      console.log(pc.bold('\nResearch Plan:\n'));
       for (const sq of plan.subquestions) {
         console.log(`  ${pc.cyan(sq.id)} ${sq.question}`);
         for (const q of sq.searchQueries) {
@@ -215,25 +194,20 @@ try {
         process.exit(2);
       }
 
-      // Patch checkpoint: mark plan as approved
       const checkpoint = await checkpointer.load(runId);
       if (checkpoint?.graphState) {
         (checkpoint.graphState as { data: Record<string, unknown> }).data.approved = true;
         await checkpointer.save(runId, checkpoint);
       }
 
-      // Phase 2: resume — approve passes through, research runs
       streamAc = new AbortController();
-      firstToken = true;
-      spinner.start();
+      process.stdout.write(pc.dim('\n🔎 researching…\n'));
 
       summary = await renderer.render(
         agent.stream({ userMessage: question }, { signal: streamAc.signal, runId }),
       );
     }
   }
-
-  spinner.stop();
 
   const footer = formatUsage({
     totalTokens: summary.usage.totalTokens ?? 0,
@@ -251,7 +225,7 @@ try {
       references: [],
     };
     const filePath = await writeReport(report, outDir, slug);
-    console.log(pc.green(`\nReport saved → ${filePath}`));
+    console.log(pc.green(`✅ report saved → ${filePath}`));
   }
 
   console.log(pc.dim(footer));
@@ -261,7 +235,6 @@ try {
   persistence.close();
   process.exit(0);
 } catch (err) {
-  spinner.stop();
   for (const teardown of sinkTeardowns) {
     teardown();
   }
