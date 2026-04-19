@@ -23,11 +23,37 @@ import { slugify } from './report/slug.ts';
 import { writeReport } from './report/write.ts';
 import type { ResearchPlan } from './schemas/plan.ts';
 import type { Report } from './schemas/report.ts';
+import { createSearchTools } from './tools/search.ts';
 import { createDeepResearchRenderer } from './ui/render.ts';
 
 function readPlanFromCheckpoint(saved: RunState | null): ResearchPlan | undefined {
   const savedState = saved?.graphState as { data: Record<string, unknown> } | undefined;
   return savedState?.data?.plan as ResearchPlan | undefined;
+}
+
+function readReportFromCheckpoint(saved: RunState | null): Report | undefined {
+  const savedState = saved?.graphState as { data: Record<string, unknown> } | undefined;
+  return savedState?.data?.report as Report | undefined;
+}
+
+interface AbortHandle {
+  current: AbortController | null;
+  abort(): void;
+  reset(): void;
+}
+
+function createAbortHandle(): AbortHandle {
+  const handle: AbortHandle = {
+    current: new AbortController(),
+    abort() {
+      handle.current?.abort();
+      handle.current = null;
+    },
+    reset() {
+      handle.current = new AbortController();
+    },
+  };
+  return handle;
 }
 
 async function setupObservability(
@@ -71,7 +97,7 @@ async function runResearchLoop(
   question: string,
   checkpointer: Checkpointer,
   runId: string,
-  streamAc: { current: AbortController | null },
+  streamAc: AbortHandle,
   skipApproval: boolean,
 ): Promise<StreamSummary> {
   process.stdout.write(pc.dim('📋 planning…\n'));
@@ -117,11 +143,11 @@ async function runResearchLoop(
     await checkpointer.save(runId, checkpoint);
   }
 
-  streamAc.current = new AbortController();
+  streamAc.reset();
   process.stdout.write(pc.dim('\n🔎 researching…\n'));
 
   summary = await renderer.render(
-    agent.stream({ userMessage: question }, { signal: streamAc.current.signal, runId }),
+    agent.stream({ userMessage: question }, { signal: streamAc.current!.signal, runId }),
   );
   return summary;
 }
@@ -207,9 +233,17 @@ const skipApproval = values['no-approval'] ?? false;
 const depth = values.depth ?? 'medium';
 const modelId = values.model;
 const budgetUsd = values['budget-usd'] ? Number(values['budget-usd']) : config.BUDGET_USD;
+if (Number.isNaN(budgetUsd)) {
+  console.error(pc.red('Error: --budget-usd must be a number'));
+  process.exit(1);
+}
 const budgetTokens = values['budget-tokens']
   ? Number(values['budget-tokens'])
   : config.BUDGET_TOKENS;
+if (Number.isNaN(budgetTokens)) {
+  console.error(pc.red('Error: --budget-tokens must be a number'));
+  process.exit(1);
+}
 const budgets = splitBudget({ usd: budgetUsd, tokens: budgetTokens });
 
 const provider = createProvider(modelId);
@@ -229,8 +263,16 @@ const slug = slugify(question);
 const bus = createEventBus();
 const sinkTeardowns = await setupObservability(bus, config, outDir, noFile, slug);
 
+const streamAc = createAbortHandle();
+
+const tools = await createSearchTools({
+  ...(config.BRAVE_API_KEY ? { braveApiKey: config.BRAVE_API_KEY } : {}),
+  ...(streamAc.current ? { signal: streamAc.current.signal } : {}),
+});
+
 const agent = createResearchGraph({
   provider,
+  tools,
   depth,
   skipApproval,
   checkpointer,
@@ -239,14 +281,9 @@ const agent = createResearchGraph({
   events: bus,
 });
 
-const streamAc = { current: new AbortController() as AbortController | null };
-
 setupSigint({
   isStreaming: () => streamAc.current !== null,
-  onAbort: () => {
-    streamAc.current?.abort();
-    streamAc.current = null;
-  },
+  onAbort: () => streamAc.abort(),
   onExit: () => process.exit(130),
 });
 
@@ -274,7 +311,8 @@ try {
   process.stdout.write('\n');
 
   if (!noFile && summary.text.trim()) {
-    const report: Report = {
+    const finalCheckpoint = await checkpointer.load(runId);
+    const report: Report = readReportFromCheckpoint(finalCheckpoint) ?? {
       title: question,
       sections: [{ heading: 'Research', body: summary.text }],
       references: [],

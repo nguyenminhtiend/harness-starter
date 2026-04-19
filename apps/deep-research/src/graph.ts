@@ -6,11 +6,24 @@ import { createPlannerNode } from './agents/planner.ts';
 import { createResearcherTool } from './agents/researcher.ts';
 import { createWriterAgent } from './agents/writer.ts';
 import type { BudgetSplit } from './budgets.ts';
+import { extractUrls } from './guardrails/citation-check.ts';
 import type { ResearchPlan } from './schemas/plan.ts';
-import type { Finding } from './schemas/report.ts';
-import { Finding as FindingSchema } from './schemas/report.ts';
+import type { Finding, Report } from './schemas/report.ts';
+import { Finding as FindingSchema, Report as ReportSchema } from './schemas/report.ts';
 
 const MAX_FACT_CHECK_RETRIES = 2;
+
+export interface ResearchState {
+  [key: string]: unknown;
+  userMessage: string;
+  plan?: ResearchPlan;
+  approved?: boolean;
+  findings?: Finding[];
+  report?: Report;
+  reportText?: string;
+  factCheckPassed?: boolean;
+  factCheckRetries?: number;
+}
 
 export interface ResearchGraphOpts {
   provider: Provider;
@@ -41,8 +54,9 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const approveNode: GraphNode = {
     id: 'approve',
     fn: async (state) => {
-      if (skipApproval || state.approved) {
-        return state;
+      const s = state as ResearchState;
+      if (skipApproval || s.approved) {
+        return s;
       }
       interrupt('plan-approval');
     },
@@ -51,7 +65,8 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const researchNode: GraphNode = {
     id: 'research',
     fn: async (state, ctx) => {
-      const plan = state.plan as ResearchPlan;
+      const s = state as ResearchState;
+      const plan = s.plan!;
       const researcherTool = createResearcherTool(provider, tools, {
         memory: agentStore,
         budgets: budgets?.researcher,
@@ -63,18 +78,19 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
         signal: ctx.signal,
       };
 
-      const findings: Finding[] = [];
-      for (const sq of plan.subquestions) {
-        const result = await researcherTool.execute(
-          { input: `[${sq.id}] ${sq.question}` },
-          toolCtx,
-        );
-        try {
-          findings.push(FindingSchema.parse(JSON.parse(result as string)));
-        } catch {
-          findings.push({ subquestionId: sq.id, summary: result as string, sourceUrls: [] });
-        }
-      }
+      const findings = await Promise.all(
+        plan.subquestions.map(async (sq) => {
+          const result = await researcherTool.execute(
+            { input: `[${sq.id}] ${sq.question}` },
+            toolCtx,
+          );
+          try {
+            return FindingSchema.parse(JSON.parse(result as string));
+          } catch {
+            return { subquestionId: sq.id, summary: result as string, sourceUrls: [] };
+          }
+        }),
+      );
 
       return { ...state, findings };
     },
@@ -83,12 +99,13 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const writeNode: GraphNode = {
     id: 'write',
     fn: async (state, ctx) => {
+      const s = state as ResearchState;
       const writer = createWriterAgent(provider, {
         memory: agentStore,
         budgets: budgets?.writer,
         events,
       });
-      const findings = state.findings as Finding[];
+      const findings = s.findings ?? [];
       const findingsText = findings
         .map(
           (f) =>
@@ -100,24 +117,49 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
         { userMessage: `Write a research report from these findings:\n\n${findingsText}` },
         { signal: ctx.signal },
       );
-      return { ...state, reportText: result.finalMessage };
+
+      const raw = result.finalMessage as string;
+      let report: Report;
+      try {
+        report = ReportSchema.parse(JSON.parse(raw));
+      } catch {
+        report = {
+          title: s.userMessage,
+          sections: [{ heading: 'Research', body: raw }],
+          references: [],
+        };
+      }
+
+      return { ...state, report, reportText: result.finalMessage };
     },
   };
 
   const factCheckNode: GraphNode = {
     id: 'fact-check',
     fn: async (state, ctx) => {
+      const s = state as ResearchState;
       const checker = createFactCheckerAgent(provider, {
         memory: agentStore,
         budgets: budgets?.factChecker,
         events,
       });
-      const retries = ((state.factCheckRetries as number) ?? 0) + 1;
+      const retries = (s.factCheckRetries ?? 0) + 1;
 
-      const result = await checker.run(
-        { userMessage: `Verify citations in this report:\n\n${state.reportText}` },
-        { signal: ctx.signal },
-      );
+      const findings = s.findings ?? [];
+      const allSourceUrls = new Set(findings.flatMap((f) => f.sourceUrls));
+      const sourceContext = findings
+        .map((f) => `[${f.subquestionId}] Sources: ${f.sourceUrls.join(', ') || 'none'}`)
+        .join('\n');
+
+      const citedUrls = extractUrls(s.reportText ?? '');
+      const unfetchedUrls = citedUrls.filter((u) => !allSourceUrls.has(u));
+
+      let prompt = `Research sources:\n${sourceContext}\n\nVerify citations in this report:\n\n${s.reportText}`;
+      if (unfetchedUrls.length > 0) {
+        prompt += `\n\nWARNING: These URLs appear in the report but were NOT found in research sources: ${unfetchedUrls.join(', ')}`;
+      }
+
+      const result = await checker.run({ userMessage: prompt }, { signal: ctx.signal });
 
       try {
         const parsed = JSON.parse(result.finalMessage as string);
@@ -143,8 +185,8 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
       {
         from: 'fact-check',
         to: (state) => {
-          const retries = (state.factCheckRetries as number) ?? 0;
-          if (state.factCheckPassed || retries >= MAX_FACT_CHECK_RETRIES) {
+          const s = state as ResearchState;
+          if (s.factCheckPassed || (s.factCheckRetries ?? 0) >= MAX_FACT_CHECK_RETRIES) {
             return 'finalize';
           }
           return 'write';

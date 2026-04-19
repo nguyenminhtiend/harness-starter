@@ -22,7 +22,7 @@ export function renderMarkdown(report: Report): string {
 }
 
 export async function writeReport(report: Report, outDir: string, slug: string): Promise<string> {
-  fs.mkdirSync(outDir, { recursive: true });
+  await fs.promises.mkdir(outDir, { recursive: true });
 
   const ts = Date.now();
   const filename = `${slug}-${ts}.md`;
@@ -30,8 +30,8 @@ export async function writeReport(report: Report, outDir: string, slug: string):
   const tmpPath = `${filePath}.tmp`;
 
   const content = renderMarkdown(report);
-  fs.writeFileSync(tmpPath, content, 'utf-8');
-  fs.renameSync(tmpPath, filePath);
+  await fs.promises.writeFile(tmpPath, content, 'utf-8');
+  await fs.promises.rename(tmpPath, filePath);
 
   return filePath;
 }

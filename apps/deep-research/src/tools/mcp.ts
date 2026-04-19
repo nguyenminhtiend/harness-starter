@@ -11,7 +11,7 @@ export async function loadBraveSearchTools(apiKey: string, signal?: AbortSignal)
       {
         transport: 'stdio',
         command: 'npx',
-        args: ['-y', '@anthropic/brave-search-mcp'],
+        args: ['-y', '@brave/brave-search-mcp-server@2.0.75'],
         env: { BRAVE_API_KEY: apiKey },
       },
       { signal: signal ?? AbortSignal.timeout(15_000) },
