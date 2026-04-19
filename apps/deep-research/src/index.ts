@@ -1,15 +1,17 @@
 import * as fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { createStreamRenderer } from '@harness/agent';
+import { createStreamRenderer, inMemoryCheckpointer } from '@harness/agent';
+import { promptApproval } from '@harness/tui/approval';
 import { setupSigint } from '@harness/tui/sigint';
 import { createSpinner } from '@harness/tui/spinner';
 import { formatUsage } from '@harness/tui/usage';
 import pc from 'picocolors';
-import { createResearchAgent } from './agents/researcher.ts';
 import { config } from './config.ts';
+import { createResearchGraph } from './graph.ts';
 import { createProvider } from './provider.ts';
 import { slugify } from './report/slug.ts';
 import { writeReport } from './report/write.ts';
+import type { ResearchPlan } from './schemas/plan.ts';
 import type { Report } from './schemas/report.ts';
 
 const HELP = `
@@ -78,12 +80,21 @@ if (!question?.trim()) {
 
 const outDir = values.out ?? config.REPORT_DIR;
 const noFile = values['no-file'] ?? false;
+const skipApproval = values['no-approval'] ?? false;
+const depth = values.depth ?? 'medium';
 const modelId = values.model;
 
 const provider = createProvider(modelId);
-const agent = createResearchAgent(provider);
+const checkpointer = inMemoryCheckpointer();
+const runId = values.resume ?? crypto.randomUUID();
 
-const conversationId = crypto.randomUUID();
+const agent = createResearchGraph({
+  provider,
+  depth,
+  skipApproval,
+  checkpointer,
+});
+
 let streamAc: AbortController | null = new AbortController();
 
 setupSigint({
@@ -99,7 +110,6 @@ console.log(pc.bold(`\ndeep-research · "${question}"\n`));
 
 const spinner = createSpinner();
 let firstToken = true;
-spinner.start();
 
 const renderer = createStreamRenderer({
   onTextDelta: (delta) => {
@@ -119,9 +129,60 @@ const renderer = createStreamRenderer({
 });
 
 try {
-  const summary = await renderer.render(
-    agent.stream({ userMessage: question, conversationId }, { signal: streamAc.signal }),
+  spinner.start();
+
+  // Phase 1: plan + possible HITL interrupt
+  let summary = await renderer.render(
+    agent.stream({ userMessage: question }, { signal: streamAc.signal, runId }),
   );
+
+  // If no research text was produced, the graph interrupted at the approval gate
+  if (!summary.text.trim() && !skipApproval) {
+    spinner.stop();
+
+    const saved = await checkpointer.load(runId);
+    const gs = saved?.graphState as { data: Record<string, unknown> } | undefined;
+    const plan = gs?.data?.plan as ResearchPlan | undefined;
+
+    if (plan) {
+      console.log(pc.bold('Research Plan:\n'));
+      for (const sq of plan.subquestions) {
+        console.log(`  ${pc.cyan(sq.id)} ${sq.question}`);
+        for (const q of sq.searchQueries) {
+          console.log(`     ${pc.dim(q)}`);
+        }
+      }
+      console.log('');
+
+      const answer = await promptApproval('Approve plan?', {
+        choices: ['y', 'n'],
+        defaultChoice: 'n',
+      });
+
+      if (answer.toLowerCase() !== 'y') {
+        console.log(pc.yellow('\nPlan rejected.'));
+        process.exit(2);
+      }
+
+      // Patch checkpoint: mark plan as approved
+      const checkpoint = await checkpointer.load(runId);
+      if (checkpoint?.graphState) {
+        (checkpoint.graphState as { data: Record<string, unknown> }).data.approved = true;
+        await checkpointer.save(runId, checkpoint);
+      }
+
+      // Phase 2: resume — approve passes through, research runs
+      streamAc = new AbortController();
+      firstToken = true;
+      spinner.start();
+
+      summary = await renderer.render(
+        agent.stream({ userMessage: question }, { signal: streamAc.signal, runId }),
+      );
+    }
+  }
+
+  spinner.stop();
 
   const footer = formatUsage({
     totalTokens: summary.usage.totalTokens ?? 0,
