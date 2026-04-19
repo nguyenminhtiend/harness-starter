@@ -13,6 +13,7 @@
     "@harness/core": "workspace:*",
     "@harness/observability": "workspace:*",
     "@openrouter/ai-sdk-provider": "1.5.4",
+    "picocolors": "1.1.1",
     "zod": "^4.0.0"
   },
   "devDependencies": {

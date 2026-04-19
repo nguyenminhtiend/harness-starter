@@ -1,18 +1,13 @@
 import * as readline from 'node:readline';
-import { createAgent, inMemoryStore } from '@harness/agent';
-import { createEventBus } from '@harness/core';
-import { consoleSink } from '@harness/observability';
+import { createAgent, createStreamRenderer, inMemoryStore } from '@harness/agent';
+import pc from 'picocolors';
 import { config } from './config.ts';
 import { provider } from './provider.ts';
-
-const bus = createEventBus();
-consoleSink(bus, { level: 'quiet' });
 
 const agent = createAgent({
   provider,
   systemPrompt: config.SYSTEM_PROMPT ?? 'You are a helpful assistant.',
   memory: inMemoryStore(),
-  events: bus,
 });
 
 const conversationId = crypto.randomUUID();
@@ -37,31 +32,34 @@ console.log(`harness cli-chat · model: ${config.MODEL_ID}`);
 console.log('Type a message and press Enter. Ctrl+C to quit.\n');
 
 function prompt() {
-  rl.question('you> ', async (line) => {
+  rl.question(pc.cyan('you> '), async (line) => {
     if (!line.trim()) {
       prompt();
       return;
     }
 
-    process.stdout.write('\nai>  ');
+    process.stdout.write('\n');
+
+    const renderer = createStreamRenderer({
+      onTextDelta: (delta) => process.stdout.write(delta),
+    });
 
     try {
-      for await (const ev of agent.stream(
-        { userMessage: line, conversationId },
-        { signal: ac.signal },
-      )) {
-        if (ev.type === 'text-delta') {
-          process.stdout.write(ev.delta);
-        }
-      }
+      const summary = await renderer.render(
+        agent.stream({ userMessage: line, conversationId }, { signal: ac.signal }),
+      );
+
+      const tokens = summary.usage.totalTokens ?? 0;
+      const duration = (summary.durationMs / 1000).toFixed(1);
+      process.stdout.write(`\n${pc.dim(`(${tokens} tokens · ${duration}s)`)}\n\n`);
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         return;
       }
-      console.error('\n[error]', (err as Error).message ?? err);
+      console.error(`\n${pc.red('[error]')} ${(err as Error).message ?? err}`);
+      process.stdout.write('\n');
     }
 
-    process.stdout.write('\n\n');
     prompt();
   });
 }
