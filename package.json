@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "chat": "bun run --filter @harness/example-cli-chat dev",
+    "research": "bun run --filter @harness/example-deep-research dev --",
     "server": "bun run --filter @harness/example-http-server dev",
     "build": "bun run --filter '*' build",
     "test": "bun test",

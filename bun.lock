@@ -31,6 +31,28 @@
         "typescript": "^5.7.0",
       },
     },
+    "apps/deep-research": {
+      "name": "@harness/example-deep-research",
+      "version": "0.0.0",
+      "dependencies": {
+        "@harness/agent": "workspace:*",
+        "@harness/core": "workspace:*",
+        "@harness/observability": "workspace:*",
+        "@harness/tools": "workspace:*",
+        "@harness/tui": "workspace:*",
+        "@openrouter/ai-sdk-provider": "1.5.4",
+        "picocolors": "1.1.1",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+      "optionalDependencies": {
+        "@harness/mcp": "workspace:*",
+        "@harness/memory-sqlite": "workspace:*",
+      },
+    },
     "packages/agent": {
       "name": "@harness/agent",
       "version": "0.0.0",
@@ -293,6 +315,8 @@
     "@harness/eval": ["@harness/eval@workspace:packages/eval"],
 
     "@harness/example-cli-chat": ["@harness/example-cli-chat@workspace:apps/cli-chat"],
+
+    "@harness/example-deep-research": ["@harness/example-deep-research@workspace:apps/deep-research"],
 
     "@harness/mcp": ["@harness/mcp@workspace:packages/mcp"],
 
