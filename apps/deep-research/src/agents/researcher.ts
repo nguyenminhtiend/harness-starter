@@ -1,4 +1,4 @@
-import type { Tool } from '@harness/agent';
+import type { ConversationStore, Tool } from '@harness/agent';
 import { createAgent, inMemoryStore, subagentAsTool } from '@harness/agent';
 import type { Provider } from '@harness/core';
 import { fetchTool } from '@harness/tools';
@@ -47,12 +47,16 @@ export function createResearchAgent(provider: Provider) {
   });
 }
 
-export function createResearcherTool(provider: Provider, tools: Tool[]): Tool {
+export function createResearcherTool(
+  provider: Provider,
+  tools: Tool[],
+  memory?: ConversationStore,
+): Tool {
   const agent = createAgent({
     provider,
     systemPrompt: SUBQUESTION_PROMPT,
     tools,
-    memory: inMemoryStore(),
+    memory: memory ?? inMemoryStore(),
     maxTurns: 15,
   });
 

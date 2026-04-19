@@ -1,4 +1,4 @@
-import type { Agent } from '@harness/agent';
+import type { Agent, ConversationStore } from '@harness/agent';
 import { createAgent, inMemoryStore, summarizingCompactor } from '@harness/agent';
 import type { Provider } from '@harness/core';
 
@@ -22,12 +22,12 @@ Guidelines:
 - Be thorough but concise — no filler or repetition
 - The references array must include every URL cited in the report`;
 
-export function createWriterAgent(provider: Provider): Agent {
+export function createWriterAgent(provider: Provider, memory?: ConversationStore): Agent {
   return createAgent({
     provider,
     systemPrompt: WRITER_PROMPT,
     compactor: summarizingCompactor(),
-    memory: inMemoryStore(),
+    memory: memory ?? inMemoryStore(),
     maxTurns: 3,
   });
 }

@@ -1,4 +1,4 @@
-import type { Agent } from '@harness/agent';
+import type { Agent, ConversationStore } from '@harness/agent';
 import { createAgent, inMemoryStore } from '@harness/agent';
 import type { Provider } from '@harness/core';
 
@@ -19,11 +19,11 @@ Respond with ONLY valid JSON (no markdown fences, no explanation):
 
 Be strict: if any citation cannot be verified, set pass to false.`;
 
-export function createFactCheckerAgent(provider: Provider): Agent {
+export function createFactCheckerAgent(provider: Provider, memory?: ConversationStore): Agent {
   return createAgent({
     provider,
     systemPrompt: FACT_CHECKER_PROMPT,
-    memory: inMemoryStore(),
+    memory: memory ?? inMemoryStore(),
     maxTurns: 3,
   });
 }

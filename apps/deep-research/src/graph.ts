@@ -1,5 +1,5 @@
-import type { Agent, Checkpointer, GraphNode, Tool } from '@harness/agent';
-import { graph, interrupt } from '@harness/agent';
+import type { Agent, Checkpointer, ConversationStore, GraphNode, Tool } from '@harness/agent';
+import { graph, inMemoryStore, interrupt } from '@harness/agent';
 import type { Provider } from '@harness/core';
 import { createFactCheckerAgent } from './agents/fact-checker.ts';
 import { createPlannerNode } from './agents/planner.ts';
@@ -17,10 +17,12 @@ export interface ResearchGraphOpts {
   depth?: string;
   skipApproval?: boolean;
   checkpointer?: Checkpointer;
+  store?: ConversationStore;
 }
 
 export function createResearchGraph(opts: ResearchGraphOpts): Agent {
-  const { provider, tools = [], depth, skipApproval = false, checkpointer } = opts;
+  const { provider, tools = [], depth, skipApproval = false, checkpointer, store } = opts;
+  const agentStore = store ?? inMemoryStore();
 
   const planNode = createPlannerNode(provider, depth);
 
@@ -38,7 +40,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
     id: 'research',
     fn: async (state, ctx) => {
       const plan = state.plan as ResearchPlan;
-      const researcherTool = createResearcherTool(provider, tools);
+      const researcherTool = createResearcherTool(provider, tools, agentStore);
       const toolCtx = {
         runId: ctx.runId,
         conversationId: ctx.conversationId,
@@ -65,7 +67,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const writeNode: GraphNode = {
     id: 'write',
     fn: async (state, ctx) => {
-      const writer = createWriterAgent(provider);
+      const writer = createWriterAgent(provider, agentStore);
       const findings = state.findings as Finding[];
       const findingsText = findings
         .map(
@@ -85,7 +87,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const factCheckNode: GraphNode = {
     id: 'fact-check',
     fn: async (state, ctx) => {
-      const checker = createFactCheckerAgent(provider);
+      const checker = createFactCheckerAgent(provider, agentStore);
       const retries = ((state.factCheckRetries as number) ?? 0) + 1;
 
       const result = await checker.run(

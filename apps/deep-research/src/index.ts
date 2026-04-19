@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { createStreamRenderer, inMemoryCheckpointer } from '@harness/agent';
+import { createStreamRenderer } from '@harness/agent';
 import { promptApproval } from '@harness/tui/approval';
 import { setupSigint } from '@harness/tui/sigint';
 import { createSpinner } from '@harness/tui/spinner';
@@ -8,6 +8,7 @@ import { formatUsage } from '@harness/tui/usage';
 import pc from 'picocolors';
 import { config } from './config.ts';
 import { createResearchGraph } from './graph.ts';
+import { createPersistence } from './persistence.ts';
 import { createProvider } from './provider.ts';
 import { slugify } from './report/slug.ts';
 import { writeReport } from './report/write.ts';
@@ -85,14 +86,24 @@ const depth = values.depth ?? 'medium';
 const modelId = values.model;
 
 const provider = createProvider(modelId);
-const checkpointer = inMemoryCheckpointer();
+const ephemeral = values.ephemeral ?? false;
+const persistence = await createPersistence({
+  ephemeral,
+  dataDir: config.DATA_DIR,
+});
+const { store, checkpointer } = persistence;
 const runId = values.resume ?? crypto.randomUUID();
+
+if (persistence.type === 'sqlite') {
+  console.log(pc.dim(`Using sqlite storage (${config.DATA_DIR})`));
+}
 
 const agent = createResearchGraph({
   provider,
   depth,
   skipApproval,
   checkpointer,
+  store,
 });
 
 let streamAc: AbortController | null = new AbortController();
@@ -205,9 +216,11 @@ try {
   }
 
   console.log(pc.dim(footer));
+  persistence.close();
   process.exit(0);
 } catch (err) {
   spinner.stop();
+  persistence.close();
   if ((err as Error).name === 'AbortError') {
     console.error(`\n${pc.dim('(cancelled)')}`);
     process.exit(130);
