@@ -22,12 +22,17 @@ Guidelines:
 - Be thorough but concise — no filler or repetition
 - The references array must include every URL cited in the report`;
 
-export function createWriterAgent(provider: Provider, memory?: ConversationStore): Agent {
+export function createWriterAgent(
+  provider: Provider,
+  memory?: ConversationStore,
+  budgets?: { usd?: number; tokens?: number },
+): Agent {
   return createAgent({
     provider,
     systemPrompt: WRITER_PROMPT,
     compactor: summarizingCompactor(),
     memory: memory ?? inMemoryStore(),
     maxTurns: 3,
+    ...(budgets ? { budgets } : {}),
   });
 }

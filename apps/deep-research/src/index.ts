@@ -1,11 +1,13 @@
 import * as fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { createStreamRenderer } from '@harness/agent';
+import { BudgetExceededError } from '@harness/core';
 import { promptApproval } from '@harness/tui/approval';
 import { setupSigint } from '@harness/tui/sigint';
 import { createSpinner } from '@harness/tui/spinner';
 import { formatUsage } from '@harness/tui/usage';
 import pc from 'picocolors';
+import { splitBudget } from './budgets.ts';
 import { config } from './config.ts';
 import { createResearchGraph } from './graph.ts';
 import { createPersistence } from './persistence.ts';
@@ -84,6 +86,11 @@ const noFile = values['no-file'] ?? false;
 const skipApproval = values['no-approval'] ?? false;
 const depth = values.depth ?? 'medium';
 const modelId = values.model;
+const budgetUsd = values['budget-usd'] ? Number(values['budget-usd']) : config.BUDGET_USD;
+const budgetTokens = values['budget-tokens']
+  ? Number(values['budget-tokens'])
+  : config.BUDGET_TOKENS;
+const budgets = splitBudget({ usd: budgetUsd, tokens: budgetTokens });
 
 const provider = createProvider(modelId);
 const ephemeral = values.ephemeral ?? false;
@@ -104,6 +111,7 @@ const agent = createResearchGraph({
   skipApproval,
   checkpointer,
   store,
+  budgets,
 });
 
 let streamAc: AbortController | null = new AbortController();
@@ -224,6 +232,10 @@ try {
   if ((err as Error).name === 'AbortError') {
     console.error(`\n${pc.dim('(cancelled)')}`);
     process.exit(130);
+  }
+  if (err instanceof BudgetExceededError) {
+    console.error(`\n${pc.yellow('[budget exceeded]')} ${err.message}`);
+    process.exit(1);
   }
   console.error(`\n${pc.red('[error]')} ${(err as Error).message ?? err}`);
   process.exit(1);

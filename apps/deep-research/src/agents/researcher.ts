@@ -51,6 +51,7 @@ export function createResearcherTool(
   provider: Provider,
   tools: Tool[],
   memory?: ConversationStore,
+  budgets?: { usd?: number; tokens?: number },
 ): Tool {
   const agent = createAgent({
     provider,
@@ -58,6 +59,7 @@ export function createResearcherTool(
     tools,
     memory: memory ?? inMemoryStore(),
     maxTurns: 15,
+    ...(budgets ? { budgets } : {}),
   });
 
   return subagentAsTool(agent, {

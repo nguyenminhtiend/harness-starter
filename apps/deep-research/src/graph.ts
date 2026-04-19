@@ -5,6 +5,7 @@ import { createFactCheckerAgent } from './agents/fact-checker.ts';
 import { createPlannerNode } from './agents/planner.ts';
 import { createResearcherTool } from './agents/researcher.ts';
 import { createWriterAgent } from './agents/writer.ts';
+import type { BudgetSplit } from './budgets.ts';
 import type { ResearchPlan } from './schemas/plan.ts';
 import type { Finding } from './schemas/report.ts';
 import { Finding as FindingSchema } from './schemas/report.ts';
@@ -18,10 +19,11 @@ export interface ResearchGraphOpts {
   skipApproval?: boolean;
   checkpointer?: Checkpointer;
   store?: ConversationStore;
+  budgets?: BudgetSplit;
 }
 
 export function createResearchGraph(opts: ResearchGraphOpts): Agent {
-  const { provider, tools = [], depth, skipApproval = false, checkpointer, store } = opts;
+  const { provider, tools = [], depth, skipApproval = false, checkpointer, store, budgets } = opts;
   const agentStore = store ?? inMemoryStore();
 
   const planNode = createPlannerNode(provider, depth);
@@ -40,7 +42,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
     id: 'research',
     fn: async (state, ctx) => {
       const plan = state.plan as ResearchPlan;
-      const researcherTool = createResearcherTool(provider, tools, agentStore);
+      const researcherTool = createResearcherTool(provider, tools, agentStore, budgets?.researcher);
       const toolCtx = {
         runId: ctx.runId,
         conversationId: ctx.conversationId,
@@ -67,7 +69,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const writeNode: GraphNode = {
     id: 'write',
     fn: async (state, ctx) => {
-      const writer = createWriterAgent(provider, agentStore);
+      const writer = createWriterAgent(provider, agentStore, budgets?.writer);
       const findings = state.findings as Finding[];
       const findingsText = findings
         .map(
@@ -87,7 +89,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const factCheckNode: GraphNode = {
     id: 'fact-check',
     fn: async (state, ctx) => {
-      const checker = createFactCheckerAgent(provider, agentStore);
+      const checker = createFactCheckerAgent(provider, agentStore, budgets?.factChecker);
       const retries = ((state.factCheckRetries as number) ?? 0) + 1;
 
       const result = await checker.run(
