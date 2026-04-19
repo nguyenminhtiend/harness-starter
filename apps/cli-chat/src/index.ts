@@ -1,9 +1,11 @@
 import * as readline from 'node:readline';
 import { createAgent, createStreamRenderer, inMemoryStore } from '@harness/agent';
+import { setupSigint } from '@harness/tui/sigint';
+import { createSpinner } from '@harness/tui/spinner';
+import { formatUsage } from '@harness/tui/usage';
 import pc from 'picocolors';
 import { config } from './config.ts';
 import { provider } from './provider.ts';
-import { createSpinner } from './spinner.ts';
 
 const agent = createAgent({
   provider,
@@ -28,14 +30,11 @@ function exit() {
   process.exit(0);
 }
 
-process.on('SIGINT', () => {
-  if (streaming && streamAc) {
-    streamAc.abort();
-    return;
-  }
-  exit();
+setupSigint({
+  isStreaming: () => streaming && streamAc !== null,
+  onAbort: () => streamAc?.abort(),
+  onExit: exit,
 });
-process.on('SIGTERM', exit);
 
 console.log(`harness cli-chat · model: ${config.MODEL_ID}`);
 console.log('Type a message and press Enter. Ctrl+C to quit.\n');
@@ -72,9 +71,11 @@ function prompt() {
         agent.stream({ userMessage: line, conversationId }, { signal: streamAc.signal }),
       );
 
-      const tokens = summary.usage.totalTokens ?? 0;
-      const duration = (summary.durationMs / 1000).toFixed(1);
-      process.stdout.write(`\n${pc.dim(`(${tokens} tokens · ${duration}s)`)}\n\n`);
+      const footer = formatUsage({
+        totalTokens: summary.usage.totalTokens ?? 0,
+        durationMs: summary.durationMs,
+      });
+      process.stdout.write(`\n${pc.dim(footer)}\n\n`);
     } catch (err) {
       spinner.stop();
       if ((err as Error).name === 'AbortError') {
