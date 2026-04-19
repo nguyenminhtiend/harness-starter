@@ -30,7 +30,7 @@ export interface RunContext {
   runId: string;
   conversationId: string;
   signal: AbortSignal;
-  bus?: EventBus | undefined;
+  bus?: EventBus;
 }
 
 // --- Tool ---
@@ -117,9 +117,9 @@ export interface PendingApproval {
 // --- Approval ---
 
 export type ApprovalDecision =
-  | { approve: true }
-  | { approve: false; reason?: string }
-  | { approve: true; modifiedArgs: unknown };
+  | { type: 'approve'; approve: true }
+  | { type: 'reject'; approve: false; reason?: string }
+  | { type: 'approve-with-args'; approve: true; modifiedArgs: unknown };
 
 export interface ApprovalResolver {
   resolve(approvalId: string, decision: ApprovalDecision): void;

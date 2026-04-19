@@ -13,14 +13,16 @@ export function createSpinner() {
     process.stdout.write('\r\x1b[K');
   }
 
+  function tick() {
+    clear();
+    process.stdout.write(pc.dim(FRAMES[frame % FRAMES.length]));
+    frame++;
+  }
+
   return {
     start() {
       delayTimer = setTimeout(() => {
-        timer = setInterval(() => {
-          clear();
-          process.stdout.write(pc.dim(FRAMES[frame % FRAMES.length]));
-          frame++;
-        }, INTERVAL_MS);
+        timer = setInterval(tick, INTERVAL_MS);
       }, DELAY_MS);
     },
     stop() {

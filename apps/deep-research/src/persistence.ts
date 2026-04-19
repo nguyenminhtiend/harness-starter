@@ -15,14 +15,18 @@ export interface PersistenceOpts {
   dataDir?: string;
 }
 
+function inMemoryPersistence(): PersistenceResult {
+  return {
+    store: inMemoryStore(),
+    checkpointer: inMemoryCheckpointer(),
+    type: 'memory',
+    close: () => {},
+  };
+}
+
 export async function createPersistence(opts?: PersistenceOpts): Promise<PersistenceResult> {
   if (opts?.ephemeral) {
-    return {
-      store: inMemoryStore(),
-      checkpointer: inMemoryCheckpointer(),
-      type: 'memory',
-      close: () => {},
-    };
+    return inMemoryPersistence();
   }
 
   try {
@@ -44,11 +48,6 @@ export async function createPersistence(opts?: PersistenceOpts): Promise<Persist
     };
   } catch {
     console.warn('[deep-research] @harness/memory-sqlite not available, using in-memory storage');
-    return {
-      store: inMemoryStore(),
-      checkpointer: inMemoryCheckpointer(),
-      type: 'memory',
-      close: () => {},
-    };
+    return inMemoryPersistence();
   }
 }

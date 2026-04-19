@@ -3,6 +3,7 @@ import type { FinishReason, StreamEvent, Usage } from '@harness/core';
 import { fakeProvider } from '@harness/core/testing';
 import { z } from 'zod';
 import { createAgent } from './create-agent.ts';
+import type { StreamRendererCallbacks } from './stream-renderer.ts';
 import { createStreamRenderer } from './stream-renderer.ts';
 import { tool } from './tool.ts';
 import type { AgentEvent } from './types.ts';
@@ -73,55 +74,95 @@ describe('createStreamRenderer', () => {
     expect(summary.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  test('calls onTextDelta callback for each text-delta', async () => {
-    const onTextDelta = mock(() => {});
-    const renderer = createStreamRenderer({ onTextDelta });
-    const stream = iterableFrom([
-      { type: 'text-delta', delta: 'A' },
-      { type: 'text-delta', delta: 'B' },
-      { type: 'finish', reason: 'stop' as FinishReason },
-    ]);
+  const callbackTests: Array<{
+    name: string;
+    events: AgentEvent[];
+    callbackKey: keyof StreamRendererCallbacks;
+    expectedArgs: unknown[];
+  }> = [
+    {
+      name: 'onTextDelta for text-delta',
+      events: [
+        { type: 'text-delta', delta: 'A' },
+        { type: 'text-delta', delta: 'B' },
+        { type: 'finish', reason: 'stop' as FinishReason },
+      ],
+      callbackKey: 'onTextDelta',
+      expectedArgs: ['A'],
+    },
+    {
+      name: 'onThinkingDelta for thinking-delta',
+      events: [
+        { type: 'thinking-delta', delta: 'hmm' },
+        { type: 'finish', reason: 'stop' as FinishReason },
+      ],
+      callbackKey: 'onThinkingDelta',
+      expectedArgs: ['hmm'],
+    },
+    {
+      name: 'onToolStart for tool-start',
+      events: [
+        { type: 'tool-start', id: 't1', name: 'echo', args: { text: 'hi' } },
+        { type: 'finish', reason: 'stop' as FinishReason },
+      ],
+      callbackKey: 'onToolStart',
+      expectedArgs: ['t1', 'echo', { text: 'hi' }],
+    },
+    {
+      name: 'onToolResult for tool-result',
+      events: [
+        { type: 'tool-result', id: 't1', result: 'done', durationMs: 42 },
+        { type: 'finish', reason: 'stop' as FinishReason },
+      ],
+      callbackKey: 'onToolResult',
+      expectedArgs: ['t1', 'done', 42],
+    },
+    {
+      name: 'onUsage for usage',
+      events: [
+        { type: 'usage', tokens: USAGE },
+        { type: 'finish', reason: 'stop' as FinishReason },
+      ],
+      callbackKey: 'onUsage',
+      expectedArgs: [USAGE],
+    },
+    {
+      name: 'onFinish for finish',
+      events: [{ type: 'finish', reason: 'stop' as FinishReason }],
+      callbackKey: 'onFinish',
+      expectedArgs: ['stop'],
+    },
+    {
+      name: 'onTurnStart for turn-start',
+      events: [
+        { type: 'turn-start', turn: 1 },
+        { type: 'finish', reason: 'stop' as FinishReason },
+      ],
+      callbackKey: 'onTurnStart',
+      expectedArgs: [1],
+    },
+    {
+      name: 'onBudgetExceeded for budget.exceeded',
+      events: [
+        { type: 'budget.exceeded', kind: 'tokens' as const, spent: 100, limit: 50 },
+        { type: 'finish', reason: 'stop' as FinishReason },
+      ],
+      callbackKey: 'onBudgetExceeded',
+      expectedArgs: ['tokens', 100, 50],
+    },
+    {
+      name: 'onAbort for abort',
+      events: [{ type: 'abort', reason: 'user cancelled' }],
+      callbackKey: 'onAbort',
+      expectedArgs: ['user cancelled'],
+    },
+  ];
 
-    await renderer.render(stream);
-    expect(onTextDelta).toHaveBeenCalledTimes(2);
-    expect(onTextDelta.mock.calls[0]).toEqual(['A']);
-    expect(onTextDelta.mock.calls[1]).toEqual(['B']);
-  });
-
-  test('calls onThinkingDelta for thinking-delta events', async () => {
-    const onThinkingDelta = mock(() => {});
-    const renderer = createStreamRenderer({ onThinkingDelta });
-    const stream = iterableFrom([
-      { type: 'thinking-delta', delta: 'hmm' },
-      { type: 'finish', reason: 'stop' as FinishReason },
-    ]);
-
-    await renderer.render(stream);
-    expect(onThinkingDelta).toHaveBeenCalledWith('hmm');
-  });
-
-  test('calls onToolStart for tool-start events', async () => {
-    const onToolStart = mock(() => {});
-    const renderer = createStreamRenderer({ onToolStart });
-    const stream = iterableFrom([
-      { type: 'tool-start', id: 't1', name: 'echo', args: { text: 'hi' } },
-      { type: 'finish', reason: 'stop' as FinishReason },
-    ]);
-
-    await renderer.render(stream);
-    expect(onToolStart).toHaveBeenCalledWith('t1', 'echo', { text: 'hi' });
-  });
-
-  test('calls onToolResult for tool-result events', async () => {
-    const onToolResult = mock(() => {});
-    const renderer = createStreamRenderer({ onToolResult });
-    const stream = iterableFrom([
-      { type: 'tool-result', id: 't1', result: 'done', durationMs: 42 },
-      { type: 'finish', reason: 'stop' as FinishReason },
-    ]);
-
-    await renderer.render(stream);
-    expect(onToolResult).toHaveBeenCalledWith('t1', 'done', 42);
+  test.each(callbackTests)('calls $name', async ({ events, callbackKey, expectedArgs }) => {
+    const callback = mock(() => {});
+    const renderer = createStreamRenderer({ [callbackKey]: callback });
+    await renderer.render(iterableFrom(events));
+    expect(callback).toHaveBeenCalledWith(...expectedArgs);
   });
 
   test('calls onToolError for tool-error events', async () => {
@@ -135,60 +176,6 @@ describe('createStreamRenderer', () => {
 
     await renderer.render(stream);
     expect(onToolError).toHaveBeenCalledWith('t1', err);
-  });
-
-  test('calls onUsage for each usage event', async () => {
-    const onUsage = mock(() => {});
-    const renderer = createStreamRenderer({ onUsage });
-    const stream = iterableFrom([
-      { type: 'usage', tokens: USAGE },
-      { type: 'finish', reason: 'stop' as FinishReason },
-    ]);
-
-    await renderer.render(stream);
-    expect(onUsage).toHaveBeenCalledWith(USAGE);
-  });
-
-  test('calls onFinish for finish events', async () => {
-    const onFinish = mock(() => {});
-    const renderer = createStreamRenderer({ onFinish });
-    const stream = iterableFrom([{ type: 'finish', reason: 'stop' as FinishReason }]);
-
-    await renderer.render(stream);
-    expect(onFinish).toHaveBeenCalledWith('stop');
-  });
-
-  test('calls onTurnStart for turn-start events', async () => {
-    const onTurnStart = mock(() => {});
-    const renderer = createStreamRenderer({ onTurnStart });
-    const stream = iterableFrom([
-      { type: 'turn-start', turn: 1 },
-      { type: 'finish', reason: 'stop' as FinishReason },
-    ]);
-
-    await renderer.render(stream);
-    expect(onTurnStart).toHaveBeenCalledWith(1);
-  });
-
-  test('calls onBudgetExceeded for budget.exceeded events', async () => {
-    const onBudgetExceeded = mock(() => {});
-    const renderer = createStreamRenderer({ onBudgetExceeded });
-    const stream = iterableFrom([
-      { type: 'budget.exceeded', kind: 'tokens' as const, spent: 100, limit: 50 },
-      { type: 'finish', reason: 'stop' as FinishReason },
-    ]);
-
-    await renderer.render(stream);
-    expect(onBudgetExceeded).toHaveBeenCalledWith('tokens', 100, 50);
-  });
-
-  test('calls onAbort for abort events', async () => {
-    const onAbort = mock(() => {});
-    const renderer = createStreamRenderer({ onAbort });
-    const stream = iterableFrom([{ type: 'abort', reason: 'user cancelled' }]);
-
-    await renderer.render(stream);
-    expect(onAbort).toHaveBeenCalledWith('user cancelled');
   });
 
   test('calls onError when stream iteration throws', async () => {

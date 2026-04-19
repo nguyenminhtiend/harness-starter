@@ -28,7 +28,7 @@ describe('ApprovalRegistry', () => {
     const registry = createApprovalRegistry();
 
     const promise = registry.waitForApproval('a1', 'test', {});
-    registry.resolver.resolve('a1', { approve: true });
+    registry.resolver.resolve('a1', { type: 'approve', approve: true });
 
     const decision = await promise;
     expect(decision.approve).toBe(true);
@@ -38,11 +38,11 @@ describe('ApprovalRegistry', () => {
     const registry = createApprovalRegistry();
 
     const promise = registry.waitForApproval('a1', 'test', {});
-    registry.resolver.resolve('a1', { approve: false, reason: 'Not allowed' });
+    registry.resolver.resolve('a1', { type: 'reject', approve: false, reason: 'Not allowed' });
 
     const decision = await promise;
     expect(decision.approve).toBe(false);
-    if (!decision.approve) {
+    if (decision.type === 'reject') {
       expect(decision.reason).toBe('Not allowed');
     }
   });

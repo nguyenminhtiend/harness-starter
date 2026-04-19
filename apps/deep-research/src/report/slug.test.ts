@@ -25,6 +25,7 @@ describe('slugify', () => {
     const slug = slugify(long);
     expect(slug.length).toBeLessThanOrEqual(60);
     expect(slug).not.toEndWith('-');
+    expect(slug).toBe('what-are-the-tradeoffs-between-crdts-and-ot-for');
   });
 
   it('handles empty string', () => {

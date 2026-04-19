@@ -20,7 +20,7 @@ afterAll(() => {
 describe('consoleSink', () => {
   test('returns an unsubscribe function', () => {
     const unsub = consoleSink(bus);
-    expect(typeof unsub).toBe('function');
+    expect(unsub).toBeFunction();
   });
 
   test('logs run.start at default (normal) level', () => {

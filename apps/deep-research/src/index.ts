@@ -1,23 +1,141 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseArgs } from 'node:util';
-import { createStreamRenderer } from '@harness/agent';
-import { BudgetExceededError, createEventBus } from '@harness/core';
+import {
+  type Agent,
+  type Checkpointer,
+  createStreamRenderer,
+  type RunState,
+  type StreamRenderer,
+  type StreamSummary,
+} from '@harness/agent';
+import { BudgetExceededError, createEventBus, type EventBus } from '@harness/core';
 import { consoleSink, jsonlSink } from '@harness/observability';
 import { promptApproval } from '@harness/tui/approval';
 import { setupSigint } from '@harness/tui/sigint';
 import { formatUsage } from '@harness/tui/usage';
 import pc from 'picocolors';
 import { splitBudget } from './budgets.ts';
-import { config } from './config.ts';
+import { type Config, config } from './config.ts';
 import { createResearchGraph } from './graph.ts';
-import { createPersistence } from './persistence.ts';
+import { createPersistence, type PersistenceResult } from './persistence.ts';
 import { createProvider } from './provider.ts';
 import { slugify } from './report/slug.ts';
 import { writeReport } from './report/write.ts';
 import type { ResearchPlan } from './schemas/plan.ts';
 import type { Report } from './schemas/report.ts';
 import { createDeepResearchRenderer } from './ui/render.ts';
+
+function readPlanFromCheckpoint(saved: RunState | null): ResearchPlan | undefined {
+  const savedState = saved?.graphState as { data: Record<string, unknown> } | undefined;
+  return savedState?.data?.plan as ResearchPlan | undefined;
+}
+
+async function setupObservability(
+  bus: EventBus,
+  cfg: Config,
+  outDir: string,
+  noFile: boolean,
+  slug: string,
+): Promise<(() => void)[]> {
+  const sinkTeardowns: (() => void)[] = [];
+  sinkTeardowns.push(consoleSink(bus, { level: 'silent' }));
+
+  if (!noFile) {
+    const eventsPath = path.join(outDir, `${slug}-${Date.now()}.events.jsonl`);
+    sinkTeardowns.push(jsonlSink(bus, { path: eventsPath }));
+  }
+
+  if (cfg.LANGFUSE_PUBLIC_KEY) {
+    try {
+      const { langfuseAdapter } = await import('@harness/observability');
+      const langfuseMod = await import('langfuse' as string);
+      const LangfuseCtor = langfuseMod.Langfuse ?? langfuseMod.default;
+      const client = new LangfuseCtor({
+        publicKey: cfg.LANGFUSE_PUBLIC_KEY,
+        secretKey: cfg.LANGFUSE_SECRET_KEY ?? '',
+        ...(cfg.LANGFUSE_BASE_URL ? { baseUrl: cfg.LANGFUSE_BASE_URL } : {}),
+      });
+      sinkTeardowns.push(langfuseAdapter(bus, client));
+      console.log(pc.dim('Langfuse tracing enabled'));
+    } catch {
+      console.warn(pc.yellow('Langfuse requested but langfuse package not available'));
+    }
+  }
+
+  return sinkTeardowns;
+}
+
+async function runResearchLoop(
+  agent: Agent,
+  renderer: StreamRenderer,
+  question: string,
+  checkpointer: Checkpointer,
+  runId: string,
+  streamAc: { current: AbortController | null },
+  skipApproval: boolean,
+): Promise<StreamSummary> {
+  process.stdout.write(pc.dim('📋 planning…\n'));
+
+  let summary = await renderer.render(
+    agent.stream(
+      { userMessage: question },
+      { ...(streamAc.current && { signal: streamAc.current.signal }), runId },
+    ),
+  );
+
+  if (summary.text.trim() || skipApproval) {
+    return summary;
+  }
+
+  const checkpoint = await checkpointer.load(runId);
+  const plan = readPlanFromCheckpoint(checkpoint);
+  if (!plan) {
+    return summary;
+  }
+
+  console.log(pc.bold('\nResearch Plan:\n'));
+  for (const sq of plan.subquestions) {
+    console.log(`  ${pc.cyan(sq.id)} ${sq.question}`);
+    for (const q of sq.searchQueries) {
+      console.log(`     ${pc.dim(q)}`);
+    }
+  }
+  console.log('');
+
+  const answer = await promptApproval('Approve plan?', {
+    choices: ['y', 'n'],
+    defaultChoice: 'n',
+  });
+
+  if (answer.toLowerCase() !== 'y') {
+    console.log(pc.yellow('\nPlan rejected.'));
+    process.exit(2);
+  }
+
+  if (checkpoint?.graphState) {
+    (checkpoint.graphState as { data: Record<string, unknown> }).data.approved = true;
+    await checkpointer.save(runId, checkpoint);
+  }
+
+  streamAc.current = new AbortController();
+  process.stdout.write(pc.dim('\n🔎 researching…\n'));
+
+  summary = await renderer.render(
+    agent.stream({ userMessage: question }, { signal: streamAc.current.signal, runId }),
+  );
+  return summary;
+}
+
+async function persistReport(report: Report, outDir: string, slug: string): Promise<string> {
+  return writeReport(report, outDir, slug);
+}
+
+function shutdown(sinkTeardowns: (() => void)[], persistence: PersistenceResult): void {
+  for (const teardown of sinkTeardowns) {
+    teardown();
+  }
+  persistence.close();
+}
 
 const HELP = `
 ${pc.bold('deep-research')} — local-first deep research CLI
@@ -109,32 +227,7 @@ if (persistence.type === 'sqlite') {
 
 const slug = slugify(question);
 const bus = createEventBus();
-const sinkTeardowns: (() => void)[] = [];
-
-sinkTeardowns.push(consoleSink(bus, { level: 'silent' }));
-
-if (!noFile) {
-  fs.mkdirSync(outDir, { recursive: true });
-  const eventsPath = path.join(outDir, `${slug}-${Date.now()}.events.jsonl`);
-  sinkTeardowns.push(jsonlSink(bus, { path: eventsPath }));
-}
-
-if (config.LANGFUSE_PUBLIC_KEY) {
-  try {
-    const { langfuseAdapter } = await import('@harness/observability');
-    const langfuseMod = await import('langfuse' as string);
-    const LangfuseCtor = langfuseMod.Langfuse ?? langfuseMod.default;
-    const client = new LangfuseCtor({
-      publicKey: config.LANGFUSE_PUBLIC_KEY,
-      secretKey: config.LANGFUSE_SECRET_KEY ?? '',
-      ...(config.LANGFUSE_BASE_URL ? { baseUrl: config.LANGFUSE_BASE_URL } : {}),
-    });
-    sinkTeardowns.push(langfuseAdapter(bus, client));
-    console.log(pc.dim('Langfuse tracing enabled'));
-  } catch {
-    console.warn(pc.yellow('Langfuse requested but langfuse package not available'));
-  }
-}
+const sinkTeardowns = await setupObservability(bus, config, outDir, noFile, slug);
 
 const agent = createResearchGraph({
   provider,
@@ -146,13 +239,13 @@ const agent = createResearchGraph({
   events: bus,
 });
 
-let streamAc: AbortController | null = new AbortController();
+const streamAc = { current: new AbortController() as AbortController | null };
 
 setupSigint({
-  isStreaming: () => streamAc !== null,
+  isStreaming: () => streamAc.current !== null,
   onAbort: () => {
-    streamAc?.abort();
-    streamAc = null;
+    streamAc.current?.abort();
+    streamAc.current = null;
   },
   onExit: () => process.exit(130),
 });
@@ -163,51 +256,15 @@ const rendererCallbacks = createDeepResearchRenderer();
 const renderer = createStreamRenderer(rendererCallbacks);
 
 try {
-  process.stdout.write(pc.dim('📋 planning…\n'));
-
-  let summary = await renderer.render(
-    agent.stream({ userMessage: question }, { signal: streamAc.signal, runId }),
+  const summary = await runResearchLoop(
+    agent,
+    renderer,
+    question,
+    checkpointer,
+    runId,
+    streamAc,
+    skipApproval,
   );
-
-  if (!summary.text.trim() && !skipApproval) {
-    const saved = await checkpointer.load(runId);
-    const gs = saved?.graphState as { data: Record<string, unknown> } | undefined;
-    const plan = gs?.data?.plan as ResearchPlan | undefined;
-
-    if (plan) {
-      console.log(pc.bold('\nResearch Plan:\n'));
-      for (const sq of plan.subquestions) {
-        console.log(`  ${pc.cyan(sq.id)} ${sq.question}`);
-        for (const q of sq.searchQueries) {
-          console.log(`     ${pc.dim(q)}`);
-        }
-      }
-      console.log('');
-
-      const answer = await promptApproval('Approve plan?', {
-        choices: ['y', 'n'],
-        defaultChoice: 'n',
-      });
-
-      if (answer.toLowerCase() !== 'y') {
-        console.log(pc.yellow('\nPlan rejected.'));
-        process.exit(2);
-      }
-
-      const checkpoint = await checkpointer.load(runId);
-      if (checkpoint?.graphState) {
-        (checkpoint.graphState as { data: Record<string, unknown> }).data.approved = true;
-        await checkpointer.save(runId, checkpoint);
-      }
-
-      streamAc = new AbortController();
-      process.stdout.write(pc.dim('\n🔎 researching…\n'));
-
-      summary = await renderer.render(
-        agent.stream({ userMessage: question }, { signal: streamAc.signal, runId }),
-      );
-    }
-  }
 
   const footer = formatUsage({
     totalTokens: summary.usage.totalTokens ?? 0,
@@ -217,28 +274,20 @@ try {
   process.stdout.write('\n');
 
   if (!noFile && summary.text.trim()) {
-    fs.mkdirSync(outDir, { recursive: true });
-
     const report: Report = {
       title: question,
       sections: [{ heading: 'Research', body: summary.text }],
       references: [],
     };
-    const filePath = await writeReport(report, outDir, slug);
+    const filePath = await persistReport(report, outDir, slug);
     console.log(pc.green(`✅ report saved → ${filePath}`));
   }
 
   console.log(pc.dim(footer));
-  for (const teardown of sinkTeardowns) {
-    teardown();
-  }
-  persistence.close();
+  shutdown(sinkTeardowns, persistence);
   process.exit(0);
 } catch (err) {
-  for (const teardown of sinkTeardowns) {
-    teardown();
-  }
-  persistence.close();
+  shutdown(sinkTeardowns, persistence);
   if ((err as Error).name === 'AbortError') {
     console.error(`\n${pc.dim('(cancelled)')}`);
     process.exit(130);

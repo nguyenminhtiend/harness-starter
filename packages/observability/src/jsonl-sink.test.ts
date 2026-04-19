@@ -23,7 +23,7 @@ afterEach(async () => {
 describe('jsonlSink', () => {
   test('returns an unsubscribe function', () => {
     const unsub = jsonlSink(bus, { path: logPath });
-    expect(typeof unsub).toBe('function');
+    expect(unsub).toBeFunction();
   });
 
   test('creates the file and writes one JSON line per event', async () => {

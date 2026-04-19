@@ -53,7 +53,7 @@ export async function* runLoop(
   const { provider, tools, memory, hooks, bus, maxTurns, retryPolicy } = params;
   const { conversationId, userMessage, runId, signal } = input;
 
-  const ctx: RunContext = { runId, conversationId, signal, bus };
+  const ctx: RunContext = { runId, conversationId, signal, ...(bus !== undefined ? { bus } : {}) };
 
   // 1. Load history
   let messages: Message[] = memory ? await memory.load(conversationId) : [];
@@ -210,8 +210,8 @@ export async function* runLoop(
         }
 
         const decision = await hooks.waitForApproval(approvalId, tc.toolName, tc.args);
-        if (!decision.approve) {
-          const reason = 'reason' in decision ? decision.reason : 'Approval denied';
+        if (decision.type === 'reject') {
+          const reason = decision.reason ?? 'Approval denied';
           const err = new ToolError(`Tool approval denied: ${reason}`, { toolName: tc.toolName });
           yield { type: 'tool-error', id: tc.toolCallId, error: err };
           bus?.emit('tool.error', { runId, toolName: tc.toolName, error: err });
@@ -219,7 +219,7 @@ export async function* runLoop(
           continue;
         }
         const args =
-          'modifiedArgs' in decision && decision.modifiedArgs !== undefined
+          decision.type === 'approve-with-args' && decision.modifiedArgs !== undefined
             ? decision.modifiedArgs
             : tc.args;
         approvedCalls.push({ tc, args });

@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import { makeTestCtx } from '../test-utils.ts';
 import { loadBraveSearchTools } from './mcp.ts';
 import { createSearchTools } from './search.ts';
 
-const ctx = {
-  runId: 'r1',
-  conversationId: 'c1',
-  signal: new AbortController().signal,
-};
+const ctx = makeTestCtx();
 
 function getFetchTool(tools: { name: string }[]) {
   const t = tools.find((t) => t.name === 'fetch');
@@ -36,11 +33,17 @@ describe('createSearchTools', () => {
   });
 
   it('fetch tool allows HTTPS URLs', async () => {
-    const tools = await createSearchTools();
-    const fetchT = getFetchTool(tools);
-    await expect(
-      fetchT.execute({ url: 'https://httpbin.org/status/200', method: 'HEAD' }, ctx),
-    ).resolves.toBeDefined();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('ok', { status: 200 });
+    try {
+      const tools = await createSearchTools();
+      const fetchT = getFetchTool(tools);
+      await expect(
+        fetchT.execute({ url: 'https://example.com/test', method: 'HEAD' }, ctx),
+      ).resolves.toBeDefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('returns only fetchTool when braveApiKey is not provided', async () => {

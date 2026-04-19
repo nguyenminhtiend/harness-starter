@@ -67,11 +67,14 @@ describe('setupSigint', () => {
 
   it('calls onExit on SIGTERM', () => {
     const capture = captureListeners();
+    let aborted = false;
     let exited = false;
 
     setupSigint({
       isStreaming: () => true,
-      onAbort: () => {},
+      onAbort: () => {
+        aborted = true;
+      },
       onExit: () => {
         exited = true;
       },
@@ -81,5 +84,6 @@ describe('setupSigint', () => {
     process.emit('SIGTERM');
 
     expect(exited).toBe(true);
+    expect(aborted).toBe(false);
   });
 });

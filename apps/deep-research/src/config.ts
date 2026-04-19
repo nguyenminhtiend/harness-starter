@@ -12,7 +12,6 @@ const schema = z.object({
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_BASE_URL: z.string().optional(),
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
 });
 
 export const config = envConfig(schema);

@@ -1,12 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { envConfig } from '@harness/core';
-import { z } from 'zod';
-
-const schema = z.object({
-  OPENROUTER_API_KEY: z.string().min(1),
-  MODEL_ID: z.string().default('anthropic/claude-sonnet-4'),
-  SYSTEM_PROMPT: z.string().optional(),
-});
+import { schema } from './config.ts';
 
 describe('cli-chat config', () => {
   test('parses valid env', () => {
@@ -21,7 +15,7 @@ describe('cli-chat config', () => {
 
   test('applies MODEL_ID default', () => {
     const cfg = envConfig(schema, { OPENROUTER_API_KEY: 'sk-or-test' });
-    expect(cfg.MODEL_ID).toBe('anthropic/claude-sonnet-4');
+    expect(cfg.MODEL_ID).toBe('openrouter/free');
   });
 
   test('rejects missing OPENROUTER_API_KEY', () => {

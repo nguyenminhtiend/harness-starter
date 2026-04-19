@@ -7,6 +7,7 @@ export function extractUrls(text: string): string[] {
   return matches ? [...new Set(matches)] : [];
 }
 
+/** Library utility — not wired into the graph pipeline. Used for programmatic citation validation. */
 /**
  * Output hook that blocks when the report cites URLs that were never fetched
  * during research. Pass the set of fetched URLs at creation time.

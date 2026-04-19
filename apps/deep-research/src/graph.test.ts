@@ -1,62 +1,26 @@
 import { describe, expect, it } from 'bun:test';
-import type { AgentEvent } from '@harness/agent';
 import { inMemoryCheckpointer } from '@harness/agent';
-import type { StreamEvent } from '@harness/core';
 import { fakeProvider } from '@harness/core/testing';
 import { createResearchGraph } from './graph.ts';
-
-function planResponse(plan: object): StreamEvent[] {
-  return [
-    { type: 'text-delta', delta: JSON.stringify(plan) },
-    { type: 'usage', tokens: { inputTokens: 50, outputTokens: 30, totalTokens: 80 } },
-    { type: 'finish', reason: 'stop' },
-  ];
-}
-
-function textScript(text: string): StreamEvent[] {
-  return [
-    { type: 'text-delta', delta: text },
-    { type: 'usage', tokens: { inputTokens: 50, outputTokens: 50, totalTokens: 100 } },
-    { type: 'finish', reason: 'stop' },
-  ];
-}
-
-const samplePlan = {
-  question: 'What is CRDT?',
-  subquestions: [{ id: 'q1', question: 'What are CRDTs?', searchQueries: ['CRDT'] }],
-};
-
-const sampleFinding = JSON.stringify({
-  subquestionId: 'q1',
-  summary: 'CRDTs are conflict-free replicated data types.',
-  sourceUrls: ['https://en.wikipedia.org/wiki/CRDT'],
-});
-
-const sampleReport = JSON.stringify({
-  title: 'CRDTs',
-  sections: [{ heading: 'Overview', body: 'CRDTs are distributed data structures.' }],
-  references: [{ url: 'https://en.wikipedia.org/wiki/CRDT' }],
-});
-
-const factCheckPass = JSON.stringify({ pass: true, issues: [] });
-const factCheckFail = JSON.stringify({ pass: false, issues: ['Bad citation'] });
-
-async function collectEvents(stream: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
-  const events: AgentEvent[] = [];
-  for await (const ev of stream) {
-    events.push(ev);
-  }
-  return events;
-}
+import {
+  collectEvents,
+  factCheckFail,
+  factCheckPass,
+  planResponse,
+  sampleFinding,
+  samplePlan,
+  sampleReport,
+  textScript,
+} from './test-utils.ts';
 
 describe('createResearchGraph', () => {
   it('completes full happy path with skipApproval', async () => {
     const checkpointer = inMemoryCheckpointer();
     const provider = fakeProvider([
       { events: planResponse(samplePlan) },
-      { events: textScript(sampleFinding) },
-      { events: textScript(sampleReport) },
-      { events: textScript(factCheckPass) },
+      { events: textScript(JSON.stringify(sampleFinding)) },
+      { events: textScript(JSON.stringify(sampleReport)) },
+      { events: textScript(JSON.stringify(factCheckPass)) },
     ]);
 
     const agent = createResearchGraph({
@@ -93,6 +57,10 @@ describe('createResearchGraph', () => {
 
     const checkpointEvents = events.filter((e) => e.type === 'checkpoint');
     expect(checkpointEvents.length).toBeGreaterThanOrEqual(1);
+    expect(checkpointEvents[0]).toHaveProperty('type', 'checkpoint');
+    for (const ev of checkpointEvents) {
+      expect(ev).toHaveProperty('runId', 'r1');
+    }
 
     const saved = await checkpointer.load('r1');
     const gs = saved?.graphState as { currentNode: string; data: Record<string, unknown> };
@@ -120,9 +88,9 @@ describe('createResearchGraph', () => {
     }
 
     const p2 = fakeProvider([
-      { events: textScript(sampleFinding) },
-      { events: textScript(sampleReport) },
-      { events: textScript(factCheckPass) },
+      { events: textScript(JSON.stringify(sampleFinding)) },
+      { events: textScript(JSON.stringify(sampleReport)) },
+      { events: textScript(JSON.stringify(factCheckPass)) },
     ]);
     const g2 = createResearchGraph({
       provider: p2,
@@ -141,11 +109,11 @@ describe('createResearchGraph', () => {
     const checkpointer = inMemoryCheckpointer();
     const provider = fakeProvider([
       { events: planResponse(samplePlan) },
-      { events: textScript(sampleFinding) },
-      { events: textScript(sampleReport) },
-      { events: textScript(factCheckFail) },
-      { events: textScript(sampleReport) },
-      { events: textScript(factCheckFail) },
+      { events: textScript(JSON.stringify(sampleFinding)) },
+      { events: textScript(JSON.stringify(sampleReport)) },
+      { events: textScript(JSON.stringify(factCheckFail)) },
+      { events: textScript(JSON.stringify(sampleReport)) },
+      { events: textScript(JSON.stringify(factCheckFail)) },
     ]);
 
     const agent = createResearchGraph({
@@ -168,11 +136,11 @@ describe('createResearchGraph', () => {
     const checkpointer = inMemoryCheckpointer();
     const provider = fakeProvider([
       { events: planResponse(samplePlan) },
-      { events: textScript(sampleFinding) },
-      { events: textScript(sampleReport) },
-      { events: textScript(factCheckFail) },
-      { events: textScript(sampleReport) },
-      { events: textScript(factCheckPass) },
+      { events: textScript(JSON.stringify(sampleFinding)) },
+      { events: textScript(JSON.stringify(sampleReport)) },
+      { events: textScript(JSON.stringify(factCheckFail)) },
+      { events: textScript(JSON.stringify(sampleReport)) },
+      { events: textScript(JSON.stringify(factCheckPass)) },
     ]);
 
     const agent = createResearchGraph({

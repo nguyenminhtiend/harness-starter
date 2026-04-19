@@ -2,57 +2,27 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentEvent } from '@harness/agent';
 import { inMemoryCheckpointer } from '@harness/agent';
-import type { StreamEvent } from '@harness/core';
 import { fakeProvider } from '@harness/core/testing';
 import { createResearchGraph } from '../src/graph.ts';
 import { writeReport } from '../src/report/write.ts';
 import type { Report } from '../src/schemas/report.ts';
+import {
+  sampleFinding as baseFinding,
+  sampleReport as baseReport,
+  collectEvents,
+  factCheckPass,
+  planResponse,
+  samplePlan,
+  textScript,
+} from '../src/test-utils.ts';
 
-function planResponse(plan: object): StreamEvent[] {
-  return [
-    { type: 'text-delta', delta: JSON.stringify(plan) },
-    { type: 'usage', tokens: { inputTokens: 50, outputTokens: 30, totalTokens: 80 } },
-    { type: 'finish', reason: 'stop' },
-  ];
-}
-
-function textScript(text: string): StreamEvent[] {
-  return [
-    { type: 'text-delta', delta: text },
-    { type: 'usage', tokens: { inputTokens: 50, outputTokens: 50, totalTokens: 100 } },
-    { type: 'finish', reason: 'stop' },
-  ];
-}
-
-const samplePlan = {
-  question: 'What is CRDT?',
-  subquestions: [{ id: 'q1', question: 'What are CRDTs?', searchQueries: ['CRDT'] }],
-};
-
-const sampleFinding = JSON.stringify({
-  subquestionId: 'q1',
-  summary: 'CRDTs are conflict-free replicated data types.',
-  sourceUrls: ['https://en.wikipedia.org/wiki/CRDT'],
-});
-
+const sampleFinding = JSON.stringify(baseFinding);
 const sampleReport = JSON.stringify({
-  title: 'CRDTs',
+  ...baseReport,
   sections: [{ heading: 'Overview', body: 'CRDTs are distributed data structures [1].' }],
-  references: [{ url: 'https://en.wikipedia.org/wiki/CRDT' }],
 });
-
-const factCheckPass = JSON.stringify({ pass: true, issues: [] });
 const factCheckFail = JSON.stringify({ pass: false, issues: ['Bad citation [2]'] });
-
-async function collectEvents(stream: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
-  const events: AgentEvent[] = [];
-  for await (const ev of stream) {
-    events.push(ev);
-  }
-  return events;
-}
 
 let tmpDir: string;
 
@@ -69,7 +39,7 @@ describe('integration: full pipeline', () => {
       { events: planResponse(samplePlan) },
       { events: textScript(sampleFinding) },
       { events: textScript(sampleReport) },
-      { events: textScript(factCheckPass) },
+      { events: textScript(JSON.stringify(factCheckPass)) },
     ]);
 
     const agent = createResearchGraph({
@@ -103,7 +73,7 @@ describe('integration: full pipeline', () => {
       { events: textScript(sampleReport) },
       { events: textScript(factCheckFail) },
       { events: textScript(sampleReport) },
-      { events: textScript(factCheckPass) },
+      { events: textScript(JSON.stringify(factCheckPass)) },
     ]);
 
     const agent = createResearchGraph({
@@ -192,7 +162,7 @@ describe('integration: full pipeline', () => {
     const p2 = fakeProvider([
       { events: textScript(sampleFinding) },
       { events: textScript(sampleReport) },
-      { events: textScript(factCheckPass) },
+      { events: textScript(JSON.stringify(factCheckPass)) },
     ]);
     const g2 = createResearchGraph({
       provider: p2,

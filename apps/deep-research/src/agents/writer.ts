@@ -1,6 +1,7 @@
-import type { Agent, ConversationStore } from '@harness/agent';
+import type { Agent } from '@harness/agent';
 import { createAgent, inMemoryStore, summarizingCompactor } from '@harness/agent';
-import type { EventBus, Provider } from '@harness/core';
+import type { Provider } from '@harness/core';
+import type { BaseAgentOpts } from './types.ts';
 
 const WRITER_PROMPT = `You are a report writer. You receive research findings and synthesize them into a structured report.
 
@@ -22,13 +23,7 @@ Guidelines:
 - Be thorough but concise — no filler or repetition
 - The references array must include every URL cited in the report`;
 
-export interface WriterOpts {
-  memory?: ConversationStore | undefined;
-  budgets?: { usd?: number; tokens?: number } | undefined;
-  events?: EventBus | undefined;
-}
-
-export function createWriterAgent(provider: Provider, opts?: WriterOpts): Agent {
+export function createWriterAgent(provider: Provider, opts?: BaseAgentOpts): Agent {
   return createAgent({
     provider,
     systemPrompt: WRITER_PROMPT,

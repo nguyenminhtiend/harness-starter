@@ -50,6 +50,13 @@ function eventsForLevel(level: ConsoleSinkLevel): ReadonlySet<keyof HarnessEvent
 
 type Payload = HarnessEvents[keyof HarnessEvents];
 
+function errorMessage(err: unknown, fallback = 'unknown'): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    return (err as { message: string }).message;
+  }
+  return fallback;
+}
+
 function formatEvent(eventName: keyof HarnessEvents, payload: Payload): string {
   const p = payload as Record<string, unknown>;
 
@@ -65,10 +72,8 @@ function formatEvent(eventName: keyof HarnessEvents, payload: Payload): string {
       const turns = result?.turns ?? '?';
       return `[run] done · ${tokens} tokens · ${turns} turns`;
     }
-    case 'run.error': {
-      const error = p.error as { message?: string } | undefined;
-      return `[error] ${error?.message ?? 'unknown error'}`;
-    }
+    case 'run.error':
+      return `[error] ${errorMessage(p.error, 'unknown error')}`;
     case 'budget.exceeded':
       return `[budget] ${p.kind} exceeded: ${p.spent}/${p.limit}`;
     case 'turn.start':
@@ -82,10 +87,8 @@ function formatEvent(eventName: keyof HarnessEvents, payload: Payload): string {
       return `[tool] ${p.toolName} called`;
     case 'tool.finish':
       return `[tool] ${p.toolName} done · ${p.durationMs}ms`;
-    case 'tool.error': {
-      const error = p.error as { message?: string } | undefined;
-      return `[tool] ${p.toolName} error: ${error?.message ?? 'unknown'}`;
-    }
+    case 'tool.error':
+      return `[tool] ${p.toolName} error: ${errorMessage(p.error)}`;
     case 'tool.approval':
       return `[tool] ${p.toolName} awaiting approval`;
     case 'guardrail':

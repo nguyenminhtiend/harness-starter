@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { StreamEvent } from '@harness/core';
 import { fakeProvider } from '@harness/core/testing';
+import { makeTestCtx, sampleFinding } from '../test-utils.ts';
 import { createResearcherTool } from './researcher.ts';
 
 function textScript(text: string): StreamEvent[] {
@@ -11,17 +12,7 @@ function textScript(text: string): StreamEvent[] {
   ];
 }
 
-const ctx = {
-  runId: 'r1',
-  conversationId: 'c1',
-  signal: new AbortController().signal,
-};
-
-const sampleFinding = {
-  subquestionId: 'q1',
-  summary: 'CRDTs are conflict-free replicated data types used for distributed state.',
-  sourceUrls: ['https://en.wikipedia.org/wiki/CRDT'],
-};
+const ctx = makeTestCtx();
 
 describe('createResearcherTool', () => {
   it('returns a tool with name "researcher"', () => {
@@ -44,8 +35,8 @@ describe('createResearcherTool', () => {
     const tool = createResearcherTool(provider, []);
 
     const result = await tool.execute({ input: 'What are CRDTs?' }, ctx);
-    expect(result).toContain('CRDT');
-    expect(result).toContain('conflict-free');
+    const parsed = JSON.parse(result as string);
+    expect(parsed).toMatchObject(sampleFinding);
   });
 
   it('each invocation gets isolated conversation context', async () => {

@@ -1,5 +1,6 @@
 import type { GraphNode } from '@harness/agent';
 import type { Provider } from '@harness/core';
+import { messageTextContent, parseModelJson } from '../lib/parse-json.ts';
 import { ResearchPlan } from '../schemas/plan.ts';
 
 const DEPTH_MAP: Record<string, number> = {
@@ -45,23 +46,9 @@ export function createPlannerNode(provider: Provider, depth = 'medium'): GraphNo
         ctx.signal,
       );
 
-      const text =
-        typeof result.message.content === 'string'
-          ? result.message.content
-          : result.message.content
-              .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-              .map((p) => p.text)
-              .join('');
-
-      const parsed = extractJson(text);
-      const plan = ResearchPlan.parse(parsed);
+      const text = messageTextContent(result.message.content);
+      const plan = parseModelJson(text, ResearchPlan);
       return { ...state, plan };
     },
   };
-}
-
-function extractJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fenced?.[1] ?? text;
-  return JSON.parse(raw.trim());
 }

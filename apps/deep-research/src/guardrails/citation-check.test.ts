@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'bun:test';
+import { makeTestCtx } from '../test-utils.ts';
 import { citationCheckHook, extractUrls } from './citation-check.ts';
 
-const ctx = {
-  runId: 'r1',
-  conversationId: 'c1',
-  signal: new AbortController().signal,
-};
+const ctx = makeTestCtx();
 
 describe('extractUrls', () => {
   it('extracts URLs from markdown reference links', () => {

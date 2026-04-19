@@ -65,6 +65,6 @@ describe('createFactCheckerAgent', () => {
     });
 
     expect(result.finalMessage).toBeDefined();
-    expect(result.turns).toBeGreaterThanOrEqual(1);
+    expect(result.turns).toBe(1);
   });
 });

@@ -50,11 +50,7 @@ export function createStreamRenderer(callbacks: StreamRendererCallbacks): Stream
               text += delta;
             },
             (u) => {
-              usage = {
-                inputTokens: (usage.inputTokens ?? 0) + (u.inputTokens ?? 0),
-                outputTokens: (usage.outputTokens ?? 0) + (u.outputTokens ?? 0),
-                totalTokens: (usage.totalTokens ?? 0) + (u.totalTokens ?? 0),
-              };
+              usage = addUsage(usage, u);
             },
             () => {
               turns++;
@@ -75,8 +71,16 @@ export function createStreamRenderer(callbacks: StreamRendererCallbacks): Stream
   };
 }
 
+function addUsage(a: Usage, b: Usage): Usage {
+  return {
+    inputTokens: (a.inputTokens ?? 0) + (b.inputTokens ?? 0),
+    outputTokens: (a.outputTokens ?? 0) + (b.outputTokens ?? 0),
+    totalTokens: (a.totalTokens ?? 0) + (b.totalTokens ?? 0),
+  };
+}
+
 function dispatch(
-  cb: StreamRendererCallbacks,
+  callbacks: StreamRendererCallbacks,
   event: AgentEvent,
   accText: (delta: string) => void,
   accUsage: (usage: Usage) => void,
@@ -85,53 +89,56 @@ function dispatch(
   switch (event.type) {
     case 'text-delta':
       accText(event.delta);
-      cb.onTextDelta?.(event.delta);
+      callbacks.onTextDelta?.(event.delta);
       break;
     case 'thinking-delta':
-      cb.onThinkingDelta?.(event.delta);
-      break;
-    case 'tool-call':
+      callbacks.onThinkingDelta?.(event.delta);
       break;
     case 'tool-start':
-      cb.onToolStart?.(event.id, event.name, event.args);
+      callbacks.onToolStart?.(event.id, event.name, event.args);
       break;
     case 'tool-result':
-      cb.onToolResult?.(event.id, event.result, event.durationMs);
+      callbacks.onToolResult?.(event.id, event.result, event.durationMs);
       break;
     case 'tool-error':
-      cb.onToolError?.(event.id, event.error);
+      callbacks.onToolError?.(event.id, event.error);
       break;
     case 'tool-approval-required':
-      cb.onToolApprovalRequired?.(event.id, event.name, event.args);
+      callbacks.onToolApprovalRequired?.(event.id, event.name, event.args);
       break;
     case 'usage':
       accUsage(event.tokens);
-      cb.onUsage?.(event.tokens);
+      callbacks.onUsage?.(event.tokens);
       break;
     case 'finish':
-      cb.onFinish?.(event.reason);
+      callbacks.onFinish?.(event.reason);
       break;
     case 'turn-start':
       accTurn();
-      cb.onTurnStart?.(event.turn);
+      callbacks.onTurnStart?.(event.turn);
       break;
     case 'compaction':
-      cb.onCompaction?.(event.droppedTurns, event.summaryTokens);
+      callbacks.onCompaction?.(event.droppedTurns, event.summaryTokens);
       break;
     case 'handoff':
-      cb.onHandoff?.(event.from, event.to);
+      callbacks.onHandoff?.(event.from, event.to);
       break;
     case 'checkpoint':
-      cb.onCheckpoint?.(event.runId, event.turn);
+      callbacks.onCheckpoint?.(event.runId, event.turn);
       break;
     case 'budget.exceeded':
-      cb.onBudgetExceeded?.(event.kind, event.spent, event.limit);
+      callbacks.onBudgetExceeded?.(event.kind, event.spent, event.limit);
       break;
     case 'abort':
-      cb.onAbort?.(event.reason);
+      callbacks.onAbort?.(event.reason);
       break;
+    case 'tool-call':
     case 'structured-partial':
     case 'structured.repair':
       break;
+    default: {
+      const _exhaustive: never = event;
+      break;
+    }
   }
 }

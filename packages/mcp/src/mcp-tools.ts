@@ -48,11 +48,11 @@ export async function mcpTools(
     await Promise.race([
       connectPromise,
       new Promise<never>((_, reject) => {
-        if (opts.signal!.aborted) {
+        if (opts.signal?.aborted) {
           reject(new DOMException('MCP connect aborted', 'AbortError'));
           return;
         }
-        opts.signal!.addEventListener(
+        opts.signal?.addEventListener(
           'abort',
           () => {
             reject(new DOMException('MCP connect aborted', 'AbortError'));

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { StreamEvent } from '@harness/core';
 import { fakeProvider } from '@harness/core/testing';
+import { makeTestCtx } from '../test-utils.ts';
 import { createPlannerNode } from './planner.ts';
 
 function planResponse(plan: object): StreamEvent[] {
@@ -20,11 +21,7 @@ const samplePlan = {
   ],
 };
 
-const ctx = {
-  runId: 'r1',
-  conversationId: 'c1',
-  signal: new AbortController().signal,
-};
+const ctx = makeTestCtx();
 
 describe('createPlannerNode', () => {
   it('parses a valid plan from provider response', async () => {

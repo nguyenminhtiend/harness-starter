@@ -4,8 +4,8 @@ import { createSpinner } from './spinner.ts';
 describe('createSpinner', () => {
   it('returns an object with start and stop methods', () => {
     const spinner = createSpinner();
-    expect(typeof spinner.start).toBe('function');
-    expect(typeof spinner.stop).toBe('function');
+    expect(spinner.start).toBeFunction();
+    expect(spinner.stop).toBeFunction();
   });
 
   it('stop is safe to call without start', () => {

@@ -1,5 +1,3 @@
-// --- Types ---
-
 // --- Approval ---
 export { createApprovalRegistry } from './approval.ts';
 export type { BudgetLimits, BudgetTracker } from './budgets/tracker.ts';
