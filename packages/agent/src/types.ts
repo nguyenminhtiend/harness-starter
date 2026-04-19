@@ -3,6 +3,7 @@ import type {
   HarnessError,
   Message,
   Provider,
+  RetryPolicy,
   RunInput,
   RunResult,
   StreamEvent,
@@ -61,7 +62,7 @@ export interface AgentConfig {
   events?: EventBus;
   maxTurns?: number;
   budgets?: { usd?: number; tokens?: number };
-  retryPolicy?: Partial<import('@harness/core').RetryPolicy>;
+  retryPolicy?: Partial<RetryPolicy>;
 }
 
 // --- ConversationStore ---
