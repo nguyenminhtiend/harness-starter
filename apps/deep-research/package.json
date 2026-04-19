@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
+    "eval": "HARNESS_LIVE=1 bun run --filter @harness/cli eval -- --pattern 'apps/deep-research/evals/**/*.eval.ts'",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },
