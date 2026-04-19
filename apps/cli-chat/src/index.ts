@@ -12,7 +12,6 @@ const agent = createAgent({
 });
 
 const conversationId = crypto.randomUUID();
-const ac = new AbortController();
 
 const rl = readline.createInterface({
   input: process.stdin as unknown as NodeJS.ReadableStream,
@@ -20,14 +19,22 @@ const rl = readline.createInterface({
   terminal: process.stdin.isTTY ?? false,
 });
 
-function cleanup() {
-  ac.abort();
+let streaming = false;
+let streamAc: AbortController | null = null;
+
+function exit() {
   rl.close();
   process.exit(0);
 }
 
-process.on('SIGINT', cleanup);
-process.on('SIGTERM', cleanup);
+process.on('SIGINT', () => {
+  if (streaming && streamAc) {
+    streamAc.abort();
+    return;
+  }
+  exit();
+});
+process.on('SIGTERM', exit);
 
 console.log(`harness cli-chat · model: ${config.MODEL_ID}`);
 console.log('Type a message and press Enter. Ctrl+C to quit.\n');
@@ -40,6 +47,9 @@ function prompt() {
     }
 
     process.stdout.write('\n');
+
+    streamAc = new AbortController();
+    streaming = true;
 
     const spinner = createSpinner();
     let firstToken = true;
@@ -58,7 +68,7 @@ function prompt() {
 
     try {
       const summary = await renderer.render(
-        agent.stream({ userMessage: line, conversationId }, { signal: ac.signal }),
+        agent.stream({ userMessage: line, conversationId }, { signal: streamAc.signal }),
       );
 
       const tokens = summary.usage.totalTokens ?? 0;
@@ -67,10 +77,14 @@ function prompt() {
     } catch (err) {
       spinner.stop();
       if ((err as Error).name === 'AbortError') {
-        return;
+        process.stdout.write(`\n${pc.dim('(cancelled)')}\n\n`);
+      } else {
+        console.error(`\n${pc.red('[error]')} ${(err as Error).message ?? err}`);
+        process.stdout.write('\n');
       }
-      console.error(`\n${pc.red('[error]')} ${(err as Error).message ?? err}`);
-      process.stdout.write('\n');
+    } finally {
+      streaming = false;
+      streamAc = null;
     }
 
     prompt();
