@@ -13,10 +13,10 @@ function planResponse(plan: object): StreamEvent[] {
   ];
 }
 
-function textResponse(text: string): StreamEvent[] {
+function textScript(text: string): StreamEvent[] {
   return [
     { type: 'text-delta', delta: text },
-    { type: 'usage', tokens: { inputTokens: 100, outputTokens: 200, totalTokens: 300 } },
+    { type: 'usage', tokens: { inputTokens: 50, outputTokens: 50, totalTokens: 100 } },
     { type: 'finish', reason: 'stop' },
   ];
 }
@@ -25,6 +25,21 @@ const samplePlan = {
   question: 'What is CRDT?',
   subquestions: [{ id: 'q1', question: 'What are CRDTs?', searchQueries: ['CRDT'] }],
 };
+
+const sampleFinding = JSON.stringify({
+  subquestionId: 'q1',
+  summary: 'CRDTs are conflict-free replicated data types.',
+  sourceUrls: ['https://en.wikipedia.org/wiki/CRDT'],
+});
+
+const sampleReport = JSON.stringify({
+  title: 'CRDTs',
+  sections: [{ heading: 'Overview', body: 'CRDTs are distributed data structures.' }],
+  references: [{ url: 'https://en.wikipedia.org/wiki/CRDT' }],
+});
+
+const factCheckPass = JSON.stringify({ pass: true, issues: [] });
+const factCheckFail = JSON.stringify({ pass: false, issues: ['Bad citation'] });
 
 async function collectEvents(stream: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   const events: AgentEvent[] = [];
@@ -35,12 +50,39 @@ async function collectEvents(stream: AsyncIterable<AgentEvent>): Promise<AgentEv
 }
 
 describe('createResearchGraph', () => {
+  it('completes full happy path with skipApproval', async () => {
+    const checkpointer = inMemoryCheckpointer();
+    const provider = fakeProvider([
+      { events: planResponse(samplePlan) },
+      { events: textScript(sampleFinding) },
+      { events: textScript(sampleReport) },
+      { events: textScript(factCheckPass) },
+    ]);
+
+    const agent = createResearchGraph({
+      provider,
+      tools: [],
+      skipApproval: true,
+      checkpointer,
+    });
+
+    await collectEvents(agent.stream({ userMessage: 'What is CRDT?' }, { runId: 'r1' }));
+
+    const saved = await checkpointer.load('r1');
+    const gs = saved?.graphState as { currentNode: string; data: Record<string, unknown> };
+    expect(gs.data.plan).toBeDefined();
+    expect(gs.data.findings).toBeDefined();
+    expect(gs.data.reportText).toBeDefined();
+    expect(gs.data.factCheckPassed).toBe(true);
+  });
+
   it('interrupts at approve node and checkpoints the plan', async () => {
     const checkpointer = inMemoryCheckpointer();
     const provider = fakeProvider([{ events: planResponse(samplePlan) }]);
 
     const agent = createResearchGraph({
       provider,
+      tools: [],
       skipApproval: false,
       checkpointer,
     });
@@ -53,97 +95,98 @@ describe('createResearchGraph', () => {
     expect(checkpointEvents.length).toBeGreaterThanOrEqual(1);
 
     const saved = await checkpointer.load('r1');
-    expect(saved).not.toBeNull();
-
     const gs = saved?.graphState as { currentNode: string; data: Record<string, unknown> };
     expect(gs.currentNode).toBe('approve');
     expect(gs.data.plan).toEqual(samplePlan);
   });
 
-  it('skips approval and completes full flow when skipApproval=true', async () => {
-    const provider = fakeProvider([
-      { events: planResponse(samplePlan) },
-      { events: textResponse('# CRDT Report\n\nCRDTs are conflict-free replicated data types.') },
-    ]);
-
-    const agent = createResearchGraph({
-      provider,
-      skipApproval: true,
-    });
-
-    const events = await collectEvents(
-      agent.stream({ userMessage: 'What is CRDT?' }, { runId: 'r1' }),
-    );
-
-    const text = events
-      .filter(
-        (e): e is AgentEvent & { type: 'text-delta'; delta: string } => e.type === 'text-delta',
-      )
-      .map((e) => e.delta)
-      .join('');
-
-    expect(text).toContain('CRDT');
-  });
-
-  it('resumes from checkpoint after approval and completes research', async () => {
+  it('resumes from checkpoint after approval', async () => {
     const checkpointer = inMemoryCheckpointer();
 
-    // Phase 1: plan + interrupt
     const p1 = fakeProvider([{ events: planResponse(samplePlan) }]);
-    const g1 = createResearchGraph({ provider: p1, skipApproval: false, checkpointer });
+    const g1 = createResearchGraph({
+      provider: p1,
+      tools: [],
+      skipApproval: false,
+      checkpointer,
+    });
     await collectEvents(g1.stream({ userMessage: 'What is CRDT?' }, { runId: 'r1' }));
 
     const saved = await checkpointer.load('r1');
-    expect(saved).not.toBeNull();
-
-    // Simulate user approval by patching checkpoint state
     if (saved) {
       const gs = saved.graphState as { data: Record<string, unknown> };
       gs.data.approved = true;
       await checkpointer.save('r1', { ...saved, graphState: saved.graphState });
     }
 
-    // Phase 2: resume → approve passes → research runs
-    const p2 = fakeProvider([{ events: textResponse('# CRDT Report\n\nResearch complete.') }]);
-    const g2 = createResearchGraph({ provider: p2, skipApproval: false, checkpointer });
-    const events = await collectEvents(
-      g2.stream({ userMessage: 'What is CRDT?' }, { runId: 'r1' }),
-    );
-
-    const text = events
-      .filter(
-        (e): e is AgentEvent & { type: 'text-delta'; delta: string } => e.type === 'text-delta',
-      )
-      .map((e) => e.delta)
-      .join('');
-
-    expect(text).toContain('Research complete');
-  });
-
-  it('respects depth parameter for planner', async () => {
-    const checkpointer = inMemoryCheckpointer();
-    const deepPlan = {
-      question: 'What is CRDT?',
-      subquestions: Array.from({ length: 8 }, (_, i) => ({
-        id: `q${i + 1}`,
-        question: `Subquestion ${i + 1}`,
-        searchQueries: [`query-${i + 1}`],
-      })),
-    };
-
-    const provider = fakeProvider([{ events: planResponse(deepPlan) }]);
-    const agent = createResearchGraph({
-      provider,
-      depth: 'deep',
+    const p2 = fakeProvider([
+      { events: textScript(sampleFinding) },
+      { events: textScript(sampleReport) },
+      { events: textScript(factCheckPass) },
+    ]);
+    const g2 = createResearchGraph({
+      provider: p2,
+      tools: [],
       skipApproval: false,
       checkpointer,
     });
+    await collectEvents(g2.stream({ userMessage: 'What is CRDT?' }, { runId: 'r1' }));
 
-    await collectEvents(agent.stream({ userMessage: 'What is CRDT?' }, { runId: 'r2' }));
+    const final = await checkpointer.load('r1');
+    const gs = final?.graphState as { currentNode: string; data: Record<string, unknown> };
+    expect(gs.data.factCheckPassed).toBe(true);
+  });
 
-    const saved = await checkpointer.load('r2');
-    const gs = saved?.graphState as { data: Record<string, unknown> };
-    const plan = gs.data.plan as { subquestions: unknown[] };
-    expect(plan.subquestions).toHaveLength(8);
+  it('retries fact-check up to 2 times then proceeds to finalize', async () => {
+    const checkpointer = inMemoryCheckpointer();
+    const provider = fakeProvider([
+      { events: planResponse(samplePlan) },
+      { events: textScript(sampleFinding) },
+      { events: textScript(sampleReport) },
+      { events: textScript(factCheckFail) },
+      { events: textScript(sampleReport) },
+      { events: textScript(factCheckFail) },
+    ]);
+
+    const agent = createResearchGraph({
+      provider,
+      tools: [],
+      skipApproval: true,
+      checkpointer,
+    });
+
+    await collectEvents(agent.stream({ userMessage: 'What is CRDT?' }, { runId: 'r1' }));
+
+    const saved = await checkpointer.load('r1');
+    const gs = saved?.graphState as { currentNode: string; data: Record<string, unknown> };
+    expect(gs.data.factCheckPassed).toBe(false);
+    expect(gs.data.factCheckRetries).toBe(2);
+    expect(gs.currentNode).toBe('finalize');
+  });
+
+  it('fact-check retry succeeds on second attempt', async () => {
+    const checkpointer = inMemoryCheckpointer();
+    const provider = fakeProvider([
+      { events: planResponse(samplePlan) },
+      { events: textScript(sampleFinding) },
+      { events: textScript(sampleReport) },
+      { events: textScript(factCheckFail) },
+      { events: textScript(sampleReport) },
+      { events: textScript(factCheckPass) },
+    ]);
+
+    const agent = createResearchGraph({
+      provider,
+      tools: [],
+      skipApproval: true,
+      checkpointer,
+    });
+
+    await collectEvents(agent.stream({ userMessage: 'What is CRDT?' }, { runId: 'r1' }));
+
+    const saved = await checkpointer.load('r1');
+    const gs = saved?.graphState as { currentNode: string; data: Record<string, unknown> };
+    expect(gs.data.factCheckPassed).toBe(true);
+    expect(gs.data.factCheckRetries).toBe(2);
   });
 });
