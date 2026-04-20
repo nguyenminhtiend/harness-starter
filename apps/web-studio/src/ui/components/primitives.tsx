@@ -865,82 +865,6 @@ export function Tooltip({ tip, children }: TooltipProps) {
   );
 }
 
-/* ── Toast ── */
-
-interface ToastItem {
-  id: string;
-  type: 'error' | 'success' | 'info';
-  message: string;
-}
-
-interface ToastProps {
-  toasts: ToastItem[];
-  removeToast: (id: string) => void;
-}
-
-const toastIcons: Record<ToastItem['type'], string> = {
-  error: '\u26A0',
-  success: '\u2713',
-  info: '\u2139',
-};
-
-export function Toast({ toasts, removeToast }: ToastProps) {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: 'var(--s6)',
-        right: 'var(--s6)',
-        zIndex: 9999,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--s2)',
-        pointerEvents: 'none',
-      }}
-    >
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--s3)',
-            background: 'var(--bg-overlay)',
-            border: `1px solid ${t.type === 'error' ? 'var(--status-error-subtle)' : 'var(--border-default)'}`,
-            borderRadius: 'var(--r-md)',
-            padding: 'var(--s3) var(--s4)',
-            boxShadow: 'var(--shadow-lg)',
-            minWidth: 260,
-            maxWidth: 380,
-            animation: 'slideUp 220ms cubic-bezier(0.16,1,0.3,1)',
-            pointerEvents: 'all',
-          }}
-        >
-          <span style={{ fontSize: 14, flexShrink: 0 }}>{toastIcons[t.type]}</span>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', flex: 1 }}>
-            {t.message}
-          </span>
-          <button
-            type="button"
-            onClick={() => removeToast(t.id)}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-tertiary)',
-              padding: 2,
-              lineHeight: 1,
-              fontSize: 14,
-            }}
-          >
-            \u00D7
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ── Modal ── */
 
 interface ModalProps {
@@ -1041,7 +965,7 @@ export function Modal({ open, onClose, title, children, width = 480 }: ModalProp
               fontSize: 16,
             }}
           >
-            \u00D7
+            ×
           </button>
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: 'var(--s5)' }}>{children}</div>

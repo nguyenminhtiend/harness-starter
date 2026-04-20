@@ -1,13 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RunMeta, RunStatus } from '../shared/events.ts';
 import { api } from './api.ts';
 import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
 import { PlanApprovalModal } from './components/PlanApprovalModal.tsx';
-import { Badge, Toast } from './components/primitives.tsx';
+import { Badge } from './components/primitives.tsx';
+import { deriveReportMarkdown, ReportView } from './components/ReportView.tsx';
 import { RunForm, type RunFormState } from './components/RunForm.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { StreamView } from './components/StreamView.tsx';
+import { Toast, type ToastItem, type ToastType } from './components/Toast.tsx';
 import { useEventStream } from './hooks/useEventStream.ts';
 import { useSettings } from './hooks/useSettings.ts';
 
@@ -42,16 +44,11 @@ export function App() {
     plan: null,
     initialPlan: null,
   });
-  const [toasts, setToasts] = useState<
-    { id: string; type: 'error' | 'success' | 'info'; message: string }[]
-  >([]);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const pushToast = useCallback((message: string) => {
+  const pushToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, type: 'error', message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
+    setToasts((prev) => [...prev, { id, type, message }]);
   }, []);
 
   const removeToast = useCallback((id: string) => {
@@ -64,6 +61,48 @@ export function App() {
     },
   });
   const status = stream.status;
+
+  const reportMarkdown = useMemo(() => deriveReportMarkdown(stream.events), [stream.events]);
+
+  const prevRunStatusRef = useRef<{ runId: string | null; status: RunStatus | 'idle' }>({
+    runId: null,
+    status: 'idle',
+  });
+
+  const streamErrorSeenRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!stream.error) {
+      return;
+    }
+    if (streamErrorSeenRef.current === stream.error) {
+      return;
+    }
+    streamErrorSeenRef.current = stream.error;
+    pushToast(`Live stream disconnected: ${stream.error}`, 'error');
+  }, [stream.error, pushToast]);
+
+  useEffect(() => {
+    const prev = prevRunStatusRef.current;
+    if (prev.runId !== runId) {
+      streamErrorSeenRef.current = undefined;
+      prevRunStatusRef.current = { runId, status };
+      return;
+    }
+    if (prev.status !== status) {
+      if (status === 'completed' && (prev.status === 'running' || prev.status === 'pending')) {
+        pushToast('Run completed', 'success');
+      } else if (status === 'failed') {
+        pushToast('Run failed', 'error');
+      } else if (
+        status === 'cancelled' &&
+        (prev.status === 'running' || prev.status === 'pending')
+      ) {
+        pushToast('Run cancelled', 'info');
+      }
+    }
+    prevRunStatusRef.current = { runId, status };
+  }, [runId, status, pushToast]);
 
   // Reset HITL when switching runs; effect body intentionally ignores `runId` values.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runId triggers reset on run change
@@ -93,21 +132,25 @@ export function App() {
       });
       setRunId(id);
       setView('run');
+      pushToast('Run started', 'info');
       await queryClient.invalidateQueries({ queryKey: ['runs'] });
     } catch (err) {
-      console.error('Failed to create run:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to start run';
+      pushToast(msg, 'error');
     }
-  }, [activeTool, form, queryClient, settingsQuery.data?.tools]);
+  }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools]);
 
   const handleStop = useCallback(async () => {
-    if (runId) {
-      try {
-        await api.cancelRun(runId);
-      } catch {
-        // run may already be done
-      }
+    if (!runId) {
+      return;
     }
-  }, [runId]);
+    try {
+      await api.cancelRun(runId);
+      pushToast('Stop request sent', 'info');
+    } catch {
+      pushToast('Could not cancel run', 'error');
+    }
+  }, [runId, pushToast]);
 
   const handleNewRun = useCallback(() => {
     setRunId(null);
@@ -122,17 +165,53 @@ export function App() {
     setView('run');
   }, []);
 
+  const handleHitlReject = useCallback(async () => {
+    if (!runId) {
+      setHitl({ open: false, plan: null, initialPlan: null });
+      return;
+    }
+    await api.approveRun(runId, { decision: 'reject' });
+    pushToast('Plan approval rejected', 'info');
+    setHitl({ open: false, plan: null, initialPlan: null });
+  }, [runId, pushToast]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && status === 'idle' && form.query.trim()) {
-        handleRun();
+        void handleRun();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [status, form.query, handleRun]);
 
+  useEffect(() => {
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') {
+        return;
+      }
+      if (hitl.open) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void handleHitlReject();
+        return;
+      }
+      if (view === 'settings') {
+        e.preventDefault();
+        setView('run');
+      }
+    };
+    window.addEventListener('keydown', onEscape, true);
+    return () => window.removeEventListener('keydown', onEscape, true);
+  }, [handleHitlReject, hitl.open, view]);
+
   const showStream = Boolean(runId && (stream.events.length > 0 || stream.status === 'running'));
+
+  useEffect(() => {
+    if (!showStream && view === 'report') {
+      setView('run');
+    }
+  }, [showStream, view]);
 
   const runs = runsQuery.data?.runs ?? [];
 
@@ -154,14 +233,7 @@ export function App() {
           });
           setHitl({ open: false, plan: null, initialPlan: null });
         }}
-        onReject={async () => {
-          if (!runId) {
-            return;
-          }
-          await api.approveRun(runId, { decision: 'reject' });
-          pushToast('Plan approval rejected');
-          setHitl({ open: false, plan: null, initialPlan: null });
-        }}
+        onReject={handleHitlReject}
       />
       {/* Sidebar */}
       <div
@@ -333,13 +405,25 @@ export function App() {
               status={status}
               compact
             />
-            <StreamView
-              events={stream.events}
-              tokens={stream.tokens}
-              cost={stream.cost}
-              status={status}
-              onViewReport={() => setView('report')}
-            />
+            {view === 'report' ? (
+              <ReportView
+                report={reportMarkdown}
+                runId={runId}
+                onBack={() => {
+                  setView('run');
+                }}
+              />
+            ) : (
+              <StreamView
+                events={stream.events}
+                tokens={stream.tokens}
+                cost={stream.cost}
+                status={status}
+                onViewReport={() => {
+                  setView('report');
+                }}
+              />
+            )}
           </div>
         ) : (
           <div style={{ flex: 1, overflowY: 'auto' }}>

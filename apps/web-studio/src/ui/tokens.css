@@ -192,6 +192,26 @@ body,
     transform: translateY(0);
   }
 }
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(calc(100% + var(--s6)));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes toastFadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(var(--s4));
+  }
+}
 @keyframes scaleIn {
   from {
     opacity: 0;

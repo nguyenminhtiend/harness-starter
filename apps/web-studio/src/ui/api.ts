@@ -80,6 +80,7 @@ export function connectSSE(
   onError: (err: Error) => void,
 ): () => void {
   const es = new EventSource(`${BASE}/runs/${runId}/events`);
+  let closedNormally = false;
 
   es.addEventListener('event', (e) => {
     try {
@@ -91,13 +92,16 @@ export function connectSSE(
   });
 
   es.addEventListener('done', () => {
+    closedNormally = true;
     es.close();
     onDone();
   });
 
   es.onerror = () => {
     es.close();
-    onError(new Error('SSE connection lost'));
+    if (!closedNormally) {
+      onError(new Error('SSE connection lost'));
+    }
   };
 
   return () => es.close();
