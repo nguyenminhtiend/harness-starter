@@ -51,7 +51,6 @@ export function agentEventToUIEvents(
       events.push({ ...base, type: 'agent', phase: e.to, message: `${e.from} → ${e.to}` });
       break;
     case 'checkpoint':
-      events.push({ ...base, type: 'agent', phase: 'checkpoint' });
       break;
     case 'budget.exceeded':
       events.push({

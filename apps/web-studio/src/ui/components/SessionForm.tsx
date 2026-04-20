@@ -66,12 +66,15 @@ export function SessionForm({ form, setForm, onRun, onStop, status, compact }: S
           disabled={running}
         />
         {running ? (
-          <Button variant="danger" size="md" onClick={onStop}>
+          <Button variant="danger" size="lg" onClick={onStop}>
             Stop
           </Button>
         ) : (
-          <Button variant="primary" size="md" onClick={onRun} disabled={!form.query.trim()}>
+          <Button variant="primary" size="lg" onClick={onRun} disabled={!form.query.trim()}>
             Run
+            <span style={{ opacity: 0.6, fontSize: 'var(--text-xs)', marginLeft: 'var(--s1)' }}>
+              ⌘↵
+            </span>
           </Button>
         )}
       </div>
@@ -136,7 +139,7 @@ export function SessionForm({ form, setForm, onRun, onStop, status, compact }: S
         {!running ? (
           <Button
             variant="primary"
-            size="xl"
+            size="lg"
             onClick={onRun}
             disabled={!form.query.trim()}
             style={{ flex: 1, justifyContent: 'center' }}
@@ -149,7 +152,7 @@ export function SessionForm({ form, setForm, onRun, onStop, status, compact }: S
         ) : (
           <Button
             variant="danger"
-            size="xl"
+            size="lg"
             onClick={onStop}
             style={{ flex: 1, justifyContent: 'center' }}
           >

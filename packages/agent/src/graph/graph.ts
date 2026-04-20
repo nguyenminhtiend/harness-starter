@@ -61,6 +61,8 @@ export function graph(def: GraphDef): Agent {
       }
     }
 
+    let step = 0;
+
     while (!graphState.completed) {
       if (signal.aborted) {
         yield { type: 'abort', reason: signal.reason };
@@ -72,8 +74,9 @@ export function graph(def: GraphDef): Agent {
         throw new Error(`Graph node not found: ${graphState.currentNode}`);
       }
 
+      step++;
+
       try {
-        // Execute node
         if (node.agent) {
           const agentInput: RunInput = {
             conversationId,
@@ -90,23 +93,22 @@ export function graph(def: GraphDef): Agent {
         }
       } catch (e) {
         if (e instanceof InterruptSignal) {
-          // Save checkpoint and pause
           if (def.checkpointer) {
             await def.checkpointer.save(runId, {
               runId,
               conversationId,
-              turn: 0,
+              turn: step,
               messages: [],
               graphState,
             });
-            yield { type: 'checkpoint', runId, turn: 0 };
+            yield { type: 'checkpoint', runId, turn: step };
           }
           return;
         }
         throw e;
       }
 
-      // Resolve next node
+      const previousNode = graphState.currentNode;
       const edge = edgeMap.get(graphState.currentNode);
       if (!edge) {
         graphState.completed = true;
@@ -119,27 +121,26 @@ export function graph(def: GraphDef): Agent {
         graphState.completed = true;
       } else {
         graphState.currentNode = nextNode;
+        yield { type: 'handoff', from: previousNode, to: nextNode };
       }
 
-      // Checkpoint on transition
       if (def.checkpointer && !graphState.completed) {
         await def.checkpointer.save(runId, {
           runId,
           conversationId,
-          turn: 0,
+          turn: step,
           messages: [],
           graphState,
         });
-        yield { type: 'checkpoint', runId, turn: 0 };
+        yield { type: 'checkpoint', runId, turn: step };
       }
     }
 
-    // Persist final state so callers can read completed graph data
     if (def.checkpointer && graphState.completed) {
       await def.checkpointer.save(runId, {
         runId,
         conversationId,
-        turn: 0,
+        turn: step,
         messages: [],
         graphState,
       });

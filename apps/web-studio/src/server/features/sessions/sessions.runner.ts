@@ -219,12 +219,22 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
         finishedAt: new Date().toISOString(),
       });
 
+      let report: string | undefined;
+      const finalCheckpoint = await checkpointer.load(sessionId);
+      if (finalCheckpoint?.graphState) {
+        const gs = finalCheckpoint.graphState as { data?: { reportText?: string } };
+        if (typeof gs.data?.reportText === 'string' && gs.data.reportText.trim().length > 0) {
+          report = gs.data.reportText;
+        }
+      }
+
       const completeEvent: UIEvent = {
         type: 'complete',
         ts: Date.now(),
         runId: sessionId,
         totalTokens,
         totalCostUsd: accUsage.costUsd,
+        ...(report ? { report } : {}),
       };
       sessionStore.appendEvent(sessionId, completeEvent);
       yield completeEvent;

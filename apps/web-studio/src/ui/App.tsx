@@ -50,7 +50,10 @@ export function App() {
   const [activeTool, setActiveTool] = useState('deep-research');
   const [view, setView] = useState<ViewMode>('session');
   const [sessionId, setSessionIdState] = useState<string | null>(getSessionIdFromHash);
-  const [form, setForm] = useState<SessionFormState>({ query: '', model: '' });
+  const [form, setForm] = useState<SessionFormState>(() => ({
+    query: '',
+    model: localStorage.getItem('harness:lastModel') ?? '',
+  }));
   const [historySearch, setHistorySearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState<HistoryStatusFilter>('all');
   const [hitl, setHitl] = useState<HitlModalState>({
@@ -64,6 +67,10 @@ export function App() {
     setSessionIdState(id);
     setHashSessionId(id);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('harness:lastModel', form.model);
+  }, [form.model]);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -94,7 +101,11 @@ export function App() {
   });
   const status = stream.status;
 
-  const reportMarkdown = useMemo(() => deriveReportMarkdown(stream.events), [stream.events]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stream.events is a mutated ref; status change signals when report becomes available
+  const reportMarkdown = useMemo(
+    () => deriveReportMarkdown(stream.events),
+    [stream.events, status],
+  );
 
   const prevStatusRef = useRef<{ sessionId: string | null; status: SessionStatus | 'idle' }>({
     sessionId: null,
@@ -190,7 +201,7 @@ export function App() {
         await api.deleteSession(id);
         if (sessionId === id) {
           setSessionId(null);
-          setForm({ query: '', model: '' });
+          setForm((prev) => ({ query: '', model: prev.model }));
         }
         await queryClient.invalidateQueries({ queryKey: ['sessions'] });
         pushToast('Session deleted', 'info');
@@ -234,7 +245,7 @@ export function App() {
 
   const handleNewSession = useCallback(() => {
     setSessionId(null);
-    setForm({ query: '', model: '' });
+    setForm((prev) => ({ query: '', model: prev.model }));
     setView('session');
   }, [setSessionId]);
 

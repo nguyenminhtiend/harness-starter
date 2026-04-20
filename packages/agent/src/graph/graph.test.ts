@@ -122,8 +122,72 @@ describe('graph', () => {
     }
 
     const checkpoints = events.filter((e) => e.type === 'checkpoint');
-    // A->B transition, B->C transition = 2 checkpoints
     expect(checkpoints.length).toBe(2);
+    expect(checkpoints[0]).toMatchObject({ turn: 1 });
+    expect(checkpoints[1]).toMatchObject({ turn: 2 });
+  });
+
+  test('handoff events emitted on graph transitions with correct from/to', async () => {
+    const def: GraphDef = {
+      nodes: [
+        { id: 'A', fn: async (state) => state },
+        { id: 'B', fn: async (state) => state },
+        { id: 'C', fn: async (state) => state },
+      ],
+      edges: [
+        { from: 'A', to: 'B' },
+        { from: 'B', to: 'C' },
+      ],
+      entryNode: 'A',
+    };
+
+    const agent = graph(def);
+    const events: AgentEvent[] = [];
+    for await (const ev of agent.stream({ userMessage: 'test' })) {
+      events.push(ev);
+    }
+
+    const handoffs = events.filter((e) => e.type === 'handoff');
+    expect(handoffs).toEqual([
+      { type: 'handoff', from: 'A', to: 'B' },
+      { type: 'handoff', from: 'B', to: 'C' },
+    ]);
+  });
+
+  test('handoff labels are correct on conditional retry edges', async () => {
+    let runs = 0;
+    const def: GraphDef = {
+      nodes: [
+        { id: 'start', fn: async (state) => state },
+        {
+          id: 'check',
+          fn: async (state) => {
+            runs++;
+            return { ...state, pass: runs >= 2 };
+          },
+        },
+        { id: 'done', fn: async (state) => state },
+      ],
+      edges: [
+        { from: 'start', to: 'check' },
+        { from: 'check', to: (state) => (state.pass ? 'done' : 'start') },
+      ],
+      entryNode: 'start',
+    };
+
+    const agent = graph(def);
+    const events: AgentEvent[] = [];
+    for await (const ev of agent.stream({ userMessage: 'test' })) {
+      events.push(ev);
+    }
+
+    const handoffs = events.filter((e) => e.type === 'handoff');
+    expect(handoffs).toEqual([
+      { type: 'handoff', from: 'start', to: 'check' },
+      { type: 'handoff', from: 'check', to: 'start' },
+      { type: 'handoff', from: 'start', to: 'check' },
+      { type: 'handoff', from: 'check', to: 'done' },
+    ]);
   });
 
   test('interrupt() pauses graph and saves checkpoint', async () => {

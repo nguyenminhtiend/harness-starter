@@ -79,7 +79,6 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
       if (!s.plan) {
         throw new Error('research node reached without a plan');
       }
-      events?.emit('handoff', { runId: ctx.runId, from: 'plan', to: 'research' });
       const plan = s.plan;
       const researcherTool = createResearcherTool(provider, tools, {
         memory: agentStore,
@@ -113,7 +112,6 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const writeNode: GraphNode = {
     id: 'write',
     fn: async (state, ctx) => {
-      events?.emit('handoff', { runId: ctx.runId, from: 'research', to: 'write' });
       const s = state as ResearchState;
       const writer = createWriterAgent(provider, {
         memory: agentStore,
@@ -153,7 +151,6 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const factCheckNode: GraphNode = {
     id: 'fact-check',
     fn: async (state, ctx) => {
-      events?.emit('handoff', { runId: ctx.runId, from: 'write', to: 'fact-check' });
       const s = state as ResearchState;
       const checker = createFactCheckerAgent(provider, {
         memory: agentStore,

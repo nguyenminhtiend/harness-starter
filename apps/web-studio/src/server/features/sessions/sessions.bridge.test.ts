@@ -94,15 +94,13 @@ describe('agentEventToUIEvents', () => {
     ]);
   });
 
-  it('maps checkpoint', () => {
+  it('suppresses checkpoint events from UI', () => {
     const out = agentEventToUIEvents(
-      { type: 'checkpoint', runId: sessionId, turn: 0 },
+      { type: 'checkpoint', runId: sessionId, turn: 1 },
       sessionId,
       acc(),
     );
-    expect(out).toEqual([
-      { ts: expect.any(Number), runId: sessionId, type: 'agent', phase: 'checkpoint' },
-    ]);
+    expect(out).toEqual([]);
   });
 
   it('maps budget.exceeded to error', () => {
