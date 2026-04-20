@@ -1,110 +1,29 @@
-import { Database } from 'bun:sqlite';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { RunStatus, UIEvent } from '../shared/events.ts';
+import type { Database } from 'bun:sqlite';
+import type { UIEvent } from '../../../shared/events.ts';
+import type {
+  CreateRunInput,
+  ListRunsFilter,
+  RunRow,
+  StoredEvent,
+  UpdateRunInput,
+} from './runs.types.ts';
 
-export interface RunRow {
-  id: string;
-  toolId: string;
-  question: string;
-  status: RunStatus;
-  costUsd?: number;
-  totalTokens?: number;
-  createdAt: string;
-  finishedAt?: string;
-}
-
-export interface CreateRunInput {
-  id: string;
-  toolId: string;
-  question: string;
-  status: RunStatus;
-}
-
-export interface UpdateRunInput {
-  status?: RunStatus;
-  costUsd?: number;
-  totalTokens?: number;
-  finishedAt?: string;
-}
-
-export interface ListRunsFilter {
-  status?: RunStatus;
-  q?: string;
-  limit?: number;
-}
-
-export interface StoredEvent {
-  seq: number;
-  ts: number;
-  type: string;
-  payload: Record<string, unknown>;
-}
-
-export interface Persistence {
-  upsertSetting(key: string, value: unknown): void;
-  deleteSetting(key: string): void;
-  getSetting<T = unknown>(key: string): T | undefined;
-  getAllSettings(): Record<string, unknown>;
-
+export interface RunStore {
   createRun(input: CreateRunInput): void;
   updateRun(id: string, patch: UpdateRunInput): void;
   getRun(id: string): RunRow | undefined;
   listRuns(filter?: ListRunsFilter): RunRow[];
-
+  deleteRun(id: string): void;
   appendEvent(runId: string, event: UIEvent): void;
   getEvents(runId: string): StoredEvent[];
-
-  close(): void;
 }
 
-const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS runs (
-    id          TEXT PRIMARY KEY,
-    toolId      TEXT NOT NULL,
-    question    TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'pending',
-    costUsd     REAL,
-    totalTokens INTEGER,
-    createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
-    finishedAt  TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS events (
-    runId   TEXT NOT NULL,
-    seq     INTEGER NOT NULL,
-    ts      REAL NOT NULL,
-    type    TEXT NOT NULL,
-    payload TEXT NOT NULL,
-    PRIMARY KEY (runId, seq)
-  );
-`;
-
-export function createPersistence(dataDir: string): Persistence {
-  fs.mkdirSync(dataDir, { recursive: true });
-  const dbPath = path.join(dataDir, 'web-studio.db');
-  const db = new Database(dbPath);
-  db.exec('PRAGMA journal_mode = WAL;');
-  db.exec(SCHEMA);
-
+export function createRunStore(db: Database): RunStore {
   const stmts = {
-    upsertSetting: db.prepare(
-      'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2',
-    ),
-    deleteSetting: db.prepare('DELETE FROM settings WHERE key = ?'),
-    getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
-    getAllSettings: db.prepare('SELECT key, value FROM settings'),
-
     createRun: db.prepare(
       'INSERT INTO runs (id, toolId, question, status) VALUES ($id, $toolId, $question, $status)',
     ),
     getRun: db.prepare('SELECT * FROM runs WHERE id = ?'),
-
     appendEvent: db.prepare(
       `INSERT INTO events (runId, seq, ts, type, payload)
        VALUES ($runId, $seq, $ts, $type, $payload)`,
@@ -128,31 +47,6 @@ export function createPersistence(dataDir: string): Persistence {
   }
 
   return {
-    upsertSetting(key, value) {
-      stmts.upsertSetting.run(key, JSON.stringify(value));
-    },
-
-    deleteSetting(key) {
-      stmts.deleteSetting.run(key);
-    },
-
-    getSetting<T = unknown>(key: string): T | undefined {
-      const row = stmts.getSetting.get(key) as { value: string } | null;
-      if (!row) {
-        return undefined;
-      }
-      return JSON.parse(row.value) as T;
-    },
-
-    getAllSettings() {
-      const rows = stmts.getAllSettings.all() as { key: string; value: string }[];
-      const result: Record<string, unknown> = {};
-      for (const row of rows) {
-        result[row.key] = JSON.parse(row.value);
-      }
-      return result;
-    },
-
     createRun(input) {
       stmts.createRun.run({
         $id: input.id,
@@ -214,6 +108,12 @@ export function createPersistence(dataDir: string): Persistence {
       return db.prepare(sql).all(params) as RunRow[];
     },
 
+    deleteRun(id) {
+      db.prepare('DELETE FROM events WHERE runId = ?').run(id);
+      db.prepare('DELETE FROM runs WHERE id = ?').run(id);
+      seqCounters.delete(id);
+    },
+
     appendEvent(runId, event) {
       const { type, ts, ...rest } = event;
       stmts.appendEvent.run({
@@ -238,10 +138,6 @@ export function createPersistence(dataDir: string): Persistence {
         type: r.type,
         payload: JSON.parse(r.payload) as Record<string, unknown>,
       }));
-    },
-
-    close() {
-      db.close();
     },
   };
 }

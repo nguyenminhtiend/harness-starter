@@ -2,33 +2,22 @@ import type { RunState } from '@harness/agent';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import { aiSdkProvider, createEventBus } from '@harness/core';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import type { UIEvent } from '../shared/events.ts';
-import type { ToolDef } from '../shared/tool.ts';
-import type { HitlSessionStore } from './active-hitl-sessions.ts';
-import type { ApprovalStore } from './approval.ts';
-import type { Persistence } from './persistence.ts';
-import { agentEventToUIEvents, bridgeBusToUIEvents } from './runner-bridge.ts';
-import { mergeToolRuntimeSettings } from './settings-read.ts';
-import { tools as registry } from './tools/registry.ts';
+import type { UIEvent } from '../../../shared/events.ts';
+import type { ToolDef } from '../../../shared/tool.ts';
+import { mergeToolRuntimeSettings } from '../settings/settings.reader.ts';
+import type { SettingsStore } from '../settings/settings.store.ts';
+import { tools as registry } from '../tools/tools.registry.ts';
+import type { ApprovalStore } from './runs.approval.ts';
+import { agentEventToUIEvents, bridgeBusToUIEvents } from './runs.bridge.ts';
+import type { HitlSessionStore } from './runs.hitl.ts';
+import type { RunStore } from './runs.store.ts';
+import type { RunContext, RunHandle } from './runs.types.ts';
 
-export interface RunContext {
-  runId: string;
-  toolId: string;
-  question: string;
-  settings: Record<string, unknown>;
-  /** Accepted from API for future checkpoint resume; not used yet. */
-  resumeRunId?: string;
-  signal: AbortSignal;
-  abortController: AbortController;
-  persistence: Persistence;
-  apiKey: string;
+export interface RunDeps {
+  runStore: RunStore;
+  settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
-}
-
-export interface RunHandle {
-  runId: string;
-  events: AsyncIterable<UIEvent>;
 }
 
 function createProvider(apiKey: string, modelId: string) {
@@ -54,26 +43,16 @@ function planFromCheckpoint(saved: RunState | null): unknown {
   return gs?.data?.plan;
 }
 
-export function startRun(ctx: RunContext): RunHandle {
-  const {
-    runId,
-    toolId,
-    question,
-    settings,
-    signal,
-    abortController,
-    persistence,
-    apiKey,
-    approvalStore,
-    hitlSessionStore,
-  } = ctx;
+export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
+  const { runId, toolId, question, settings, signal, abortController, apiKey } = ctx;
+  const { runStore, settingsStore, approvalStore, hitlSessionStore } = deps;
 
   const toolDef = registry[toolId] as ToolDef | undefined;
   if (!toolDef) {
     throw new Error(`Unknown tool: ${toolId}`);
   }
 
-  const mergedSettings = mergeToolRuntimeSettings(toolId, persistence, settings);
+  const mergedSettings = mergeToolRuntimeSettings(toolId, settingsStore, settings);
   const modelId = (mergedSettings.model as string) ?? 'openrouter/free';
   const provider = createProvider(apiKey, modelId);
   const store = inMemoryStore();
@@ -91,8 +70,8 @@ export function startRun(ctx: RunContext): RunHandle {
     signal,
   });
 
-  persistence.createRun({ id: runId, toolId, question, status: 'running' });
-  persistence.appendEvent(runId, { type: 'status', status: 'running', ts: Date.now(), runId });
+  runStore.createRun({ id: runId, toolId, question, status: 'running' });
+  runStore.appendEvent(runId, { type: 'status', status: 'running', ts: Date.now(), runId });
 
   const accUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
@@ -100,7 +79,7 @@ export function startRun(ctx: RunContext): RunHandle {
     const pushQueue: UIEvent[] = [];
     const unsubBus = bridgeBusToUIEvents(bus, runId, accUsage, (ev) => {
       pushQueue.push(ev);
-      persistence.appendEvent(runId, ev);
+      runStore.appendEvent(runId, ev);
     });
 
     function* drainQueue(): Generator<UIEvent> {
@@ -130,7 +109,7 @@ export function startRun(ctx: RunContext): RunHandle {
 
           const uiEvents = agentEventToUIEvents(event, runId, accUsage);
           for (const uiEv of uiEvents) {
-            persistence.appendEvent(runId, uiEv);
+            runStore.appendEvent(runId, uiEv);
             yield uiEv;
           }
         }
@@ -150,7 +129,7 @@ export function startRun(ctx: RunContext): RunHandle {
           runId,
           plan,
         };
-        persistence.appendEvent(runId, hitlRequired);
+        runStore.appendEvent(runId, hitlRequired);
         yield hitlRequired;
 
         const decision = await approvalPromise;
@@ -165,7 +144,7 @@ export function startRun(ctx: RunContext): RunHandle {
         yield resolvedUi;
 
         if (decision.decision === 'reject') {
-          persistence.updateRun(runId, {
+          runStore.updateRun(runId, {
             status: 'cancelled',
             finishedAt: new Date().toISOString(),
           });
@@ -177,7 +156,7 @@ export function startRun(ctx: RunContext): RunHandle {
             message: 'Plan approval rejected',
             code: 'HITL_REJECTED',
           };
-          persistence.appendEvent(runId, rejectEvent);
+          runStore.appendEvent(runId, rejectEvent);
           yield rejectEvent;
 
           yield { type: 'status', status: 'cancelled', ts: Date.now(), runId };
@@ -190,7 +169,7 @@ export function startRun(ctx: RunContext): RunHandle {
       }
 
       const totalTokens = accUsage.inputTokens + accUsage.outputTokens;
-      persistence.updateRun(runId, {
+      runStore.updateRun(runId, {
         status: 'completed',
         costUsd: accUsage.costUsd,
         totalTokens,
@@ -204,7 +183,7 @@ export function startRun(ctx: RunContext): RunHandle {
         totalTokens,
         totalCostUsd: accUsage.costUsd,
       };
-      persistence.appendEvent(runId, completeEvent);
+      runStore.appendEvent(runId, completeEvent);
       yield completeEvent;
 
       yield { type: 'status', status: 'completed', ts: Date.now(), runId };
@@ -213,7 +192,7 @@ export function startRun(ctx: RunContext): RunHandle {
       const status = isAbort ? 'cancelled' : 'failed';
       const message = isAbort ? 'Run cancelled' : ((err as Error).message ?? 'Unknown error');
 
-      persistence.updateRun(runId, {
+      runStore.updateRun(runId, {
         status,
         finishedAt: new Date().toISOString(),
       });
@@ -225,7 +204,7 @@ export function startRun(ctx: RunContext): RunHandle {
         message,
         code: isAbort ? 'CANCELLED' : 'RUNTIME_ERROR',
       };
-      persistence.appendEvent(runId, errorEvent);
+      runStore.appendEvent(runId, errorEvent);
       yield errorEvent;
 
       yield { type: 'status', status, ts: Date.now(), runId };

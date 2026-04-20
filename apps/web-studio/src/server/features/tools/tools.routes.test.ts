@@ -1,29 +1,33 @@
+import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createHitlSessionStore } from '../active-hitl-sessions.ts';
-import { createApprovalStore } from '../approval.ts';
-import { createApp } from '../index.ts';
-import { createPersistence, type Persistence } from '../persistence.ts';
+import { createApp } from '../../index.ts';
+import { createDatabase } from '../../infra/db.ts';
+import { createApprovalStore } from '../runs/runs.approval.ts';
+import { createHitlSessionStore } from '../runs/runs.hitl.ts';
+import { createRunStore } from '../runs/runs.store.ts';
+import { createSettingsStore } from '../settings/settings.store.ts';
 
-let persistence: Persistence;
+let db: Database;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-tools-route-'));
-  persistence = createPersistence(tmpDir);
+  db = createDatabase(tmpDir);
 });
 
 afterEach(() => {
-  persistence.close();
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('GET /api/tools', () => {
   it('returns each tool with id, title, description, and JSON Schema', async () => {
     const app = createApp({
-      persistence,
+      runStore: createRunStore(db),
+      settingsStore: createSettingsStore(db),
       getApiKey: () => 'k',
       approvalStore: createApprovalStore(),
       hitlSessionStore: createHitlSessionStore(),

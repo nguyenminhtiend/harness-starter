@@ -1,20 +1,20 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { Persistence } from '../persistence.ts';
-import { buildSettingsGetResponse } from '../settings-read.ts';
-import { applySettingsPut } from '../settings-write.ts';
-import { parseJsonBody } from './parse-body.ts';
+import { parseJsonBody } from '../../infra/parse-body.ts';
+import { buildSettingsGetResponse } from './settings.reader.ts';
+import type { SettingsStore } from './settings.store.ts';
+import { applySettingsPut } from './settings.writer.ts';
 
 const SettingsUpdateBody = z.object({
   scope: z.string().min(1),
   settings: z.record(z.string(), z.unknown()),
 });
 
-export function createSettingsRoutes(persistence: Persistence) {
+export function createSettingsRoutes(settingsStore: SettingsStore) {
   const routes = new Hono();
 
   routes.get('/', (c) => {
-    return c.json(buildSettingsGetResponse(persistence));
+    return c.json(buildSettingsGetResponse(settingsStore));
   });
 
   routes.put('/', async (c) => {
@@ -23,7 +23,7 @@ export function createSettingsRoutes(persistence: Persistence) {
       return parsed.response;
     }
 
-    const result = applySettingsPut(persistence, parsed.data.scope, parsed.data.settings);
+    const result = applySettingsPut(settingsStore, parsed.data.scope, parsed.data.settings);
     if (!result.ok) {
       return c.json({ error: result.message }, result.status);
     }

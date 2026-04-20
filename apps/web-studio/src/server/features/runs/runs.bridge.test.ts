@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { createEventBus, ToolError } from '@harness/core';
-import { agentEventToUIEvents, bridgeBusToUIEvents } from './runner-bridge.ts';
+import { agentEventToUIEvents, bridgeBusToUIEvents } from './runs.bridge.ts';
 
 function acc() {
   return { inputTokens: 0, outputTokens: 0, costUsd: 0 };

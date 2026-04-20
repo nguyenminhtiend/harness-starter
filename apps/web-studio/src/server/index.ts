@@ -1,71 +1,55 @@
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { createHitlSessionStore, type HitlSessionStore } from './active-hitl-sessions.ts';
-import { type ApprovalStore, createApprovalStore } from './approval.ts';
 import { loadConfig } from './config.ts';
-import { createPersistence, type Persistence } from './persistence.ts';
-import { createApproveRoute } from './routes/approve.ts';
-import { createRunsRoutes } from './routes/runs.ts';
-import { createSettingsRoutes } from './routes/settings.ts';
-import { toolsRoutes } from './routes/tools.ts';
+import { type ApprovalStore, createApprovalStore } from './features/runs/runs.approval.ts';
+import { createHitlSessionStore, type HitlSessionStore } from './features/runs/runs.hitl.ts';
+import { createRunsRoutes } from './features/runs/runs.routes.ts';
+import type { RunStore } from './features/runs/runs.store.ts';
+import { createRunStore } from './features/runs/runs.store.ts';
+import { createSettingsRoutes } from './features/settings/settings.routes.ts';
+import { createSettingsStore, type SettingsStore } from './features/settings/settings.store.ts';
+import { createToolsRoutes } from './features/tools/tools.routes.ts';
+import { createDatabase } from './infra/db.ts';
+import { localCors } from './middleware/cors.ts';
 
 export interface AppDeps {
-  persistence: Persistence;
-  getApiKey: () => string;
+  runStore: RunStore;
+  settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
+  getApiKey: () => string;
 }
 
 export function createApp(deps: AppDeps) {
   const app = new Hono();
 
-  app.use(
-    '/api/*',
-    cors({
-      origin: (origin) => {
-        if (!origin) {
-          return origin;
-        }
-        if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
-          return origin;
-        }
-        if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) {
-          return origin;
-        }
-        return undefined;
-      },
-    }),
-  );
+  app.use('/api/*', localCors());
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
   app.route(
     '/api/runs',
-    createRunsRoutes(deps.persistence, deps.getApiKey, deps.approvalStore, deps.hitlSessionStore),
-  );
-  app.route(
-    '/api/runs',
-    createApproveRoute(deps.persistence, {
-      hasPendingApproval: (runId) => deps.approvalStore.hasPending(runId),
-      resolveApproval: (runId, decision) => deps.approvalStore.resolve(runId, decision),
-      getHitlSession: (runId) => deps.hitlSessionStore.get(runId),
+    createRunsRoutes({
+      runStore: deps.runStore,
+      settingsStore: deps.settingsStore,
+      approvalStore: deps.approvalStore,
+      hitlSessionStore: deps.hitlSessionStore,
+      getApiKey: deps.getApiKey,
     }),
   );
-  app.route('/api/tools', toolsRoutes);
-  app.route('/api/settings', createSettingsRoutes(deps.persistence));
+  app.route('/api/tools', createToolsRoutes());
+  app.route('/api/settings', createSettingsRoutes(deps.settingsStore));
 
   return app;
 }
 
 if (import.meta.main) {
   const config = loadConfig();
-  const persistence = createPersistence(config.DATA_DIR);
-
-  const getApiKey = () => process.env.OPENROUTER_API_KEY ?? '';
+  const db = createDatabase(config.DATA_DIR);
 
   const app = createApp({
-    persistence,
-    getApiKey,
+    runStore: createRunStore(db),
+    settingsStore: createSettingsStore(db),
+    getApiKey: () => process.env.OPENROUTER_API_KEY ?? '',
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   });

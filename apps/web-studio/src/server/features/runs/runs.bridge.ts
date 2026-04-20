@@ -1,6 +1,6 @@
 import type { AgentEvent } from '@harness/agent';
 import type { EventBus } from '@harness/core';
-import type { UIEvent } from '../shared/events.ts';
+import type { UIEvent } from '../../../shared/events.ts';
 
 export function agentEventToUIEvents(
   e: AgentEvent,

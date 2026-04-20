@@ -56,6 +56,8 @@ export const api = {
 
   cancelRun: (id: string) => json<{ cancelled: boolean }>(`/runs/${id}/cancel`, { method: 'POST' }),
 
+  deleteRun: (id: string) => json<{ ok: boolean }>(`/runs/${id}`, { method: 'DELETE' }),
+
   approveRun: (id: string, body: { decision: 'approve' | 'reject'; editedPlan?: unknown }) =>
     json<{ ok: boolean }>(`/runs/${id}/approve`, {
       method: 'POST',

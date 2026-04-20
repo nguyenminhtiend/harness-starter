@@ -5,7 +5,7 @@ import { api } from './api.ts';
 import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
 import { PlanApprovalModal } from './components/PlanApprovalModal.tsx';
 import { Badge } from './components/primitives.tsx';
-import { deriveReportMarkdown, ReportView } from './components/ReportView.tsx';
+import { deriveReportMarkdown } from './components/ReportView.tsx';
 import { RunForm, type RunFormState } from './components/RunForm.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { StreamView } from './components/StreamView.tsx';
@@ -13,7 +13,7 @@ import { Toast, type ToastItem, type ToastType } from './components/Toast.tsx';
 import { useEventStream } from './hooks/useEventStream.ts';
 import { useSettings } from './hooks/useSettings.ts';
 
-type ViewMode = 'run' | 'report' | 'settings';
+type ViewMode = 'run' | 'settings';
 
 interface HitlModalState {
   open: boolean;
@@ -152,6 +152,53 @@ export function App() {
     }
   }, [runId, pushToast]);
 
+  const handleDeleteRun = useCallback(
+    async (id: string) => {
+      try {
+        await api.deleteRun(id);
+        if (runId === id) {
+          setRunId(null);
+          setForm({ query: '' });
+        }
+        await queryClient.invalidateQueries({ queryKey: ['runs'] });
+        pushToast('Run deleted', 'info');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to delete run';
+        pushToast(msg, 'error');
+      }
+    },
+    [runId, pushToast, queryClient],
+  );
+
+  const handleRetry = useCallback(async () => {
+    if (!form.query.trim()) {
+      return;
+    }
+    try {
+      const toolOverrides =
+        activeTool === 'deep-research'
+          ? (settingsQuery.data?.tools['deep-research']?.values as
+              | Record<string, unknown>
+              | undefined)
+          : undefined;
+
+      const { id } = await api.createRun({
+        toolId: activeTool,
+        question: form.query,
+        settings: {
+          ...(toolOverrides ?? {}),
+        },
+      });
+      setRunId(id);
+      setView('run');
+      pushToast('Retrying run', 'info');
+      await queryClient.invalidateQueries({ queryKey: ['runs'] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to retry run';
+      pushToast(msg, 'error');
+    }
+  }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools]);
+
   const handleNewRun = useCallback(() => {
     setRunId(null);
     setForm({ query: '' });
@@ -208,7 +255,7 @@ export function App() {
   const showStream = Boolean(runId && (stream.events.length > 0 || stream.status === 'running'));
 
   useEffect(() => {
-    if (!showStream && view === 'report') {
+    if (!showStream && view !== 'run') {
       setView('run');
     }
   }, [showStream, view]);
@@ -271,6 +318,7 @@ export function App() {
           runs={runs}
           activeRunId={runId}
           onSelectRun={handleSelectRun}
+          onDeleteRun={(id) => void handleDeleteRun(id)}
           onNewRun={handleNewRun}
           searchQuery={historySearch}
           setSearchQuery={setHistorySearch}
@@ -332,38 +380,25 @@ export function App() {
               </p>
             )}
           </div>
-          {showStream && (status === 'completed' || status === 'running') && (
-            <div
+          {/* retry button in header for quick access */}
+          {showStream && (status === 'failed' || status === 'cancelled') && (
+            <button
+              type="button"
+              onClick={() => void handleRetry()}
               style={{
-                display: 'flex',
-                background: 'var(--bg-elevated)',
+                padding: '3px 10px',
                 borderRadius: 'var(--r-sm)',
-                padding: 2,
-                border: '1px solid var(--border-subtle)',
-                gap: 2,
+                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--font-sans)',
+                background: 'var(--accent-subtle)',
+                border: '1px solid var(--accent-border)',
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                transition: 'all var(--t-fast)',
               }}
             >
-              {(['run', 'report'] as const).map((v) => (
-                <button
-                  type="button"
-                  key={v}
-                  onClick={() => setView(v)}
-                  style={{
-                    padding: '3px 10px',
-                    borderRadius: 'var(--r-xs)',
-                    fontSize: 'var(--text-xs)',
-                    background: view === v ? 'var(--bg-overlay)' : 'transparent',
-                    border: view === v ? '1px solid var(--border-subtle)' : '1px solid transparent',
-                    color: view === v ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-sans)',
-                    transition: 'all var(--t-fast)',
-                  }}
-                >
-                  {v === 'run' ? 'Stream' : 'Report'}
-                </button>
-              ))}
-            </div>
+              Retry
+            </button>
           )}
           <button
             type="button"
@@ -399,25 +434,14 @@ export function App() {
               status={status}
               compact
             />
-            {view === 'report' ? (
-              <ReportView
-                report={reportMarkdown}
-                runId={runId}
-                onBack={() => {
-                  setView('run');
-                }}
-              />
-            ) : (
-              <StreamView
-                events={stream.events}
-                tokens={stream.tokens}
-                cost={stream.cost}
-                status={status}
-                onViewReport={() => {
-                  setView('report');
-                }}
-              />
-            )}
+            <StreamView
+              events={stream.events}
+              tokens={stream.tokens}
+              cost={stream.cost}
+              status={status}
+              onRetry={() => void handleRetry()}
+              report={reportMarkdown}
+            />
           </div>
         ) : (
           <div style={{ flex: 1, overflowY: 'auto' }}>

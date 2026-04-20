@@ -1,13 +1,13 @@
-import type { GlobalSettings, ToolSettingsView } from '../shared/settings.ts';
-import type { Persistence } from './persistence.ts';
+import type { GlobalSettings, ToolSettingsView } from '../../../shared/settings.ts';
+import { tools as toolRegistry } from '../tools/tools.registry.ts';
 import {
   applyGlobalLayer,
   applyToolPersistenceLayer,
   GLOBAL_TOOL_KEYS,
   readMergedGlobalSettings,
   TOOL_SECRET_STORAGE,
-} from './settings-constants.ts';
-import { tools as toolRegistry } from './tools/registry.ts';
+} from './settings.constants.ts';
+import type { SettingsStore } from './settings.store.ts';
 
 function maskSecretsForClient(values: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...values };
@@ -21,11 +21,8 @@ function maskSecretsForClient(values: Record<string, unknown>): Record<string, u
   return out;
 }
 
-function inheritedFromGlobalForTool(
-  toolId: string,
-  persistence: Persistence,
-): Record<string, boolean> {
-  const storedRow = persistence.getSetting<Record<string, unknown>>(toolId);
+function inheritedFromGlobalForTool(toolId: string, store: SettingsStore): Record<string, boolean> {
+  const storedRow = store.get<Record<string, unknown>>(toolId);
   const inherited: Record<string, boolean> = {};
   for (const key of GLOBAL_TOOL_KEYS) {
     if (!storedRow || typeof storedRow !== 'object') {
@@ -37,11 +34,11 @@ function inheritedFromGlobalForTool(
   return inherited;
 }
 
-export function buildSettingsGetResponse(persistence: Persistence): {
+export function buildSettingsGetResponse(store: SettingsStore): {
   global: GlobalSettings;
   tools: Record<string, ToolSettingsView>;
 } {
-  const global = readMergedGlobalSettings(persistence);
+  const global = readMergedGlobalSettings(store);
   const tools: Record<string, ToolSettingsView> = {};
 
   for (const toolId of Object.keys(toolRegistry)) {
@@ -53,7 +50,7 @@ export function buildSettingsGetResponse(persistence: Persistence): {
       ...(toolDef.defaultSettings as Record<string, unknown>),
     };
     applyGlobalLayer(merged, global);
-    applyToolPersistenceLayer(toolId, persistence, merged);
+    applyToolPersistenceLayer(toolId, store, merged);
     const values = maskSecretsForClient(merged);
     const secretMap = TOOL_SECRET_STORAGE[toolId];
     if (secretMap) {
@@ -66,7 +63,7 @@ export function buildSettingsGetResponse(persistence: Persistence): {
     }
     tools[toolId] = {
       values,
-      inheritedFromGlobal: inheritedFromGlobalForTool(toolId, persistence),
+      inheritedFromGlobal: inheritedFromGlobalForTool(toolId, store),
     };
   }
 
@@ -75,7 +72,7 @@ export function buildSettingsGetResponse(persistence: Persistence): {
 
 export function mergeToolRuntimeSettings(
   toolId: string,
-  persistence: Persistence,
+  store: SettingsStore,
   requestSettings: Record<string, unknown>,
 ): Record<string, unknown> {
   const toolDef = toolRegistry[toolId];
@@ -85,8 +82,8 @@ export function mergeToolRuntimeSettings(
   const merged: Record<string, unknown> = {
     ...(toolDef.defaultSettings as Record<string, unknown>),
   };
-  const global = readMergedGlobalSettings(persistence);
+  const global = readMergedGlobalSettings(store);
   applyGlobalLayer(merged, global);
-  applyToolPersistenceLayer(toolId, persistence, merged);
+  applyToolPersistenceLayer(toolId, store, merged);
   return { ...merged, ...requestSettings };
 }

@@ -1,23 +1,30 @@
+import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { UIEvent } from '../shared/events.ts';
-import { createHitlSessionStore } from './active-hitl-sessions.ts';
-import { createApprovalStore } from './approval.ts';
-import { createPersistence, type Persistence } from './persistence.ts';
-import { startRun } from './runner.ts';
+import type { UIEvent } from '../../../shared/events.ts';
+import { createDatabase } from '../../infra/db.ts';
+import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
+import { createApprovalStore } from './runs.approval.ts';
+import { createHitlSessionStore } from './runs.hitl.ts';
+import { startRun } from './runs.runner.ts';
+import { createRunStore, type RunStore } from './runs.store.ts';
 
-let persistence: Persistence;
+let db: Database;
+let runStore: RunStore;
+let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-runner-'));
-  persistence = createPersistence(tmpDir);
+  db = createDatabase(tmpDir);
+  runStore = createRunStore(db);
+  settingsStore = createSettingsStore(db);
 });
 
 afterEach(() => {
-  persistence.close();
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -43,8 +50,14 @@ function makeRunCtx(overrides: {
     settings: {},
     signal: overrides.signal,
     abortController: overrides.abortController,
-    persistence,
     apiKey: 'fake-key',
+  };
+}
+
+function makeDeps() {
+  return {
+    runStore,
+    settingsStore,
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   };
@@ -56,6 +69,7 @@ describe('startRun', () => {
     expect(() =>
       startRun(
         makeRunCtx({ runId: 'r1', toolId: 'nonexistent', signal: ac.signal, abortController: ac }),
+        makeDeps(),
       ),
     ).toThrow('Unknown tool: nonexistent');
   });
@@ -64,10 +78,11 @@ describe('startRun', () => {
     const ac = new AbortController();
     const handle = startRun(
       makeRunCtx({ runId: 'r1', question: 'What is X?', signal: ac.signal, abortController: ac }),
+      makeDeps(),
     );
 
     expect(handle.runId).toBe('r1');
-    const run = persistence.getRun('r1');
+    const run = runStore.getRun('r1');
     expect(run).toBeDefined();
     expect(run?.status).toBe('running');
     expect(run?.toolId).toBe('deep-research');
@@ -80,6 +95,7 @@ describe('startRun', () => {
     const ac = new AbortController();
     const handle = startRun(
       makeRunCtx({ runId: 'r2', question: 'What is Y?', signal: ac.signal, abortController: ac }),
+      makeDeps(),
     );
 
     ac.abort();
@@ -96,7 +112,7 @@ describe('startRun', () => {
       expect(lastStatus.status).toBe('cancelled');
     }
 
-    const run = persistence.getRun('r2');
+    const run = runStore.getRun('r2');
     expect(run?.status).toBe('cancelled');
   });
 
@@ -109,12 +125,13 @@ describe('startRun', () => {
         signal: ac.signal,
         abortController: ac,
       }),
+      makeDeps(),
     );
 
     ac.abort();
     await collectEvents(handle.events);
 
-    const storedEvents = persistence.getEvents('r3');
+    const storedEvents = runStore.getEvents('r3');
     expect(storedEvents.length).toBeGreaterThanOrEqual(1);
   });
 });

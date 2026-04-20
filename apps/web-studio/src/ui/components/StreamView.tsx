@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { RunStatus, UIEvent } from '../../shared/events.ts';
 import { Button } from './primitives.tsx';
+import { InlineReport } from './ReportView.tsx';
 
 const PHASE_META: Record<string, { label: string; color: string }> = {
   planner: { label: 'Planner', color: 'var(--phase-planner)' },
@@ -220,10 +221,11 @@ interface StreamViewProps {
   tokens: number;
   cost: number;
   status: RunStatus | 'idle';
-  onViewReport?: () => void;
+  onRetry?: () => void;
+  report?: string | undefined;
 }
 
-export function StreamView({ events, tokens, cost, status, onViewReport }: StreamViewProps) {
+export function StreamView({ events, tokens, cost, status, onRetry, report }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
@@ -336,13 +338,14 @@ export function StreamView({ events, tokens, cost, status, onViewReport }: Strea
             {visibleEvents.map((ev, i) => (
               <TimelineEvent key={`${ev.ts}-${ev.type}-${ev.runId}`} event={ev} index={i} />
             ))}
-            {status === 'completed' && onViewReport && (
+            {(status === 'failed' || status === 'cancelled') && onRetry && (
               <div style={{ padding: 'var(--s5)', textAlign: 'center' }}>
-                <Button variant="primary" size="lg" onClick={onViewReport}>
-                  View Report
+                <Button variant="primary" size="lg" onClick={onRetry}>
+                  Retry
                 </Button>
               </div>
             )}
+            {report && <InlineReport report={report} />}
           </div>
         )}
         <div ref={bottomRef} />

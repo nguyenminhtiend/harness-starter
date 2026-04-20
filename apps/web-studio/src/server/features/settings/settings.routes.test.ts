@@ -1,29 +1,37 @@
+import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createHitlSessionStore } from '../active-hitl-sessions.ts';
-import { createApprovalStore } from '../approval.ts';
-import { createApp } from '../index.ts';
-import { createPersistence, type Persistence } from '../persistence.ts';
-import { promptStorageKey } from '../settings-constants.ts';
+import { createApp } from '../../index.ts';
+import { createDatabase } from '../../infra/db.ts';
+import { createApprovalStore } from '../runs/runs.approval.ts';
+import { createHitlSessionStore } from '../runs/runs.hitl.ts';
+import { createRunStore, type RunStore } from '../runs/runs.store.ts';
+import { promptStorageKey } from './settings.constants.ts';
+import { createSettingsStore, type SettingsStore } from './settings.store.ts';
 
-let persistence: Persistence;
+let db: Database;
+let runStore: RunStore;
+let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-settings-route-'));
-  persistence = createPersistence(tmpDir);
+  db = createDatabase(tmpDir);
+  runStore = createRunStore(db);
+  settingsStore = createSettingsStore(db);
 });
 
 afterEach(() => {
-  persistence.close();
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 function makeApp() {
   return createApp({
-    persistence,
+    runStore,
+    settingsStore,
     getApiKey: () => 'test-key',
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
@@ -84,10 +92,8 @@ describe('PUT /api/settings', () => {
     });
     expect(putRes.status).toBe(200);
 
-    expect(persistence.getSetting(promptStorageKey('deep-research', 'planner'))).toBe(
-      'Custom planner',
-    );
-    const row = persistence.getSetting<Record<string, unknown>>('deep-research');
+    expect(settingsStore.get(promptStorageKey('deep-research', 'planner'))).toBe('Custom planner');
+    const row = settingsStore.get<Record<string, unknown>>('deep-research');
     expect(row?.depth).toBe('deep');
     expect(row?.plannerPrompt).toBeUndefined();
 
@@ -138,7 +144,7 @@ describe('PUT /api/settings', () => {
   });
 
   it('deletes persisted prompt when cleared with an empty string', async () => {
-    persistence.upsertSetting(promptStorageKey('deep-research', 'planner'), 'was-set');
+    settingsStore.upsert(promptStorageKey('deep-research', 'planner'), 'was-set');
     const app = makeApp();
     const putRes = await app.request('/api/settings', {
       method: 'PUT',
@@ -149,7 +155,7 @@ describe('PUT /api/settings', () => {
       }),
     });
     expect(putRes.status).toBe(200);
-    expect(persistence.getSetting(promptStorageKey('deep-research', 'planner'))).toBeUndefined();
+    expect(settingsStore.get(promptStorageKey('deep-research', 'planner'))).toBeUndefined();
   });
 
   it('returns 400 for invalid JSON body', async () => {
@@ -165,8 +171,8 @@ describe('PUT /api/settings', () => {
   });
 
   it('reflects tool-specific model override over global defaults on GET', async () => {
-    persistence.upsertSetting('global', { defaultModel: 'openrouter/global-model' });
-    persistence.upsertSetting('deep-research', { model: 'openrouter/tool-model' });
+    settingsStore.upsert('global', { defaultModel: 'openrouter/global-model' });
+    settingsStore.upsert('deep-research', { model: 'openrouter/tool-model' });
     const app = makeApp();
     const res = await app.request('/api/settings');
     const body = (await res.json()) as {

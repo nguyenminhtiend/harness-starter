@@ -1,5 +1,5 @@
-import { DEFAULT_GLOBAL_SETTINGS, type GlobalSettings } from '../shared/settings.ts';
-import type { Persistence } from './persistence.ts';
+import { DEFAULT_GLOBAL_SETTINGS, type GlobalSettings } from '../../../shared/settings.ts';
+import type { SettingsStore } from './settings.store.ts';
 
 export const GLOBAL_TOOL_KEYS = ['model', 'budgetUsd', 'maxTokens', 'concurrency'] as const;
 
@@ -31,8 +31,8 @@ export function promptStorageKey(toolId: string, role: string): string {
   return `${toolId}.prompts.${role}`;
 }
 
-export function readMergedGlobalSettings(persistence: Persistence): GlobalSettings {
-  const stored = persistence.getSetting<unknown>('global');
+export function readMergedGlobalSettings(store: SettingsStore): GlobalSettings {
+  const stored = store.get<unknown>('global');
   if (!stored || typeof stored !== 'object') {
     return { ...DEFAULT_GLOBAL_SETTINGS };
   }
@@ -55,8 +55,8 @@ export function readMergedGlobalSettings(persistence: Persistence): GlobalSettin
   };
 }
 
-export function readApiKeysStore(persistence: Persistence): ApiKeysStore {
-  const raw = persistence.getSetting<unknown>('apiKeys');
+export function readApiKeysStore(store: SettingsStore): ApiKeysStore {
+  const raw = store.get<unknown>('apiKeys');
   if (!raw || typeof raw !== 'object') {
     return {};
   }
@@ -78,12 +78,12 @@ export function readApiKeysStore(persistence: Persistence): ApiKeysStore {
   return out;
 }
 
-export function writeApiKeysStore(persistence: Persistence, next: ApiKeysStore): void {
+export function writeApiKeysStore(store: SettingsStore, next: ApiKeysStore): void {
   if (Object.keys(next).length === 0) {
-    persistence.deleteSetting('apiKeys');
+    store.delete('apiKeys');
     return;
   }
-  persistence.upsertSetting('apiKeys', next);
+  store.upsert('apiKeys', next);
 }
 
 export function applyGlobalLayer(target: Record<string, unknown>, global: GlobalSettings): void {
@@ -95,10 +95,10 @@ export function applyGlobalLayer(target: Record<string, unknown>, global: Global
 
 export function applyToolPersistenceLayer(
   toolId: string,
-  persistence: Persistence,
+  store: SettingsStore,
   target: Record<string, unknown>,
 ): void {
-  const row = persistence.getSetting<Record<string, unknown>>(toolId);
+  const row = store.get<Record<string, unknown>>(toolId);
   if (row && typeof row === 'object') {
     Object.assign(target, row);
   }
@@ -107,7 +107,7 @@ export function applyToolPersistenceLayer(
   if (promptRoles) {
     for (const [role, field] of Object.entries(promptRoles)) {
       const key = promptStorageKey(toolId, role);
-      const v = persistence.getSetting<unknown>(key);
+      const v = store.get<unknown>(key);
       if (typeof v === 'string') {
         target[field] = v;
       }
@@ -115,7 +115,7 @@ export function applyToolPersistenceLayer(
   }
 
   const secretMap = TOOL_SECRET_STORAGE[toolId];
-  const apiKeys = readApiKeysStore(persistence)[toolId];
+  const apiKeys = readApiKeysStore(store)[toolId];
   if (secretMap && apiKeys) {
     for (const [fieldName, storageKey] of Object.entries(secretMap)) {
       const secret = apiKeys[storageKey];

@@ -1,28 +1,36 @@
+import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createHitlSessionStore } from './active-hitl-sessions.ts';
-import { createApprovalStore } from './approval.ts';
+import { createApprovalStore } from './features/runs/runs.approval.ts';
+import { createHitlSessionStore } from './features/runs/runs.hitl.ts';
+import { createRunStore, type RunStore } from './features/runs/runs.store.ts';
+import { createSettingsStore, type SettingsStore } from './features/settings/settings.store.ts';
 import { createApp } from './index.ts';
-import { createPersistence, type Persistence } from './persistence.ts';
+import { createDatabase } from './infra/db.ts';
 
-let persistence: Persistence;
+let db: Database;
+let runStore: RunStore;
+let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-app-'));
-  persistence = createPersistence(tmpDir);
+  db = createDatabase(tmpDir);
+  runStore = createRunStore(db);
+  settingsStore = createSettingsStore(db);
 });
 
 afterEach(() => {
-  persistence.close();
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 function makeApp() {
   return createApp({
-    persistence,
+    runStore,
+    settingsStore,
     getApiKey: () => 'test-key',
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
@@ -87,7 +95,7 @@ describe('web-studio server', () => {
     const body = (await res.json()) as { id: string };
     expect(body.id).toBeDefined();
 
-    const run = persistence.getRun(body.id);
+    const run = runStore.getRun(body.id);
     expect(run?.status).toBe('running');
   });
 
@@ -107,7 +115,7 @@ describe('web-studio server', () => {
     const body = (await res.json()) as { id: string };
     expect(body.id).toBeDefined();
     expect(body.id).not.toBe(priorId);
-    const run = persistence.getRun(body.id);
+    const run = runStore.getRun(body.id);
     expect(run?.question).toBe('Resume test?');
   });
 

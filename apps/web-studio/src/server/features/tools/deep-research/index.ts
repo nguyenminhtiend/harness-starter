@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import type { ToolDef } from '../../shared/tool.ts';
-import { splitBudget } from './deep-research/budgets.ts';
-import { createResearchGraph } from './deep-research/graph.ts';
-import { createSearchTools } from './deep-research/search.ts';
+import type { ToolDef } from '../../../../shared/tool.ts';
+import { splitBudget } from './budgets.ts';
+import { createResearchGraph } from './graph.ts';
+import { createSearchTools } from './search.ts';
 
 function nonEmpty(v: string | undefined): string | undefined {
   return v !== undefined && v !== '' ? v : undefined;
@@ -54,8 +54,6 @@ export const deepResearchToolDef: ToolDef<typeof settingsSchema> = {
       }),
     );
 
-    // Return a proxy Agent that lazily resolves the async setup.
-    // The only method callers need is `stream()`.
     return {
       stream(input, opts) {
         async function* gen() {

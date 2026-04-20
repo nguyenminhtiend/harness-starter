@@ -1,28 +1,36 @@
+import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createHitlSessionStore } from '../active-hitl-sessions.ts';
-import { createApprovalStore } from '../approval.ts';
-import { createApp } from '../index.ts';
-import { createPersistence, type Persistence } from '../persistence.ts';
+import { createApp } from '../../index.ts';
+import { createDatabase } from '../../infra/db.ts';
+import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
+import { createApprovalStore } from './runs.approval.ts';
+import { createHitlSessionStore } from './runs.hitl.ts';
+import { createRunStore, type RunStore } from './runs.store.ts';
 
-let persistence: Persistence;
+let db: Database;
+let runStore: RunStore;
+let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-runs-route-'));
-  persistence = createPersistence(tmpDir);
+  db = createDatabase(tmpDir);
+  runStore = createRunStore(db);
+  settingsStore = createSettingsStore(db);
 });
 
 afterEach(() => {
-  persistence.close();
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 function makeApp() {
   return createApp({
-    persistence,
+    runStore,
+    settingsStore,
     getApiKey: () => 'test-key',
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
@@ -60,8 +68,8 @@ describe('POST /api/runs', () => {
 
 describe('GET /api/runs', () => {
   it('filters by status, question search, and limit', async () => {
-    persistence.createRun({ id: 'a', toolId: 't', question: 'Alpha', status: 'completed' });
-    persistence.createRun({ id: 'b', toolId: 't', question: 'Beta', status: 'running' });
+    runStore.createRun({ id: 'a', toolId: 't', question: 'Alpha', status: 'completed' });
+    runStore.createRun({ id: 'b', toolId: 't', question: 'Beta', status: 'running' });
     const app = makeApp();
 
     const byStatus = await app.request('/api/runs?status=completed');
@@ -84,7 +92,7 @@ describe('GET /api/runs', () => {
 
 describe('GET /api/runs/:id', () => {
   it('returns run metadata when present', async () => {
-    persistence.createRun({
+    runStore.createRun({
       id: 'rid-1',
       toolId: 'deep-research',
       question: 'Q?',
@@ -108,14 +116,14 @@ describe('GET /api/runs/:id/events', () => {
 
   it('replays persisted events and ends with done', async () => {
     const runId = 'replay-1';
-    persistence.createRun({
+    runStore.createRun({
       id: runId,
       toolId: 'deep-research',
       question: 'Q',
       status: 'completed',
     });
-    persistence.appendEvent(runId, { type: 'status', status: 'completed', ts: 1, runId });
-    persistence.appendEvent(runId, {
+    runStore.appendEvent(runId, { type: 'status', status: 'completed', ts: 1, runId });
+    runStore.appendEvent(runId, {
       type: 'complete',
       ts: 2,
       runId,

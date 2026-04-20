@@ -63,14 +63,13 @@ export interface HistorySidebarProps {
   runs: RunMeta[];
   activeRunId: string | null;
   onSelectRun: (run: RunMeta) => void;
+  onDeleteRun: (runId: string) => void;
   onNewRun: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   filterStatus: HistoryStatusFilter;
   setFilterStatus: (s: HistoryStatusFilter) => void;
-  /** Wired to `ToolPicker` at the top of the sidebar. */
   activeTool: string;
-  /** Wired to `ToolPicker` at the top of the sidebar. */
   onSelectTool: (id: string) => void;
 }
 
@@ -78,6 +77,7 @@ export function HistorySidebar({
   runs,
   activeRunId,
   onSelectRun,
+  onDeleteRun,
   onNewRun,
   searchQuery,
   setSearchQuery,
@@ -263,11 +263,49 @@ export function HistorySidebar({
                     <div
                       style={{
                         marginTop: 6,
-                        fontSize: 'var(--text-2xs)',
-                        color: 'var(--text-tertiary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                       }}
                     >
-                      {formatCost(run.costUsd)}
+                      <span
+                        style={{
+                          fontSize: 'var(--text-2xs)',
+                          color: 'var(--text-tertiary)',
+                        }}
+                      >
+                        {formatCost(run.costUsd)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteRun(run.id);
+                        }}
+                        style={{
+                          fontSize: 'var(--text-2xs)',
+                          color: 'var(--text-disabled)',
+                          cursor: 'pointer',
+                          padding: '0 4px',
+                          borderRadius: 'var(--r-xs)',
+                          transition: 'color var(--t-fast)',
+                          lineHeight: 1,
+                          background: 'none',
+                          border: 'none',
+                          fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.color =
+                            'var(--status-error)';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.color =
+                            'var(--text-disabled)';
+                        }}
+                        aria-label="Delete run"
+                      >
+                        ✕
+                      </button>
                     </div>
                   </button>
                 );

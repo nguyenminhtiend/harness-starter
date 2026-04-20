@@ -1,33 +1,41 @@
+import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { inMemoryCheckpointer } from '@harness/agent';
-import { createHitlSessionStore, type HitlSessionStore } from '../active-hitl-sessions.ts';
-import { type ApprovalStore, createApprovalStore } from '../approval.ts';
-import { createApp } from '../index.ts';
-import { createPersistence, type Persistence } from '../persistence.ts';
+import { createApp } from '../../index.ts';
+import { createDatabase } from '../../infra/db.ts';
+import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
+import { type ApprovalStore, createApprovalStore } from './runs.approval.ts';
+import { createHitlSessionStore, type HitlSessionStore } from './runs.hitl.ts';
+import { createRunStore, type RunStore } from './runs.store.ts';
 
-let persistence: Persistence;
+let db: Database;
+let runStore: RunStore;
+let settingsStore: SettingsStore;
 let tmpDir: string;
 let approvalStore: ApprovalStore;
 let hitlSessionStore: HitlSessionStore;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-approve-'));
-  persistence = createPersistence(tmpDir);
+  db = createDatabase(tmpDir);
+  runStore = createRunStore(db);
+  settingsStore = createSettingsStore(db);
   approvalStore = createApprovalStore();
   hitlSessionStore = createHitlSessionStore();
 });
 
 afterEach(() => {
-  persistence.close();
+  db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 function makeApp() {
   return createApp({
-    persistence,
+    runStore,
+    settingsStore,
     getApiKey: () => 'test-key',
     approvalStore,
     hitlSessionStore,
@@ -47,7 +55,7 @@ describe('POST /api/runs/:id/approve', () => {
 
   it('returns 400 for invalid body', async () => {
     const app = makeApp();
-    persistence.createRun({
+    runStore.createRun({
       id: 'r1',
       toolId: 'deep-research',
       question: 'q',
@@ -63,7 +71,7 @@ describe('POST /api/runs/:id/approve', () => {
 
   it('returns 400 for invalid JSON body', async () => {
     const app = makeApp();
-    persistence.createRun({
+    runStore.createRun({
       id: 'r-json',
       toolId: 'deep-research',
       question: 'q',
@@ -81,7 +89,7 @@ describe('POST /api/runs/:id/approve', () => {
 
   it('returns 404 when there is no pending approval', async () => {
     const app = makeApp();
-    persistence.createRun({
+    runStore.createRun({
       id: 'r2',
       toolId: 'deep-research',
       question: 'q',
@@ -98,7 +106,7 @@ describe('POST /api/runs/:id/approve', () => {
   it('resolves pending approval, persists hitl-resolved, and returns 200', async () => {
     const app = makeApp();
     const runId = 'run-hitl-1';
-    persistence.createRun({
+    runStore.createRun({
       id: runId,
       toolId: 'deep-research',
       question: 'What is X?',
@@ -141,7 +149,7 @@ describe('POST /api/runs/:id/approve', () => {
     const decision = await approvalPromise;
     expect(decision).toEqual({ decision: 'approve' });
 
-    const stored = persistence.getEvents(runId);
+    const stored = runStore.getEvents(runId);
     const resolved = stored.filter((e) => e.type === 'hitl-resolved');
     expect(resolved.length).toBe(1);
     expect(resolved[0]?.payload.decision).toBe('approve');
@@ -152,7 +160,7 @@ describe('POST /api/runs/:id/approve', () => {
   it('resolves reject decision, aborts session, and returns 200', async () => {
     const app = makeApp();
     const runId = 'run-hitl-reject';
-    persistence.createRun({
+    runStore.createRun({
       id: runId,
       toolId: 'deep-research',
       question: 'What?',
@@ -202,7 +210,7 @@ describe('POST /api/runs/:id/approve', () => {
   it('returns 400 when editedPlan is invalid', async () => {
     const app = makeApp();
     const runId = 'run-hitl-bad-plan';
-    persistence.createRun({
+    runStore.createRun({
       id: runId,
       toolId: 'deep-research',
       question: 'q',

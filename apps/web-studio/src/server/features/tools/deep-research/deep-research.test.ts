@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import { createEventBus } from '@harness/core';
 import { fakeProvider } from '@harness/core/testing';
-import type { ToolDef } from '../../shared/tool.ts';
-import { deepResearchToolDef } from './deep-research.ts';
-import { tools } from './registry.ts';
+import type { ToolDef } from '../../../../shared/tool.ts';
+import { tools } from '../tools.registry.ts';
+import { deepResearchToolDef } from './index.ts';
 
 describe('deep-research ToolDef', () => {
   it('conforms to ToolDef (shape + parseable defaults)', () => {

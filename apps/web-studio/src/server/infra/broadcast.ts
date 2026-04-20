@@ -1,4 +1,4 @@
-import type { UIEvent } from '../shared/events.ts';
+import type { UIEvent } from '../../shared/events.ts';
 
 export interface RunBroadcast {
   push(event: UIEvent): void;

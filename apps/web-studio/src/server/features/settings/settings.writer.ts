@@ -1,5 +1,5 @@
-import { DEFAULT_GLOBAL_SETTINGS } from '../shared/settings.ts';
-import type { Persistence } from './persistence.ts';
+import { DEFAULT_GLOBAL_SETTINGS } from '../../../shared/settings.ts';
+import { tools as toolRegistry } from '../tools/tools.registry.ts';
 import {
   type ApiKeysStore,
   promptStorageKey,
@@ -7,16 +7,16 @@ import {
   TOOL_PROMPT_FIELD_TO_ROLE,
   TOOL_SECRET_STORAGE,
   writeApiKeysStore,
-} from './settings-constants.ts';
-import { tools as toolRegistry } from './tools/registry.ts';
+} from './settings.constants.ts';
+import type { SettingsStore } from './settings.store.ts';
 
 export function applySettingsPut(
-  persistence: Persistence,
+  store: SettingsStore,
   scope: string,
   settings: Record<string, unknown>,
 ): { ok: true } | { ok: false; status: 400; message: string } {
   if (scope === 'global') {
-    const existing = persistence.getSetting<Record<string, unknown>>('global') ?? {
+    const existing = store.get<Record<string, unknown>>('global') ?? {
       ...DEFAULT_GLOBAL_SETTINGS,
     };
     const next = { ...existing };
@@ -26,7 +26,7 @@ export function applySettingsPut(
       }
       next[k] = v;
     }
-    persistence.upsertSetting('global', next);
+    store.upsert('global', next);
     return { ok: true };
   }
 
@@ -43,32 +43,32 @@ export function applySettingsPut(
     if (role) {
       const storageKey = promptStorageKey(scope, role);
       if (value === undefined || value === null || value === '') {
-        persistence.deleteSetting(storageKey);
+        store.delete(storageKey);
       } else if (typeof value === 'string') {
-        persistence.upsertSetting(storageKey, value);
+        store.upsert(storageKey, value);
       } else {
         return { ok: false, status: 400, message: `Invalid prompt value for ${key}` };
       }
       continue;
     }
 
-    const storageKey = secretMap[key];
-    if (storageKey) {
+    const secretKey = secretMap[key];
+    if (secretKey) {
       if (typeof value === 'string') {
-        const cur = readApiKeysStore(persistence);
+        const cur = readApiKeysStore(store);
         const next: ApiKeysStore = { ...cur };
         const row = { ...(next[scope] ?? {}) };
         if (value === '') {
-          delete row[storageKey];
+          delete row[secretKey];
         } else {
-          row[storageKey] = value;
+          row[secretKey] = value;
         }
         if (Object.keys(row).length === 0) {
           delete next[scope];
         } else {
           next[scope] = row;
         }
-        writeApiKeysStore(persistence, next);
+        writeApiKeysStore(store, next);
       } else if (
         value &&
         typeof value === 'object' &&
@@ -84,7 +84,7 @@ export function applySettingsPut(
     normalPatch[key] = value;
   }
 
-  const existing = persistence.getSetting<Record<string, unknown>>(scope) ?? {};
+  const existing = store.get<Record<string, unknown>>(scope) ?? {};
   const merged: Record<string, unknown> = { ...existing, ...normalPatch };
   for (const field of Object.keys(fieldToRole)) {
     delete merged[field];
@@ -92,6 +92,6 @@ export function applySettingsPut(
   for (const field of Object.keys(secretMap)) {
     delete merged[field];
   }
-  persistence.upsertSetting(scope, merged);
+  store.upsert(scope, merged);
   return { ok: true };
 }

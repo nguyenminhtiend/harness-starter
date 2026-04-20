@@ -7,6 +7,6 @@ export interface SearchToolsOpts {
   signal?: AbortSignal;
 }
 
-export async function createSearchTools(opts?: SearchToolsOpts): Promise<Tool[]> {
+export async function createSearchTools(_opts?: SearchToolsOpts): Promise<Tool[]> {
   return [fetchTool({ allow: [HTTPS_ONLY] }) as Tool];
 }
