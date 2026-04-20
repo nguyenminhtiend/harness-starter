@@ -23,9 +23,7 @@ export const TOOL_PROMPT_FIELD_TO_ROLE: Record<string, Record<string, string>> =
   return out;
 })();
 
-export const TOOL_SECRET_STORAGE: Record<string, Record<string, string>> = {
-  'deep-research': { braveApiKey: 'brave' },
-};
+export const TOOL_SECRET_STORAGE: Record<string, Record<string, string>> = {};
 
 export type ApiKeysStore = Record<string, Record<string, string>>;
 

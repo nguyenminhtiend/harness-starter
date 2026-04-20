@@ -47,18 +47,6 @@ describe('GET /api/settings', () => {
     expect(dr).toBeDefined();
     expect(dr.values.model).toBe('openrouter/free');
     expect(dr.inheritedFromGlobal.model).toBe(true);
-    expect(dr.values.braveApiKey).toEqual({ set: false });
-  });
-
-  it('never exposes raw API key values', async () => {
-    persistence.upsertSetting('apiKeys', { 'deep-research': { brave: 'super-secret' } });
-    const app = makeApp();
-    const res = await app.request('/api/settings');
-    const body = (await res.json()) as {
-      tools: Record<string, { values: Record<string, unknown> }>;
-    };
-    expect(JSON.stringify(body)).not.toContain('super-secret');
-    expect(body.tools['deep-research'].values.braveApiKey).toEqual({ set: true });
   });
 });
 
@@ -109,29 +97,6 @@ describe('PUT /api/settings', () => {
     };
     expect(body.tools['deep-research'].values.depth).toBe('deep');
     expect(body.tools['deep-research'].values.plannerPrompt).toBe('Custom planner');
-  });
-
-  it('stores API keys separately and masks them on GET', async () => {
-    const app = makeApp();
-    const putRes = await app.request('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scope: 'deep-research',
-        settings: { braveApiKey: 'sk-test' },
-      }),
-    });
-    expect(putRes.status).toBe(200);
-
-    const keys = persistence.getSetting<Record<string, Record<string, string>>>('apiKeys');
-    expect(keys?.['deep-research']?.brave).toBe('sk-test');
-
-    const getRes = await app.request('/api/settings');
-    const body = (await getRes.json()) as {
-      tools: Record<string, { values: Record<string, unknown> }>;
-    };
-    expect(body.tools['deep-research'].values.braveApiKey).toEqual({ set: true });
-    expect(JSON.stringify(body)).not.toContain('sk-test');
   });
 
   it('returns 400 for invalid JSON body shape', async () => {

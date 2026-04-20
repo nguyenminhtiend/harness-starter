@@ -36,7 +36,7 @@ export function App() {
   const [activeTool, setActiveTool] = useState('deep-research');
   const [view, setView] = useState<ViewMode>('run');
   const [runId, setRunId] = useState<string | null>(null);
-  const [form, setForm] = useState<RunFormState>({ query: '', model: 'openrouter/free' });
+  const [form, setForm] = useState<RunFormState>({ query: '' });
   const [historySearch, setHistorySearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState<HistoryStatusFilter>('all');
   const [hitl, setHitl] = useState<HitlModalState>({
@@ -126,7 +126,6 @@ export function App() {
         toolId: activeTool,
         question: form.query,
         settings: {
-          model: form.model,
           ...(toolOverrides ?? {}),
         },
       });
@@ -155,9 +154,9 @@ export function App() {
 
   const handleNewRun = useCallback(() => {
     setRunId(null);
-    setForm({ query: '', model: form.model });
+    setForm({ query: '' });
     setView('run');
-  }, [form.model]);
+  }, []);
 
   const handleSelectRun = useCallback((run: RunMeta) => {
     setRunId(run.id);

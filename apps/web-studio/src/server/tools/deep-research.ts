@@ -19,7 +19,6 @@ const settingsSchema = z.object({
   plannerPrompt: z.string().optional(),
   writerPrompt: z.string().optional(),
   factCheckerPrompt: z.string().optional(),
-  braveApiKey: z.string().optional(),
 });
 
 type DeepResearchSettings = z.infer<typeof settingsSchema>;
@@ -36,7 +35,6 @@ export const deepResearchToolDef: ToolDef<typeof settingsSchema> = {
     const budgets = splitBudget({ usd: s.budgetUsd, tokens: s.maxTokens });
 
     const toolsPromise = createSearchTools({
-      braveApiKey: nonEmpty(s.braveApiKey),
       signal: args.signal,
     });
 

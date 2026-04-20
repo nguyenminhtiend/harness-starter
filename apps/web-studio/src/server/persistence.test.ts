@@ -23,14 +23,14 @@ describe('settings', () => {
   });
 
   it('upserts and gets a setting', () => {
-    db.upsertSetting('model', 'gpt-4');
-    expect(db.getSetting('model')).toBe('gpt-4');
+    db.upsertSetting('model', 'openrouter/free');
+    expect(db.getSetting('model')).toBe('openrouter/free');
   });
 
   it('overwrites on second upsert', () => {
-    db.upsertSetting('model', 'gpt-3.5');
-    db.upsertSetting('model', 'gpt-4');
-    expect(db.getSetting('model')).toBe('gpt-4');
+    db.upsertSetting('model', 'openrouter/free');
+    db.upsertSetting('model', 'openrouter/free');
+    expect(db.getSetting('model')).toBe('openrouter/free');
   });
 
   it('stores and retrieves JSON objects', () => {

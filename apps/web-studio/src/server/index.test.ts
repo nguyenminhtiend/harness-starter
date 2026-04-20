@@ -125,14 +125,15 @@ describe('web-studio server', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         scope: 'global',
-        settings: { defaultModel: 'gpt-4o' },
+        settings: { budgetUsd: 1.5 },
       }),
     });
     expect(putRes.status).toBe(200);
 
     const getRes = await app.request('/api/settings');
-    const body = (await getRes.json()) as { global: { defaultModel: string } };
-    expect(body.global.defaultModel).toBe('gpt-4o');
+    const body = (await getRes.json()) as { global: { defaultModel: string; budgetUsd: number } };
+    expect(body.global.defaultModel).toBe('openrouter/free');
+    expect(body.global.budgetUsd).toBe(1.5);
   });
 
   it('POST /api/runs/:id/cancel returns 404 for unknown run', async () => {

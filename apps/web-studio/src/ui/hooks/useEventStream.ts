@@ -30,6 +30,8 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
 
   useEffect(() => {
     if (!runId) {
+      eventsRef.current = [];
+      setMeta({ status: 'idle', tokens: 0, cost: 0, tick: 0 });
       return;
     }
 
@@ -68,7 +70,11 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
         }));
       },
       (err) => {
-        setMeta((prev) => ({ ...prev, error: err.message }));
+        setMeta((prev) => ({
+          ...prev,
+          error: err.message,
+          status: prev.status === 'running' ? 'failed' : prev.status,
+        }));
       },
     );
 

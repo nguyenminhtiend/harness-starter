@@ -3,7 +3,6 @@ import { Button } from './primitives.tsx';
 
 export interface RunFormState {
   query: string;
-  model: string;
 }
 
 interface RunFormProps {

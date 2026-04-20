@@ -22,6 +22,6 @@ Entry: `src/server/index.ts` (Hono). UI: `src/ui/main.tsx` (React). Shared types
 ## Safety rails
 
 - Server binds `127.0.0.1` only, never `0.0.0.0`.
-- API keys (OpenRouter, Brave, Langfuse) stay in `.env`, never sent to browser.
+- API keys (OpenRouter, Langfuse) stay in `.env`, never sent to browser.
 - User question wrapped in `<user_question>…</user_question>` delimiters in prompts.
 - `fetchTool` allowlists remain HTTPS-only.

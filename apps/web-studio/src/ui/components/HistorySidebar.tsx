@@ -38,7 +38,7 @@ function formatRelativeTime(iso: string): string {
 }
 
 function formatCost(costUsd: number | undefined): string {
-  if (costUsd === undefined || Number.isNaN(costUsd)) {
+  if (costUsd == null || Number.isNaN(costUsd)) {
     return '—';
   }
   return `$${costUsd.toFixed(4)}`;

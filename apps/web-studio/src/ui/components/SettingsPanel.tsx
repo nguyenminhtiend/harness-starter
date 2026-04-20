@@ -525,7 +525,7 @@ export function SettingsPanel({ activeTool }: SettingsPanelProps) {
             style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s4)', maxWidth: 480 }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s1)' }}>
-              <span style={fieldLabelStyle}>defaultModel</span>
+              <span style={fieldLabelStyle}>model</span>
               <input
                 type="text"
                 value={data.global.defaultModel}
