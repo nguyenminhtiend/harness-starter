@@ -32,7 +32,7 @@ function makeApp() {
   return createApp({
     runStore,
     settingsStore,
-    getApiKey: () => 'test-key',
+    getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   });
@@ -50,10 +50,10 @@ describe('GET /api/settings', () => {
         { values: Record<string, unknown>; inheritedFromGlobal: Record<string, boolean> }
       >;
     };
-    expect(body.global.defaultModel).toBe('openrouter/free');
+    expect(body.global.defaultModel).toBe('google:gemini-2.5-flash-preview-04-17');
     const dr = body.tools['deep-research'];
     expect(dr).toBeDefined();
-    expect(dr.values.model).toBe('openrouter/free');
+    expect(dr.values.model).toBe('google:gemini-2.5-flash-preview-04-17');
     expect(dr.inheritedFromGlobal.model).toBe(true);
   });
 });

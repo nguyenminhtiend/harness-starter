@@ -31,7 +31,7 @@ function makeApp() {
   return createApp({
     runStore,
     settingsStore,
-    getApiKey: () => 'test-key',
+    getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   });
@@ -140,7 +140,7 @@ describe('web-studio server', () => {
 
     const getRes = await app.request('/api/settings');
     const body = (await getRes.json()) as { global: { defaultModel: string; budgetUsd: number } };
-    expect(body.global.defaultModel).toBe('openrouter/free');
+    expect(body.global.defaultModel).toBe('google:gemini-2.5-flash-preview-04-17');
     expect(body.global.budgetUsd).toBe(1.5);
   });
 

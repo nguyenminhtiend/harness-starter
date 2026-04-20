@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { UIEvent } from '../../../shared/events.ts';
+import type { ProviderKeys } from '../../config.ts';
 import { createRunBroadcast, type RunBroadcast } from '../../infra/broadcast.ts';
 import { parseJsonBody } from '../../infra/parse-body.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
@@ -17,7 +18,7 @@ export interface RunsRouteDeps {
   settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
-  getApiKey: () => string;
+  getProviderKeys: () => ProviderKeys;
 }
 
 const CreateRunBody = z.object({
@@ -63,7 +64,7 @@ async function applyApproveToCheckpoint(
 const inflight = new Set<string>();
 
 export function createRunsRoutes(deps: RunsRouteDeps) {
-  const { runStore, settingsStore, approvalStore, hitlSessionStore, getApiKey } = deps;
+  const { runStore, settingsStore, approvalStore, hitlSessionStore, getProviderKeys } = deps;
   const routes = new Hono();
 
   const activeRuns = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
@@ -92,7 +93,7 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
           ...(resumeRunId !== undefined ? { resumeRunId } : {}),
           signal: ac.signal,
           abortController: ac,
-          apiKey: getApiKey(),
+          providerKeys: getProviderKeys(),
         },
         runDeps,
       );

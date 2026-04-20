@@ -10,6 +10,7 @@
     "start": "bun run src/server/index.ts"
   },
   "dependencies": {
+    "@ai-sdk/google": "3.0.64",
     "@harness/agent": "workspace:*",
     "@harness/core": "workspace:*",
     "@harness/observability": "workspace:*",

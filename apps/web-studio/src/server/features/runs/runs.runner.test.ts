@@ -50,7 +50,7 @@ function makeRunCtx(overrides: {
     settings: {},
     signal: overrides.signal,
     abortController: overrides.abortController,
-    apiKey: 'fake-key',
+    providerKeys: { google: 'fake-key', openrouter: 'fake-key' },
   };
 }
 

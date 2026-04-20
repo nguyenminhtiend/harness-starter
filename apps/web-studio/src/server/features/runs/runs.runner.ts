@@ -1,9 +1,11 @@
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { RunState } from '@harness/agent';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import { aiSdkProvider, createEventBus } from '@harness/core';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { UIEvent } from '../../../shared/events.ts';
 import type { ToolDef } from '../../../shared/tool.ts';
+import type { ProviderKeys } from '../../config.ts';
 import { mergeToolRuntimeSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { tools as registry } from '../tools/tools.registry.ts';
@@ -20,10 +22,36 @@ export interface RunDeps {
   hitlSessionStore: HitlSessionStore;
 }
 
-function createProvider(apiKey: string, modelId: string) {
-  const openrouter = createOpenRouter({ apiKey });
-  const model = openrouter.chat(modelId);
-  return aiSdkProvider(model);
+export function parseModelSpec(raw: string): { provider: string; model: string } {
+  const idx = raw.indexOf(':');
+  if (idx === -1) {
+    return { provider: 'openrouter', model: raw };
+  }
+  return { provider: raw.slice(0, idx), model: raw.slice(idx + 1) };
+}
+
+function createProvider(keys: ProviderKeys, modelSpec: string) {
+  const { provider, model } = parseModelSpec(modelSpec);
+
+  if (provider === 'google') {
+    const key = keys.google;
+    if (!key) {
+      throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured');
+    }
+    const google = createGoogleGenerativeAI({ apiKey: key });
+    return aiSdkProvider(google(model));
+  }
+
+  if (provider === 'openrouter') {
+    const key = keys.openrouter;
+    if (!key) {
+      throw new Error('OPENROUTER_API_KEY not configured');
+    }
+    const openrouter = createOpenRouter({ apiKey: key });
+    return aiSdkProvider(openrouter.chat(model));
+  }
+
+  throw new Error(`Unknown provider: "${provider}". Use "google:" or "openrouter:" prefix.`);
 }
 
 function isPausedAtPlanApproval(saved: RunState | null): boolean {
@@ -44,7 +72,7 @@ function planFromCheckpoint(saved: RunState | null): unknown {
 }
 
 export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
-  const { runId, toolId, question, settings, signal, abortController, apiKey } = ctx;
+  const { runId, toolId, question, settings, signal, abortController, providerKeys } = ctx;
   const { runStore, settingsStore, approvalStore, hitlSessionStore } = deps;
 
   const toolDef = registry[toolId] as ToolDef | undefined;
@@ -53,8 +81,8 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
   }
 
   const mergedSettings = mergeToolRuntimeSettings(toolId, settingsStore, settings);
-  const modelId = (mergedSettings.model as string) ?? 'openrouter/free';
-  const provider = createProvider(apiKey, modelId);
+  const modelSpec = (mergedSettings.model as string) ?? 'google:gemini-2.5-flash-preview-04-17';
+  const provider = createProvider(providerKeys, modelSpec);
   const store = inMemoryStore();
   const checkpointer = inMemoryCheckpointer();
   const bus = createEventBus();

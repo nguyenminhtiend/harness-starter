@@ -27,7 +27,7 @@ export interface SettingsUpdateRequest {
 }
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
-  defaultModel: 'openrouter/free',
+  defaultModel: 'google:gemini-2.5-flash-preview-04-17',
   budgetUsd: 0.5,
   budgetTokens: 200_000,
   concurrency: 3,

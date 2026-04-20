@@ -28,7 +28,7 @@ describe('GET /api/tools', () => {
     const app = createApp({
       runStore: createRunStore(db),
       settingsStore: createSettingsStore(db),
-      getApiKey: () => 'k',
+      getProviderKeys: () => ({ google: 'k', openrouter: 'k' }),
       approvalStore: createApprovalStore(),
       hitlSessionStore: createHitlSessionStore(),
     });

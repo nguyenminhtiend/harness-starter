@@ -31,7 +31,7 @@ function makeApp() {
   return createApp({
     runStore,
     settingsStore,
-    getApiKey: () => 'test-key',
+    getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   });

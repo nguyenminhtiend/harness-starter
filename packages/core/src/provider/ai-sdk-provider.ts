@@ -1,4 +1,4 @@
-import type { LanguageModelV2 } from '@ai-sdk/provider';
+import type { LanguageModelV2, LanguageModelV3 } from '@ai-sdk/provider';
 import { generateText, streamText } from 'ai';
 import { ProviderError } from '../errors.ts';
 import type {
@@ -152,7 +152,10 @@ function parseToolCallArgs(args: unknown): unknown {
   return args;
 }
 
-export function aiSdkProvider(model: LanguageModelV2, opts?: ProviderOpts): Provider {
+export function aiSdkProvider(
+  model: LanguageModelV2 | LanguageModelV3,
+  opts?: ProviderOpts,
+): Provider {
   const id = opts?.id ?? model.modelId;
   const capabilities: ProviderCapabilities = { ...DEFAULT_CAPS, ...opts?.capabilities };
 

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { loadConfig } from './config.ts';
+import { loadConfig, type ProviderKeys } from './config.ts';
 import { type ApprovalStore, createApprovalStore } from './features/runs/runs.approval.ts';
 import { createHitlSessionStore, type HitlSessionStore } from './features/runs/runs.hitl.ts';
 import { createRunsRoutes } from './features/runs/runs.routes.ts';
@@ -16,7 +16,7 @@ export interface AppDeps {
   settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
-  getApiKey: () => string;
+  getProviderKeys: () => ProviderKeys;
 }
 
 export function createApp(deps: AppDeps) {
@@ -33,7 +33,7 @@ export function createApp(deps: AppDeps) {
       settingsStore: deps.settingsStore,
       approvalStore: deps.approvalStore,
       hitlSessionStore: deps.hitlSessionStore,
-      getApiKey: deps.getApiKey,
+      getProviderKeys: deps.getProviderKeys,
     }),
   );
   app.route('/api/tools', createToolsRoutes());
@@ -46,10 +46,13 @@ if (import.meta.main) {
   const config = loadConfig();
   const db = createDatabase(config.DATA_DIR);
 
+  const providers = Object.keys(config.providerKeys).join(', ') || 'none';
+  console.log(`[server] providers: ${providers}`);
+
   const app = createApp({
     runStore: createRunStore(db),
     settingsStore: createSettingsStore(db),
-    getApiKey: () => process.env.OPENROUTER_API_KEY ?? '',
+    getProviderKeys: () => config.providerKeys,
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   });

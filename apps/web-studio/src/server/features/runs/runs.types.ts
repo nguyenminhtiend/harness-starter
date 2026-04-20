@@ -1,4 +1,5 @@
 import type { RunStatus, UIEvent } from '../../../shared/events.ts';
+import type { ProviderKeys } from '../../config.ts';
 
 export interface RunRow {
   id: string;
@@ -46,7 +47,7 @@ export interface RunContext {
   resumeRunId?: string;
   signal: AbortSignal;
   abortController: AbortController;
-  apiKey: string;
+  providerKeys: ProviderKeys;
 }
 
 export interface RunHandle {
