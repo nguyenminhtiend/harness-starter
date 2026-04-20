@@ -18,6 +18,29 @@ const PHASE_META: Record<string, { label: string; color: string }> = {
   'hitl-resolved': { label: 'Approval', color: 'var(--text-secondary)' },
 };
 
+function truncate(s: string, max: number): string {
+  if (s.length <= max) {
+    return s;
+  }
+  return `${s.slice(0, max)}…`;
+}
+
+function formatArgs(args: unknown): string {
+  if (!args || typeof args !== 'object') {
+    return String(args ?? '');
+  }
+  const entries = Object.entries(args as Record<string, unknown>);
+  if (entries.length === 0) {
+    return '';
+  }
+  return entries
+    .map(([k, v]) => {
+      const val = typeof v === 'string' ? v : JSON.stringify(v);
+      return `  ${k}: ${val}`;
+    })
+    .join('\n');
+}
+
 function eventContent(ev: UIEvent): string {
   switch (ev.type) {
     case 'planner':
@@ -28,14 +51,31 @@ function eventContent(ev: UIEvent): string {
       return ev.delta ?? 'Writing…';
     case 'factchecker':
       return ev.verdict ? `Verdict: ${ev.verdict}` : 'Checking facts…';
-    case 'tool':
-      return ev.result ?? `${ev.toolName}(${JSON.stringify(ev.args ?? {})})`;
+    case 'tool': {
+      if (ev.isError) {
+        return ev.result ?? 'Tool error';
+      }
+      if (ev.result !== undefined) {
+        const dur = ev.durationMs !== undefined ? `${ev.durationMs}ms · ` : '';
+        return `${dur}${truncate(ev.result, 300)}`;
+      }
+      const name = ev.toolName || 'tool';
+      const args = ev.args ? formatArgs(ev.args) : '';
+      return args ? `${name}\n${args}` : name;
+    }
     case 'agent':
       return ev.message ?? ev.phase;
-    case 'metric':
-      return `${ev.inputTokens.toLocaleString()} in / ${ev.outputTokens.toLocaleString()} out`;
-    case 'complete':
-      return 'Done';
+    case 'metric': {
+      const cost = ev.costUsd ? ` · $${ev.costUsd.toFixed(4)}` : '';
+      return (
+        `${ev.inputTokens.toLocaleString()} in / ` +
+        `${ev.outputTokens.toLocaleString()} out${cost}`
+      );
+    }
+    case 'complete': {
+      const cost = ev.totalCostUsd ? ` · $${ev.totalCostUsd.toFixed(4)}` : '';
+      return `${ev.totalTokens.toLocaleString()} tokens${cost}`;
+    }
     case 'error':
       return ev.message;
     case 'hitl-required':
@@ -179,9 +219,27 @@ export function StreamView({ events, status, onRetry, report }: StreamViewProps)
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
-  const [verbose, setVerbose] = useState(false);
+  const [verbose, setVerbose] = useState(true);
 
   const visibleEvents = verbose ? events : events.filter((e) => !isVerbose(e));
+
+  let usageDisplay: {
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+  } | null = null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i];
+    if (ev?.type === 'metric') {
+      usageDisplay = {
+        inputTokens: ev.inputTokens,
+        outputTokens: ev.outputTokens,
+        costUsd: ev.costUsd ?? 0,
+      };
+      break;
+    }
+  }
+
   const prevCountRef = useRef(0);
 
   useEffect(() => {
@@ -221,7 +279,22 @@ export function StreamView({ events, status, onRetry, report }: StreamViewProps)
           flexShrink: 0,
         }}
       >
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+          {usageDisplay && (
+            <span
+              style={{
+                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {usageDisplay.inputTokens.toLocaleString()} in
+              {' / '}
+              {usageDisplay.outputTokens.toLocaleString()} out
+              {usageDisplay.costUsd > 0 ? ` · $${usageDisplay.costUsd.toFixed(4)}` : ''}
+            </span>
+          )}
+        </div>
         {status === 'running' && (
           <span
             style={{

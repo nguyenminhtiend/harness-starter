@@ -112,6 +112,7 @@ export function App() {
     status: 'idle',
   });
 
+  const submittingRef = useRef(false);
   const streamErrorSeenRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -153,9 +154,10 @@ export function App() {
   }, [sessionId]);
 
   const handleRun = useCallback(async () => {
-    if (!form.query.trim()) {
+    if (!form.query.trim() || submittingRef.current) {
       return;
     }
+    submittingRef.current = true;
     try {
       const toolOverrides =
         activeTool === 'deep-research'
@@ -179,6 +181,8 @@ export function App() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to start session';
       pushToast(msg, 'error');
+    } finally {
+      submittingRef.current = false;
     }
   }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools, setSessionId]);
 
@@ -214,9 +218,10 @@ export function App() {
   );
 
   const handleRetry = useCallback(async () => {
-    if (!form.query.trim()) {
+    if (!form.query.trim() || submittingRef.current) {
       return;
     }
+    submittingRef.current = true;
     try {
       const toolOverrides =
         activeTool === 'deep-research'
@@ -240,6 +245,8 @@ export function App() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to retry session';
       pushToast(msg, 'error');
+    } finally {
+      submittingRef.current = false;
     }
   }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools, setSessionId]);
 
@@ -271,6 +278,10 @@ export function App() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'TEXTAREA' || tag === 'INPUT') {
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && status === 'idle' && form.query.trim()) {
         void handleRun();
       }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HitlRequiredEvent, SessionStatus, UIEvent } from '../../shared/events.ts';
-import { connectSSE } from '../api.ts';
+import { api, connectSSE } from '../api.ts';
 
 interface StreamMeta {
   status: SessionStatus | 'idle';
@@ -32,6 +32,8 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
 
     eventsRef.current = [];
     setMeta({ status: 'running', tick: 0 });
+    let disposed = false;
+    const sid = sessionId;
 
     const close = connectSSE(
       sessionId,
@@ -42,31 +44,60 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
         eventsRef.current.push(ev);
         setMeta((prev) => {
           let { status } = prev;
-
           if (ev.type === 'status') {
             status = ev.status;
           }
-
-          return { status, tick: prev.tick + 1 };
+          return { ...prev, status, tick: prev.tick + 1 };
         });
       },
       () => {
-        setMeta((prev) => ({
-          ...prev,
-          status: prev.status === 'running' ? 'completed' : prev.status,
-        }));
+        if (disposed) {
+          return;
+        }
+        void api
+          .getSession(sid)
+          .then((session) => {
+            if (!disposed) {
+              setMeta((prev) => ({ ...prev, status: session.status }));
+            }
+          })
+          .catch(() => {
+            if (!disposed) {
+              setMeta((prev) => ({
+                ...prev,
+                status: prev.status === 'running' ? 'completed' : prev.status,
+              }));
+            }
+          });
       },
       (err) => {
-        setMeta((prev) => ({
-          ...prev,
-          error: err.message,
-          status: prev.status === 'running' ? 'failed' : prev.status,
-        }));
+        if (disposed) {
+          return;
+        }
+        void api
+          .getSession(sid)
+          .then((session) => {
+            if (!disposed) {
+              setMeta((prev) => ({
+                ...prev,
+                error: err.message,
+                status: session.status,
+              }));
+            }
+          })
+          .catch(() => {
+            if (!disposed) {
+              setMeta((prev) => ({ ...prev, error: err.message }));
+            }
+          });
       },
     );
 
     closeRef.current = close;
-    return () => close();
+    return () => {
+      disposed = true;
+      close();
+    };
   }, [sessionId]);
 
   const disconnect = useCallback(() => {

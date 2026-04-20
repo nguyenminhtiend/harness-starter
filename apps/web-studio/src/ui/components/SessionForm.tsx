@@ -42,6 +42,14 @@ export function SessionForm({ form, setForm, onRun, onStop, status, compact }: S
         <textarea
           value={form.query}
           onChange={(e) => setForm((p) => ({ ...p, query: e.target.value }))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (!running && form.query.trim()) {
+                onRun();
+              }
+            }
+          }}
           rows={2}
           disabled={running}
           placeholder="Research question…"
@@ -73,7 +81,7 @@ export function SessionForm({ form, setForm, onRun, onStop, status, compact }: S
           <Button variant="primary" size="lg" onClick={onRun} disabled={!form.query.trim()}>
             Run
             <span style={{ opacity: 0.6, fontSize: 'var(--text-xs)', marginLeft: 'var(--s1)' }}>
-              ⌘↵
+              ↵
             </span>
           </Button>
         )}
@@ -120,8 +128,11 @@ export function SessionForm({ form, setForm, onRun, onStop, status, compact }: S
             transition: 'border-color var(--t-fast)',
           }}
           onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !running) {
-              onRun();
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (!running && form.query.trim()) {
+                onRun();
+              }
             }
           }}
         />
@@ -146,7 +157,7 @@ export function SessionForm({ form, setForm, onRun, onStop, status, compact }: S
           >
             Run
             <span style={{ opacity: 0.6, fontSize: 'var(--text-xs)', marginLeft: 'var(--s1)' }}>
-              ⌘↵
+              ↵
             </span>
           </Button>
         ) : (
