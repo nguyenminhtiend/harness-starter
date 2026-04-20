@@ -1,21 +1,30 @@
-import type { RunStatus } from '../../shared/events.ts';
+import { useQuery } from '@tanstack/react-query';
+import type { SessionStatus } from '../../shared/events.ts';
+import { api, type ModelEntry } from '../api.ts';
 import { Button } from './primitives.tsx';
 
-export interface RunFormState {
+export interface SessionFormState {
   query: string;
+  model: string;
 }
 
-interface RunFormProps {
-  form: RunFormState;
-  setForm: React.Dispatch<React.SetStateAction<RunFormState>>;
+interface SessionFormProps {
+  form: SessionFormState;
+  setForm: React.Dispatch<React.SetStateAction<SessionFormState>>;
   onRun: () => void;
   onStop: () => void;
-  status: RunStatus | 'idle';
+  status: SessionStatus | 'idle';
   compact?: boolean;
 }
 
-export function RunForm({ form, setForm, onRun, onStop, status, compact }: RunFormProps) {
+export function SessionForm({ form, setForm, onRun, onStop, status, compact }: SessionFormProps) {
   const running = status === 'running';
+  const modelsQuery = useQuery({
+    queryKey: ['models'],
+    queryFn: () => api.models(),
+    staleTime: 60_000,
+  });
+  const models: ModelEntry[] = modelsQuery.data?.models ?? [];
 
   if (compact) {
     return (
@@ -49,6 +58,12 @@ export function RunForm({ form, setForm, onRun, onStop, status, compact }: RunFo
             resize: 'none',
             lineHeight: 'var(--leading-normal)',
           }}
+        />
+        <ModelSelect
+          models={models}
+          value={form.model}
+          onChange={(v) => setForm((p) => ({ ...p, model: v }))}
+          disabled={running}
         />
         {running ? (
           <Button variant="danger" size="md" onClick={onStop}>
@@ -112,6 +127,12 @@ export function RunForm({ form, setForm, onRun, onStop, status, compact }: RunFo
       <div
         style={{ display: 'flex', gap: 'var(--s3)', alignItems: 'center', marginTop: 'var(--s2)' }}
       >
+        <ModelSelect
+          models={models}
+          value={form.model}
+          onChange={(v) => setForm((p) => ({ ...p, model: v }))}
+          disabled={running}
+        />
         {!running ? (
           <Button
             variant="primary"
@@ -137,5 +158,55 @@ export function RunForm({ form, setForm, onRun, onStop, status, compact }: RunFo
         )}
       </div>
     </div>
+  );
+}
+
+const selectStyle: React.CSSProperties = {
+  padding: 'var(--s2) var(--s3)',
+  borderRadius: 'var(--r-sm)',
+  border: '1px solid var(--border-subtle)',
+  background: 'var(--bg-elevated)',
+  color: 'var(--text-primary)',
+  fontFamily: 'var(--font-sans)',
+  fontSize: 'var(--text-xs)',
+  outline: 'none',
+  cursor: 'pointer',
+  maxWidth: 220,
+};
+
+function ModelSelect({
+  models,
+  value,
+  onChange,
+  disabled,
+}: {
+  models: ModelEntry[];
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const providers = [...new Set(models.map((m) => m.provider))];
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      style={selectStyle}
+      title="Select model"
+    >
+      <option value="">Default model</option>
+      {providers.map((p) => (
+        <optgroup key={p} label={p}>
+          {models
+            .filter((m) => m.provider === p)
+            .map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+        </optgroup>
+      ))}
+    </select>
   );
 }

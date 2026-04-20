@@ -1,4 +1,4 @@
-import type { RunMeta, UIEvent } from '../shared/events.ts';
+import type { SessionMeta, UIEvent } from '../shared/events.ts';
 import type { SettingsResponse, SettingsUpdateRequest } from '../shared/settings.ts';
 
 const BASE = '/api';
@@ -19,25 +19,32 @@ export interface ToolEntry {
   settingsSchema: Record<string, unknown>;
 }
 
+export interface ModelEntry {
+  id: string;
+  label: string;
+  provider: string;
+}
+
 export const api = {
   health: () => json<{ status: string }>('/health'),
 
   tools: () => json<{ tools: ToolEntry[] }>('/tools'),
 
-  createRun: (body: {
+  models: () => json<{ models: ModelEntry[] }>('/models'),
+
+  createSession: (body: {
     toolId: string;
     question: string;
     settings?: Record<string, unknown>;
-    /** Reserved; server accepts but does not resume yet. */
-    resumeRunId?: string;
+    resumeSessionId?: string;
   }) =>
-    json<{ id: string }>('/runs', {
+    json<{ id: string }>('/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
 
-  listRuns: (params?: { status?: string; q?: string; limit?: number }) => {
+  listSessions: (params?: { status?: string; q?: string; limit?: number }) => {
     const sp = new URLSearchParams();
     if (params?.status) {
       sp.set('status', params.status);
@@ -49,17 +56,18 @@ export const api = {
       sp.set('limit', String(params.limit));
     }
     const qs = sp.toString();
-    return json<{ runs: RunMeta[] }>(`/runs${qs ? `?${qs}` : ''}`);
+    return json<{ sessions: SessionMeta[] }>(`/sessions${qs ? `?${qs}` : ''}`);
   },
 
-  getRun: (id: string) => json<RunMeta>(`/runs/${id}`),
+  getSession: (id: string) => json<SessionMeta>(`/sessions/${id}`),
 
-  cancelRun: (id: string) => json<{ cancelled: boolean }>(`/runs/${id}/cancel`, { method: 'POST' }),
+  cancelSession: (id: string) =>
+    json<{ cancelled: boolean }>(`/sessions/${id}/cancel`, { method: 'POST' }),
 
-  deleteRun: (id: string) => json<{ ok: boolean }>(`/runs/${id}`, { method: 'DELETE' }),
+  deleteSession: (id: string) => json<{ ok: boolean }>(`/sessions/${id}`, { method: 'DELETE' }),
 
-  approveRun: (id: string, body: { decision: 'approve' | 'reject'; editedPlan?: unknown }) =>
-    json<{ ok: boolean }>(`/runs/${id}/approve`, {
+  approveSession: (id: string, body: { decision: 'approve' | 'reject'; editedPlan?: unknown }) =>
+    json<{ ok: boolean }>(`/sessions/${id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -76,12 +84,12 @@ export const api = {
 };
 
 export function connectSSE(
-  runId: string,
+  sessionId: string,
   onEvent: (ev: UIEvent) => void,
   onDone: () => void,
   onError: (err: Error) => void,
 ): () => void {
-  const es = new EventSource(`${BASE}/runs/${runId}/events`);
+  const es = new EventSource(`${BASE}/sessions/${sessionId}/events`);
   let closedNormally = false;
 
   es.addEventListener('event', (e) => {

@@ -1,4 +1,5 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGroq } from '@ai-sdk/groq';
 import type { RunState } from '@harness/agent';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import { aiSdkProvider, createEventBus } from '@harness/core';
@@ -9,14 +10,14 @@ import type { ProviderKeys } from '../../config.ts';
 import { mergeToolRuntimeSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { tools as registry } from '../tools/tools.registry.ts';
-import type { ApprovalStore } from './runs.approval.ts';
-import { agentEventToUIEvents, bridgeBusToUIEvents } from './runs.bridge.ts';
-import type { HitlSessionStore } from './runs.hitl.ts';
-import type { RunStore } from './runs.store.ts';
-import type { RunContext, RunHandle } from './runs.types.ts';
+import type { ApprovalStore } from './sessions.approval.ts';
+import { agentEventToUIEvents, bridgeBusToUIEvents } from './sessions.bridge.ts';
+import type { HitlSessionStore } from './sessions.hitl.ts';
+import type { SessionStore } from './sessions.store.ts';
+import type { SessionContext, SessionHandle } from './sessions.types.ts';
 
-export interface RunDeps {
-  runStore: RunStore;
+export interface SessionDeps {
+  sessionStore: SessionStore;
   settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
@@ -51,7 +52,18 @@ function createProvider(keys: ProviderKeys, modelSpec: string) {
     return aiSdkProvider(openrouter.chat(model));
   }
 
-  throw new Error(`Unknown provider: "${provider}". Use "google:" or "openrouter:" prefix.`);
+  if (provider === 'groq') {
+    const key = keys.groq;
+    if (!key) {
+      throw new Error('GROQ_API_KEY not configured');
+    }
+    const groq = createGroq({ apiKey: key });
+    return aiSdkProvider(groq(model));
+  }
+
+  throw new Error(
+    `Unknown provider: "${provider}". Use "google:", "openrouter:", or "groq:" prefix.`,
+  );
 }
 
 function isPausedAtPlanApproval(saved: RunState | null): boolean {
@@ -71,9 +83,9 @@ function planFromCheckpoint(saved: RunState | null): unknown {
   return gs?.data?.plan;
 }
 
-export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
-  const { runId, toolId, question, settings, signal, abortController, providerKeys } = ctx;
-  const { runStore, settingsStore, approvalStore, hitlSessionStore } = deps;
+export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHandle {
+  const { sessionId, toolId, question, settings, signal, abortController, providerKeys } = ctx;
+  const { sessionStore, settingsStore, approvalStore, hitlSessionStore } = deps;
 
   const toolDef = registry[toolId] as ToolDef | undefined;
   if (!toolDef) {
@@ -98,16 +110,21 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
     signal,
   });
 
-  runStore.createRun({ id: runId, toolId, question, status: 'running' });
-  runStore.appendEvent(runId, { type: 'status', status: 'running', ts: Date.now(), runId });
+  sessionStore.createSession({ id: sessionId, toolId, question, status: 'running' });
+  sessionStore.appendEvent(sessionId, {
+    type: 'status',
+    status: 'running',
+    ts: Date.now(),
+    runId: sessionId,
+  });
 
   const accUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
   async function* generate(): AsyncGenerator<UIEvent> {
     const pushQueue: UIEvent[] = [];
-    const unsubBus = bridgeBusToUIEvents(bus, runId, accUsage, (ev) => {
+    const unsubBus = bridgeBusToUIEvents(bus, sessionId, accUsage, (ev) => {
       pushQueue.push(ev);
-      runStore.appendEvent(runId, ev);
+      sessionStore.appendEvent(sessionId, ev);
     });
 
     function* drainQueue(): Generator<UIEvent> {
@@ -119,7 +136,7 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
       }
     }
 
-    hitlSessionStore.register(runId, { checkpointer, abortController });
+    hitlSessionStore.register(sessionId, { checkpointer, abortController });
 
     try {
       if (signal.aborted) {
@@ -129,35 +146,35 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
       while (true) {
         const stream = agent.stream(
           { userMessage: `<user_question>${question}</user_question>` },
-          { signal, runId },
+          { signal, runId: sessionId },
         );
 
         for await (const event of stream) {
           yield* drainQueue();
 
-          const uiEvents = agentEventToUIEvents(event, runId, accUsage);
+          const uiEvents = agentEventToUIEvents(event, sessionId, accUsage);
           for (const uiEv of uiEvents) {
-            runStore.appendEvent(runId, uiEv);
+            sessionStore.appendEvent(sessionId, uiEv);
             yield uiEv;
           }
         }
 
         yield* drainQueue();
 
-        const saved = await checkpointer.load(runId);
+        const saved = await checkpointer.load(sessionId);
         if (!isPausedAtPlanApproval(saved)) {
           break;
         }
 
-        const approvalPromise = approvalStore.waitFor(runId);
+        const approvalPromise = approvalStore.waitFor(sessionId);
         const plan = planFromCheckpoint(saved);
         const hitlRequired: UIEvent = {
           type: 'hitl-required',
           ts: Date.now(),
-          runId,
+          runId: sessionId,
           plan,
         };
-        runStore.appendEvent(runId, hitlRequired);
+        sessionStore.appendEvent(sessionId, hitlRequired);
         yield hitlRequired;
 
         const decision = await approvalPromise;
@@ -165,14 +182,14 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
         const resolvedUi: UIEvent = {
           type: 'hitl-resolved',
           ts: Date.now(),
-          runId,
+          runId: sessionId,
           decision: decision.decision,
           ...(decision.editedPlan !== undefined ? { editedPlan: decision.editedPlan } : {}),
         };
         yield resolvedUi;
 
         if (decision.decision === 'reject') {
-          runStore.updateRun(runId, {
+          sessionStore.updateSession(sessionId, {
             status: 'cancelled',
             finishedAt: new Date().toISOString(),
           });
@@ -180,14 +197,14 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
           const rejectEvent: UIEvent = {
             type: 'error',
             ts: Date.now(),
-            runId,
+            runId: sessionId,
             message: 'Plan approval rejected',
             code: 'HITL_REJECTED',
           };
-          runStore.appendEvent(runId, rejectEvent);
+          sessionStore.appendEvent(sessionId, rejectEvent);
           yield rejectEvent;
 
-          yield { type: 'status', status: 'cancelled', ts: Date.now(), runId };
+          yield { type: 'status', status: 'cancelled', ts: Date.now(), runId: sessionId };
           return;
         }
 
@@ -197,30 +214,28 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
       }
 
       const totalTokens = accUsage.inputTokens + accUsage.outputTokens;
-      runStore.updateRun(runId, {
+      sessionStore.updateSession(sessionId, {
         status: 'completed',
-        costUsd: accUsage.costUsd,
-        totalTokens,
         finishedAt: new Date().toISOString(),
       });
 
       const completeEvent: UIEvent = {
         type: 'complete',
         ts: Date.now(),
-        runId,
+        runId: sessionId,
         totalTokens,
         totalCostUsd: accUsage.costUsd,
       };
-      runStore.appendEvent(runId, completeEvent);
+      sessionStore.appendEvent(sessionId, completeEvent);
       yield completeEvent;
 
-      yield { type: 'status', status: 'completed', ts: Date.now(), runId };
+      yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
     } catch (err) {
       const isAbort = (err as Error).name === 'AbortError' || signal.aborted;
       const status = isAbort ? 'cancelled' : 'failed';
-      const message = isAbort ? 'Run cancelled' : ((err as Error).message ?? 'Unknown error');
+      const message = isAbort ? 'Session cancelled' : ((err as Error).message ?? 'Unknown error');
 
-      runStore.updateRun(runId, {
+      sessionStore.updateSession(sessionId, {
         status,
         finishedAt: new Date().toISOString(),
       });
@@ -228,19 +243,19 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
       const errorEvent: UIEvent = {
         type: 'error',
         ts: Date.now(),
-        runId,
+        runId: sessionId,
         message,
         code: isAbort ? 'CANCELLED' : 'RUNTIME_ERROR',
       };
-      runStore.appendEvent(runId, errorEvent);
+      sessionStore.appendEvent(sessionId, errorEvent);
       yield errorEvent;
 
-      yield { type: 'status', status, ts: Date.now(), runId };
+      yield { type: 'status', status, ts: Date.now(), runId: sessionId };
     } finally {
       unsubBus();
-      hitlSessionStore.unregister(runId);
+      hitlSessionStore.unregister(sessionId);
     }
   }
 
-  return { runId, events: generate() };
+  return { sessionId, events: generate() };
 }

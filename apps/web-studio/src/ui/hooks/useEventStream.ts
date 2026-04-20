@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { HitlRequiredEvent, RunStatus, UIEvent } from '../../shared/events.ts';
+import type { HitlRequiredEvent, SessionStatus, UIEvent } from '../../shared/events.ts';
 import { connectSSE } from '../api.ts';
 
 interface StreamMeta {
-  status: RunStatus | 'idle';
-  tokens: number;
-  cost: number;
+  status: SessionStatus | 'idle';
   error?: string;
-  /** Incremented on each push to trigger re-render without copying the array. */
   tick: number;
 }
 
@@ -15,12 +12,10 @@ export interface UseEventStreamOptions {
   onHitlRequired?: (ev: HitlRequiredEvent) => void;
 }
 
-export function useEventStream(runId: string | null, options?: UseEventStreamOptions) {
+export function useEventStream(sessionId: string | null, options?: UseEventStreamOptions) {
   const eventsRef = useRef<UIEvent[]>([]);
   const [meta, setMeta] = useState<StreamMeta>({
     status: 'idle',
-    tokens: 0,
-    cost: 0,
     tick: 0,
   });
 
@@ -29,38 +24,30 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
   optionsRef.current = options;
 
   useEffect(() => {
-    if (!runId) {
+    if (!sessionId) {
       eventsRef.current = [];
-      setMeta({ status: 'idle', tokens: 0, cost: 0, tick: 0 });
+      setMeta({ status: 'idle', tick: 0 });
       return;
     }
 
     eventsRef.current = [];
-    setMeta({ status: 'running', tokens: 0, cost: 0, tick: 0 });
+    setMeta({ status: 'running', tick: 0 });
 
     const close = connectSSE(
-      runId,
+      sessionId,
       (ev) => {
         if (ev.type === 'hitl-required') {
           optionsRef.current?.onHitlRequired?.(ev);
         }
         eventsRef.current.push(ev);
         setMeta((prev) => {
-          let { tokens, cost, status } = prev;
+          let { status } = prev;
 
-          if (ev.type === 'metric') {
-            tokens = ev.inputTokens + ev.outputTokens;
-            cost = ev.costUsd ?? cost;
-          }
           if (ev.type === 'status') {
             status = ev.status;
           }
-          if (ev.type === 'complete') {
-            tokens = ev.totalTokens;
-            cost = ev.totalCostUsd ?? cost;
-          }
 
-          return { status, tokens, cost, tick: prev.tick + 1 };
+          return { status, tick: prev.tick + 1 };
         });
       },
       () => {
@@ -80,7 +67,7 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
 
     closeRef.current = close;
     return () => close();
-  }, [runId]);
+  }, [sessionId]);
 
   const disconnect = useCallback(() => {
     closeRef.current?.();
@@ -91,8 +78,6 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
   return {
     events,
     status: meta.status,
-    tokens: meta.tokens,
-    cost: meta.cost,
     error: meta.error,
     disconnect,
   };

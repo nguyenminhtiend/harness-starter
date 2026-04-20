@@ -5,21 +5,21 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createApp } from '../../index.ts';
 import { createDatabase } from '../../infra/db.ts';
-import { createApprovalStore } from '../runs/runs.approval.ts';
-import { createHitlSessionStore } from '../runs/runs.hitl.ts';
-import { createRunStore, type RunStore } from '../runs/runs.store.ts';
+import { createApprovalStore } from '../sessions/sessions.approval.ts';
+import { createHitlSessionStore } from '../sessions/sessions.hitl.ts';
+import { createSessionStore, type SessionStore } from '../sessions/sessions.store.ts';
 import { promptStorageKey } from './settings.constants.ts';
 import { createSettingsStore, type SettingsStore } from './settings.store.ts';
 
 let db: Database;
-let runStore: RunStore;
+let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-settings-route-'));
   db = createDatabase(tmpDir);
-  runStore = createRunStore(db);
+  sessionStore = createSessionStore(db);
   settingsStore = createSettingsStore(db);
 });
 
@@ -30,7 +30,7 @@ afterEach(() => {
 
 function makeApp() {
   return createApp({
-    runStore,
+    sessionStore,
     settingsStore,
     getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
     approvalStore: createApprovalStore(),

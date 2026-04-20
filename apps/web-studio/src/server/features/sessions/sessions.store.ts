@@ -1,29 +1,29 @@
 import type { Database } from 'bun:sqlite';
 import type { UIEvent } from '../../../shared/events.ts';
 import type {
-  CreateRunInput,
-  ListRunsFilter,
-  RunRow,
+  CreateSessionInput,
+  ListSessionsFilter,
+  SessionRow,
   StoredEvent,
-  UpdateRunInput,
-} from './runs.types.ts';
+  UpdateSessionInput,
+} from './sessions.types.ts';
 
-export interface RunStore {
-  createRun(input: CreateRunInput): void;
-  updateRun(id: string, patch: UpdateRunInput): void;
-  getRun(id: string): RunRow | undefined;
-  listRuns(filter?: ListRunsFilter): RunRow[];
-  deleteRun(id: string): void;
-  appendEvent(runId: string, event: UIEvent): void;
-  getEvents(runId: string): StoredEvent[];
+export interface SessionStore {
+  createSession(input: CreateSessionInput): void;
+  updateSession(id: string, patch: UpdateSessionInput): void;
+  getSession(id: string): SessionRow | undefined;
+  listSessions(filter?: ListSessionsFilter): SessionRow[];
+  deleteSession(id: string): void;
+  appendEvent(sessionId: string, event: UIEvent): void;
+  getEvents(sessionId: string): StoredEvent[];
 }
 
-export function createRunStore(db: Database): RunStore {
+export function createSessionStore(db: Database): SessionStore {
   const stmts = {
-    createRun: db.prepare(
+    create: db.prepare(
       'INSERT INTO runs (id, toolId, question, status) VALUES ($id, $toolId, $question, $status)',
     ),
-    getRun: db.prepare('SELECT * FROM runs WHERE id = ?'),
+    get: db.prepare('SELECT * FROM runs WHERE id = ?'),
     appendEvent: db.prepare(
       `INSERT INTO events (runId, seq, ts, type, payload)
        VALUES ($runId, $seq, $ts, $type, $payload)`,
@@ -33,22 +33,22 @@ export function createRunStore(db: Database): RunStore {
 
   const seqCounters = new Map<string, number>();
 
-  function nextSeq(runId: string): number {
-    let seq = seqCounters.get(runId);
+  function nextSeq(sessionId: string): number {
+    let seq = seqCounters.get(sessionId);
     if (seq === undefined) {
       const row = db
         .prepare('SELECT COALESCE(MAX(seq), 0) AS maxSeq FROM events WHERE runId = ?')
-        .get(runId) as { maxSeq: number } | null;
+        .get(sessionId) as { maxSeq: number } | null;
       seq = row?.maxSeq ?? 0;
     }
     seq += 1;
-    seqCounters.set(runId, seq);
+    seqCounters.set(sessionId, seq);
     return seq;
   }
 
   return {
-    createRun(input) {
-      stmts.createRun.run({
+    createSession(input) {
+      stmts.create.run({
         $id: input.id,
         $toolId: input.toolId,
         $question: input.question,
@@ -56,20 +56,12 @@ export function createRunStore(db: Database): RunStore {
       });
     },
 
-    updateRun(id, patch) {
+    updateSession(id, patch) {
       const sets: string[] = [];
       const params: Record<string, string | number | null> = { $id: id };
       if (patch.status !== undefined) {
         sets.push('status = $status');
         params.$status = patch.status;
-      }
-      if (patch.costUsd !== undefined) {
-        sets.push('costUsd = $costUsd');
-        params.$costUsd = patch.costUsd;
-      }
-      if (patch.totalTokens !== undefined) {
-        sets.push('totalTokens = $totalTokens');
-        params.$totalTokens = patch.totalTokens;
       }
       if (patch.finishedAt !== undefined) {
         sets.push('finishedAt = $finishedAt');
@@ -81,12 +73,12 @@ export function createRunStore(db: Database): RunStore {
       db.prepare(`UPDATE runs SET ${sets.join(', ')} WHERE id = $id`).run(params);
     },
 
-    getRun(id) {
-      const row = stmts.getRun.get(id) as RunRow | null;
+    getSession(id) {
+      const row = stmts.get.get(id) as SessionRow | null;
       return row ?? undefined;
     },
 
-    listRuns(filter) {
+    listSessions(filter) {
       const wheres: string[] = [];
       const params: Record<string, string | number> = {};
 
@@ -105,28 +97,28 @@ export function createRunStore(db: Database): RunStore {
         : undefined;
       const limitClause = safeLimit !== undefined ? `LIMIT ${safeLimit}` : '';
       const sql = `SELECT * FROM runs ${where} ORDER BY createdAt DESC, rowid DESC ${limitClause}`;
-      return db.prepare(sql).all(params) as RunRow[];
+      return db.prepare(sql).all(params) as SessionRow[];
     },
 
-    deleteRun(id) {
+    deleteSession(id) {
       db.prepare('DELETE FROM events WHERE runId = ?').run(id);
       db.prepare('DELETE FROM runs WHERE id = ?').run(id);
       seqCounters.delete(id);
     },
 
-    appendEvent(runId, event) {
+    appendEvent(sessionId, event) {
       const { type, ts, ...rest } = event;
       stmts.appendEvent.run({
-        $runId: runId,
-        $seq: nextSeq(runId),
+        $runId: sessionId,
+        $seq: nextSeq(sessionId),
         $ts: ts,
         $type: type,
         $payload: JSON.stringify(rest),
       });
     },
 
-    getEvents(runId) {
-      const rows = stmts.getEvents.all(runId) as {
+    getEvents(sessionId) {
+      const rows = stmts.getEvents.all(sessionId) as {
         seq: number;
         ts: number;
         type: string;

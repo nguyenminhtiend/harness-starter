@@ -5,9 +5,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createApp } from '../../index.ts';
 import { createDatabase } from '../../infra/db.ts';
-import { createApprovalStore } from '../runs/runs.approval.ts';
-import { createHitlSessionStore } from '../runs/runs.hitl.ts';
-import { createRunStore } from '../runs/runs.store.ts';
+import { createApprovalStore } from '../sessions/sessions.approval.ts';
+import { createHitlSessionStore } from '../sessions/sessions.hitl.ts';
+import { createSessionStore } from '../sessions/sessions.store.ts';
 import { createSettingsStore } from '../settings/settings.store.ts';
 
 let db: Database;
@@ -26,7 +26,7 @@ afterEach(() => {
 describe('GET /api/tools', () => {
   it('returns each tool with id, title, description, and JSON Schema', async () => {
     const app = createApp({
-      runStore: createRunStore(db),
+      sessionStore: createSessionStore(db),
       settingsStore: createSettingsStore(db),
       getProviderKeys: () => ({ google: 'k', openrouter: 'k' }),
       approvalStore: createApprovalStore(),

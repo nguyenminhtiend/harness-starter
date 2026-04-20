@@ -1,33 +1,29 @@
-import type { RunStatus, UIEvent } from '../../../shared/events.ts';
+import type { SessionStatus, UIEvent } from '../../../shared/events.ts';
 import type { ProviderKeys } from '../../config.ts';
 
-export interface RunRow {
+export interface SessionRow {
   id: string;
   toolId: string;
   question: string;
-  status: RunStatus;
-  costUsd?: number;
-  totalTokens?: number;
+  status: SessionStatus;
   createdAt: string;
   finishedAt?: string;
 }
 
-export interface CreateRunInput {
+export interface CreateSessionInput {
   id: string;
   toolId: string;
   question: string;
-  status: RunStatus;
+  status: SessionStatus;
 }
 
-export interface UpdateRunInput {
-  status?: RunStatus;
-  costUsd?: number;
-  totalTokens?: number;
+export interface UpdateSessionInput {
+  status?: SessionStatus;
   finishedAt?: string;
 }
 
-export interface ListRunsFilter {
-  status?: RunStatus;
+export interface ListSessionsFilter {
+  status?: SessionStatus;
   q?: string;
   limit?: number;
 }
@@ -39,18 +35,18 @@ export interface StoredEvent {
   payload: Record<string, unknown>;
 }
 
-export interface RunContext {
-  runId: string;
+export interface SessionContext {
+  sessionId: string;
   toolId: string;
   question: string;
   settings: Record<string, unknown>;
-  resumeRunId?: string;
+  resumeSessionId?: string;
   signal: AbortSignal;
   abortController: AbortController;
   providerKeys: ProviderKeys;
 }
 
-export interface RunHandle {
-  runId: string;
+export interface SessionHandle {
+  sessionId: string;
   events: AsyncIterable<UIEvent>;
 }

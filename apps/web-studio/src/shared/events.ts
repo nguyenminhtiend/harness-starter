@@ -1,4 +1,4 @@
-export type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type SessionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface UIEventBase {
   ts: number;
@@ -77,7 +77,7 @@ export interface HitlResolvedEvent extends UIEventBase {
 
 export interface StatusEvent extends UIEventBase {
   type: 'status';
-  status: RunStatus;
+  status: SessionStatus;
 }
 
 export type UIEvent =
@@ -94,13 +94,11 @@ export type UIEvent =
   | HitlResolvedEvent
   | StatusEvent;
 
-export interface RunMeta {
+export interface SessionMeta {
   id: string;
   toolId: string;
   question: string;
-  status: RunStatus;
-  costUsd?: number;
-  totalTokens?: number;
+  status: SessionStatus;
   createdAt: string;
   finishedAt?: string;
 }

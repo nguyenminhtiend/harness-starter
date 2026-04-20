@@ -6,19 +6,19 @@ import * as path from 'node:path';
 import { createApp } from '../../index.ts';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
-import { createApprovalStore } from './runs.approval.ts';
-import { createHitlSessionStore } from './runs.hitl.ts';
-import { createRunStore, type RunStore } from './runs.store.ts';
+import { createApprovalStore } from './sessions.approval.ts';
+import { createHitlSessionStore } from './sessions.hitl.ts';
+import { createSessionStore, type SessionStore } from './sessions.store.ts';
 
 let db: Database;
-let runStore: RunStore;
+let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-runs-route-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-sessions-route-'));
   db = createDatabase(tmpDir);
-  runStore = createRunStore(db);
+  sessionStore = createSessionStore(db);
   settingsStore = createSettingsStore(db);
 });
 
@@ -29,7 +29,7 @@ afterEach(() => {
 
 function makeApp() {
   return createApp({
-    runStore,
+    sessionStore,
     settingsStore,
     getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
     approvalStore: createApprovalStore(),
@@ -37,10 +37,10 @@ function makeApp() {
   });
 }
 
-describe('POST /api/runs', () => {
+describe('POST /api/sessions', () => {
   it('returns 400 for invalid JSON body', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs', {
+    const res = await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{not-json',
@@ -52,7 +52,7 @@ describe('POST /api/runs', () => {
 
   it('returns 400 when toolId is unknown', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs', {
+    const res = await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -66,73 +66,83 @@ describe('POST /api/runs', () => {
   });
 });
 
-describe('GET /api/runs', () => {
+describe('GET /api/sessions', () => {
   it('filters by status, question search, and limit', async () => {
-    runStore.createRun({ id: 'a', toolId: 't', question: 'Alpha', status: 'completed' });
-    runStore.createRun({ id: 'b', toolId: 't', question: 'Beta', status: 'running' });
+    sessionStore.createSession({
+      id: 'a',
+      toolId: 't',
+      question: 'Alpha',
+      status: 'completed',
+    });
+    sessionStore.createSession({ id: 'b', toolId: 't', question: 'Beta', status: 'running' });
     const app = makeApp();
 
-    const byStatus = await app.request('/api/runs?status=completed');
+    const byStatus = await app.request('/api/sessions?status=completed');
     expect(byStatus.status).toBe(200);
-    const sBody = (await byStatus.json()) as { runs: { id: string }[] };
-    expect(sBody.runs).toHaveLength(1);
-    expect(sBody.runs[0]?.id).toBe('a');
+    const sBody = (await byStatus.json()) as { sessions: { id: string }[] };
+    expect(sBody.sessions).toHaveLength(1);
+    expect(sBody.sessions[0]?.id).toBe('a');
 
-    const byQ = await app.request('/api/runs?q=Beta');
-    const qBody = (await byQ.json()) as { runs: { id: string }[] };
-    expect(qBody.runs).toHaveLength(1);
-    expect(qBody.runs[0]?.id).toBe('b');
+    const byQ = await app.request('/api/sessions?q=Beta');
+    const qBody = (await byQ.json()) as { sessions: { id: string }[] };
+    expect(qBody.sessions).toHaveLength(1);
+    expect(qBody.sessions[0]?.id).toBe('b');
 
-    const limited = await app.request('/api/runs?limit=1');
-    const lBody = (await limited.json()) as { runs: { id: string }[] };
-    expect(lBody.runs).toHaveLength(1);
-    expect(lBody.runs[0]?.id).toBe('b');
+    const limited = await app.request('/api/sessions?limit=1');
+    const lBody = (await limited.json()) as { sessions: { id: string }[] };
+    expect(lBody.sessions).toHaveLength(1);
+    expect(lBody.sessions[0]?.id).toBe('b');
   });
 });
 
-describe('GET /api/runs/:id', () => {
-  it('returns run metadata when present', async () => {
-    runStore.createRun({
-      id: 'rid-1',
+describe('GET /api/sessions/:id', () => {
+  it('returns session metadata when present', async () => {
+    sessionStore.createSession({
+      id: 'sid-1',
       toolId: 'deep-research',
       question: 'Q?',
       status: 'completed',
     });
     const app = makeApp();
-    const res = await app.request('/api/runs/rid-1');
+    const res = await app.request('/api/sessions/sid-1');
     expect(res.status).toBe(200);
     const body = (await res.json()) as { id: string; question: string };
-    expect(body.id).toBe('rid-1');
+    expect(body.id).toBe('sid-1');
     expect(body.question).toBe('Q?');
   });
 });
 
-describe('GET /api/runs/:id/events', () => {
-  it('returns 404 when run does not exist', async () => {
+describe('GET /api/sessions/:id/events', () => {
+  it('returns 404 when session does not exist', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs/missing/events');
+    const res = await app.request('/api/sessions/missing/events');
     expect(res.status).toBe(404);
   });
 
   it('replays persisted events and ends with done', async () => {
-    const runId = 'replay-1';
-    runStore.createRun({
-      id: runId,
+    const sessionId = 'replay-1';
+    sessionStore.createSession({
+      id: sessionId,
       toolId: 'deep-research',
       question: 'Q',
       status: 'completed',
     });
-    runStore.appendEvent(runId, { type: 'status', status: 'completed', ts: 1, runId });
-    runStore.appendEvent(runId, {
+    sessionStore.appendEvent(sessionId, {
+      type: 'status',
+      status: 'completed',
+      ts: 1,
+      runId: sessionId,
+    });
+    sessionStore.appendEvent(sessionId, {
       type: 'complete',
       ts: 2,
-      runId,
+      runId: sessionId,
       totalTokens: 3,
       totalCostUsd: 0,
     });
 
     const app = makeApp();
-    const res = await app.request(`/api/runs/${runId}/events`);
+    const res = await app.request(`/api/sessions/${sessionId}/events`);
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('done');
@@ -140,9 +150,9 @@ describe('GET /api/runs/:id/events', () => {
     expect(text).toContain('completed');
   });
 
-  it('streams cancellation path when run is cancelled before SSE starts', async () => {
+  it('streams cancellation path when session is cancelled before SSE starts', async () => {
     const app = makeApp();
-    const postRes = await app.request('/api/runs', {
+    const postRes = await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toolId: 'deep-research', question: 'cancel me' }),
@@ -150,10 +160,10 @@ describe('GET /api/runs/:id/events', () => {
     expect(postRes.status).toBe(200);
     const { id } = (await postRes.json()) as { id: string };
 
-    const cancelRes = await app.request(`/api/runs/${id}/cancel`, { method: 'POST' });
+    const cancelRes = await app.request(`/api/sessions/${id}/cancel`, { method: 'POST' });
     expect(cancelRes.status).toBe(200);
 
-    const sseRes = await app.request(`/api/runs/${id}/events`);
+    const sseRes = await app.request(`/api/sessions/${id}/events`);
     expect(sseRes.status).toBe(200);
     const text = await sseRes.text();
     expect(text.toLowerCase()).toContain('cancel');

@@ -6,20 +6,20 @@ import * as path from 'node:path';
 import type { UIEvent } from '../../../shared/events.ts';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
-import { createApprovalStore } from './runs.approval.ts';
-import { createHitlSessionStore } from './runs.hitl.ts';
-import { startRun } from './runs.runner.ts';
-import { createRunStore, type RunStore } from './runs.store.ts';
+import { createApprovalStore } from './sessions.approval.ts';
+import { createHitlSessionStore } from './sessions.hitl.ts';
+import { parseModelSpec, startSession } from './sessions.runner.ts';
+import { createSessionStore, type SessionStore } from './sessions.store.ts';
 
 let db: Database;
-let runStore: RunStore;
+let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-runner-'));
   db = createDatabase(tmpDir);
-  runStore = createRunStore(db);
+  sessionStore = createSessionStore(db);
   settingsStore = createSettingsStore(db);
 });
 
@@ -36,65 +36,100 @@ async function collectEvents(iter: AsyncIterable<UIEvent>): Promise<UIEvent[]> {
   return events;
 }
 
-function makeRunCtx(overrides: {
-  runId: string;
+function makeSessionCtx(overrides: {
+  sessionId: string;
   toolId?: string;
   question?: string;
   signal: AbortSignal;
   abortController: AbortController;
 }) {
   return {
-    runId: overrides.runId,
+    sessionId: overrides.sessionId,
     toolId: overrides.toolId ?? 'deep-research',
     question: overrides.question ?? 'test',
     settings: {},
     signal: overrides.signal,
     abortController: overrides.abortController,
-    providerKeys: { google: 'fake-key', openrouter: 'fake-key' },
+    providerKeys: { google: 'fake-key', openrouter: 'fake-key', groq: 'fake-key' },
   };
 }
 
 function makeDeps() {
   return {
-    runStore,
+    sessionStore,
     settingsStore,
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   };
 }
 
-describe('startRun', () => {
+describe('parseModelSpec', () => {
+  it('defaults to openrouter when no prefix', () => {
+    expect(parseModelSpec('gpt-4')).toEqual({ provider: 'openrouter', model: 'gpt-4' });
+  });
+
+  it('parses google prefix', () => {
+    expect(parseModelSpec('google:gemini-2.5-flash')).toEqual({
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+    });
+  });
+
+  it('parses groq prefix', () => {
+    expect(parseModelSpec('groq:llama-3.3-70b-versatile')).toEqual({
+      provider: 'groq',
+      model: 'llama-3.3-70b-versatile',
+    });
+  });
+});
+
+describe('startSession', () => {
   it('throws for unknown tool', () => {
     const ac = new AbortController();
     expect(() =>
-      startRun(
-        makeRunCtx({ runId: 'r1', toolId: 'nonexistent', signal: ac.signal, abortController: ac }),
+      startSession(
+        makeSessionCtx({
+          sessionId: 's1',
+          toolId: 'nonexistent',
+          signal: ac.signal,
+          abortController: ac,
+        }),
         makeDeps(),
       ),
     ).toThrow('Unknown tool: nonexistent');
   });
 
-  it('creates a run record in persistence', async () => {
+  it('creates a session record in persistence', async () => {
     const ac = new AbortController();
-    const handle = startRun(
-      makeRunCtx({ runId: 'r1', question: 'What is X?', signal: ac.signal, abortController: ac }),
+    const handle = startSession(
+      makeSessionCtx({
+        sessionId: 's1',
+        question: 'What is X?',
+        signal: ac.signal,
+        abortController: ac,
+      }),
       makeDeps(),
     );
 
-    expect(handle.runId).toBe('r1');
-    const run = runStore.getRun('r1');
-    expect(run).toBeDefined();
-    expect(run?.status).toBe('running');
-    expect(run?.toolId).toBe('deep-research');
+    expect(handle.sessionId).toBe('s1');
+    const session = sessionStore.getSession('s1');
+    expect(session).toBeDefined();
+    expect(session?.status).toBe('running');
+    expect(session?.toolId).toBe('deep-research');
 
     ac.abort();
     await collectEvents(handle.events);
   });
 
-  it('emits error events on abort and marks run cancelled', async () => {
+  it('emits error events on abort and marks session cancelled', async () => {
     const ac = new AbortController();
-    const handle = startRun(
-      makeRunCtx({ runId: 'r2', question: 'What is Y?', signal: ac.signal, abortController: ac }),
+    const handle = startSession(
+      makeSessionCtx({
+        sessionId: 's2',
+        question: 'What is Y?',
+        signal: ac.signal,
+        abortController: ac,
+      }),
       makeDeps(),
     );
 
@@ -112,15 +147,15 @@ describe('startRun', () => {
       expect(lastStatus.status).toBe('cancelled');
     }
 
-    const run = runStore.getRun('r2');
-    expect(run?.status).toBe('cancelled');
+    const session = sessionStore.getSession('s2');
+    expect(session?.status).toBe('cancelled');
   });
 
   it('persists events to SQLite', async () => {
     const ac = new AbortController();
-    const handle = startRun(
-      makeRunCtx({
-        runId: 'r3',
+    const handle = startSession(
+      makeSessionCtx({
+        sessionId: 's3',
         question: 'Test persistence',
         signal: ac.signal,
         abortController: ac,
@@ -131,7 +166,7 @@ describe('startRun', () => {
     ac.abort();
     await collectEvents(handle.events);
 
-    const storedEvents = runStore.getEvents('r3');
+    const storedEvents = sessionStore.getEvents('s3');
     expect(storedEvents.length).toBeGreaterThanOrEqual(1);
   });
 });

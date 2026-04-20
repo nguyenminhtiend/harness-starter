@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { RunMeta } from '../../shared/events.ts';
+import type { SessionMeta } from '../../shared/events.ts';
 
 import { ToolPicker } from './ToolPicker.tsx';
 
@@ -37,14 +37,7 @@ function formatRelativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function formatCost(costUsd: number | undefined): string {
-  if (costUsd == null || Number.isNaN(costUsd)) {
-    return '—';
-  }
-  return `$${costUsd.toFixed(4)}`;
-}
-
-function statusDotColor(status: RunMeta['status']): string {
+function statusDotColor(status: SessionMeta['status']): string {
   switch (status) {
     case 'running':
       return 'var(--status-running)';
@@ -60,11 +53,11 @@ function statusDotColor(status: RunMeta['status']): string {
 }
 
 export interface HistorySidebarProps {
-  runs: RunMeta[];
-  activeRunId: string | null;
-  onSelectRun: (run: RunMeta) => void;
-  onDeleteRun: (runId: string) => void;
-  onNewRun: () => void;
+  sessions: SessionMeta[];
+  activeSessionId: string | null;
+  onSelectSession: (session: SessionMeta) => void;
+  onDeleteSession: (sessionId: string) => void;
+  onNewSession: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   filterStatus: HistoryStatusFilter;
@@ -74,11 +67,11 @@ export interface HistorySidebarProps {
 }
 
 export function HistorySidebar({
-  runs,
-  activeRunId,
-  onSelectRun,
-  onDeleteRun,
-  onNewRun,
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onDeleteSession,
+  onNewSession,
   searchQuery,
   setSearchQuery,
   filterStatus,
@@ -88,20 +81,20 @@ export function HistorySidebar({
 }: HistorySidebarProps) {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return runs.filter((run) => {
-      if (filterStatus !== 'all' && run.status !== filterStatus) {
+    return sessions.filter((s) => {
+      if (filterStatus !== 'all' && s.status !== filterStatus) {
         return false;
       }
       if (!q) {
         return true;
       }
       return (
-        run.question.toLowerCase().includes(q) ||
-        run.toolId.toLowerCase().includes(q) ||
-        run.id.toLowerCase().includes(q)
+        s.question.toLowerCase().includes(q) ||
+        s.toolId.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q)
       );
     });
-  }, [runs, searchQuery, filterStatus]);
+  }, [sessions, searchQuery, filterStatus]);
 
   return (
     <>
@@ -127,8 +120,8 @@ export function HistorySidebar({
             onChange={(e) => {
               setSearchQuery(e.target.value);
             }}
-            placeholder="Search runs…"
-            aria-label="Search runs"
+            placeholder="Search sessions…"
+            aria-label="Search sessions"
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -186,18 +179,18 @@ export function HistorySidebar({
                 fontSize: 'var(--text-xs)',
               }}
             >
-              No runs match
+              No sessions match
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {filtered.map((run) => {
-                const active = run.id === activeRunId;
+              {filtered.map((session) => {
+                const active = session.id === activeSessionId;
                 return (
                   <button
                     type="button"
-                    key={run.id}
+                    key={session.id}
                     onClick={() => {
-                      onSelectRun(run);
+                      onSelectSession(session);
                     }}
                     style={{
                       display: 'block',
@@ -225,7 +218,7 @@ export function HistorySidebar({
                           width: 6,
                           height: 6,
                           borderRadius: '50%',
-                          background: statusDotColor(run.status),
+                          background: statusDotColor(session.status),
                           flexShrink: 0,
                         }}
                       />
@@ -239,11 +232,11 @@ export function HistorySidebar({
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {run.toolId}
+                        {session.toolId}
                       </span>
                       <span style={{ flex: 1 }} />
                       <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-disabled)' }}>
-                        {formatRelativeTime(run.createdAt)}
+                        {formatRelativeTime(session.createdAt)}
                       </span>
                     </div>
                     <p
@@ -258,29 +251,21 @@ export function HistorySidebar({
                         overflow: 'hidden',
                       }}
                     >
-                      {run.question}
+                      {session.question}
                     </p>
                     <div
                       style={{
                         marginTop: 6,
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
+                        justifyContent: 'flex-end',
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: 'var(--text-2xs)',
-                          color: 'var(--text-tertiary)',
-                        }}
-                      >
-                        {formatCost(run.costUsd)}
-                      </span>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDeleteRun(run.id);
+                          onDeleteSession(session.id);
                         }}
                         style={{
                           fontSize: 'var(--text-2xs)',
@@ -302,7 +287,7 @@ export function HistorySidebar({
                           (e.currentTarget as HTMLButtonElement).style.color =
                             'var(--text-disabled)';
                         }}
-                        aria-label="Delete run"
+                        aria-label="Delete session"
                       >
                         ✕
                       </button>
@@ -317,7 +302,7 @@ export function HistorySidebar({
       <div style={{ padding: 'var(--s3) var(--s2)', borderTop: '1px solid var(--border-subtle)' }}>
         <button
           type="button"
-          onClick={onNewRun}
+          onClick={onNewSession}
           style={{
             width: '100%',
             padding: '6px var(--s3)',
@@ -331,7 +316,7 @@ export function HistorySidebar({
             transition: 'all var(--t-fast)',
           }}
         >
-          New run
+          New session
         </button>
       </div>
     </>

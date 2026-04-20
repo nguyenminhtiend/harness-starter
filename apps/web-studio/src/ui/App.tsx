@@ -1,19 +1,19 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { RunMeta, RunStatus } from '../shared/events.ts';
+import type { SessionMeta, SessionStatus } from '../shared/events.ts';
 import { api } from './api.ts';
 import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
 import { PlanApprovalModal } from './components/PlanApprovalModal.tsx';
 import { Badge } from './components/primitives.tsx';
 import { deriveReportMarkdown } from './components/ReportView.tsx';
-import { RunForm, type RunFormState } from './components/RunForm.tsx';
+import { SessionForm, type SessionFormState } from './components/SessionForm.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { StreamView } from './components/StreamView.tsx';
 import { Toast, type ToastItem, type ToastType } from './components/Toast.tsx';
 import { useEventStream } from './hooks/useEventStream.ts';
 import { useSettings } from './hooks/useSettings.ts';
 
-type ViewMode = 'run' | 'settings';
+type ViewMode = 'session' | 'settings';
 
 interface HitlModalState {
   open: boolean;
@@ -25,18 +25,32 @@ function isSameSerializedPlan(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function getSessionIdFromHash(): string | null {
+  const hash = window.location.hash;
+  const match = hash.match(/^#\/sessions\/(.+)$/);
+  return match?.[1] ?? null;
+}
+
+function setHashSessionId(id: string | null) {
+  if (id) {
+    window.history.pushState(null, '', `#/sessions/${id}`);
+  } else {
+    window.history.pushState(null, '', window.location.pathname);
+  }
+}
+
 export function App() {
   const queryClient = useQueryClient();
   const settingsQuery = useSettings();
-  const runsQuery = useQuery({
-    queryKey: ['runs'],
-    queryFn: () => api.listRuns({ limit: 200 }),
+  const sessionsQuery = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => api.listSessions({ limit: 200 }),
   });
 
   const [activeTool, setActiveTool] = useState('deep-research');
-  const [view, setView] = useState<ViewMode>('run');
-  const [runId, setRunId] = useState<string | null>(null);
-  const [form, setForm] = useState<RunFormState>({ query: '' });
+  const [view, setView] = useState<ViewMode>('session');
+  const [sessionId, setSessionIdState] = useState<string | null>(getSessionIdFromHash);
+  const [form, setForm] = useState<SessionFormState>({ query: '', model: '' });
   const [historySearch, setHistorySearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState<HistoryStatusFilter>('all');
   const [hitl, setHitl] = useState<HitlModalState>({
@@ -45,6 +59,24 @@ export function App() {
     initialPlan: null,
   });
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const setSessionId = useCallback((id: string | null) => {
+    setSessionIdState(id);
+    setHashSessionId(id);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const id = getSessionIdFromHash();
+      setSessionIdState(id);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    window.addEventListener('popstate', onHashChange);
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      window.removeEventListener('popstate', onHashChange);
+    };
+  }, []);
 
   const pushToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = crypto.randomUUID();
@@ -55,7 +87,7 @@ export function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const stream = useEventStream(runId, {
+  const stream = useEventStream(sessionId, {
     onHitlRequired: (ev) => {
       setHitl({ open: true, plan: ev.plan, initialPlan: ev.plan });
     },
@@ -64,8 +96,8 @@ export function App() {
 
   const reportMarkdown = useMemo(() => deriveReportMarkdown(stream.events), [stream.events]);
 
-  const prevRunStatusRef = useRef<{ runId: string | null; status: RunStatus | 'idle' }>({
-    runId: null,
+  const prevStatusRef = useRef<{ sessionId: string | null; status: SessionStatus | 'idle' }>({
+    sessionId: null,
     status: 'idle',
   });
 
@@ -83,32 +115,31 @@ export function App() {
   }, [stream.error, pushToast]);
 
   useEffect(() => {
-    const prev = prevRunStatusRef.current;
-    if (prev.runId !== runId) {
+    const prev = prevStatusRef.current;
+    if (prev.sessionId !== sessionId) {
       streamErrorSeenRef.current = undefined;
-      prevRunStatusRef.current = { runId, status };
+      prevStatusRef.current = { sessionId, status };
       return;
     }
     if (prev.status !== status) {
       if (status === 'completed' && (prev.status === 'running' || prev.status === 'pending')) {
-        pushToast('Run completed', 'success');
+        pushToast('Session completed', 'success');
       } else if (status === 'failed') {
-        pushToast('Run failed', 'error');
+        pushToast('Session failed', 'error');
       } else if (
         status === 'cancelled' &&
         (prev.status === 'running' || prev.status === 'pending')
       ) {
-        pushToast('Run cancelled', 'info');
+        pushToast('Session cancelled', 'info');
       }
     }
-    prevRunStatusRef.current = { runId, status };
-  }, [runId, status, pushToast]);
+    prevStatusRef.current = { sessionId, status };
+  }, [sessionId, status, pushToast]);
 
-  // Reset HITL when switching runs; effect body intentionally ignores `runId` values.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runId triggers reset on run change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId triggers reset on session change
   useEffect(() => {
     setHitl({ open: false, plan: null, initialPlan: null });
-  }, [runId]);
+  }, [sessionId]);
 
   const handleRun = useCallback(async () => {
     if (!form.query.trim()) {
@@ -122,52 +153,53 @@ export function App() {
               | undefined)
           : undefined;
 
-      const { id } = await api.createRun({
+      const { id } = await api.createSession({
         toolId: activeTool,
         question: form.query,
         settings: {
           ...(toolOverrides ?? {}),
+          ...(form.model ? { model: form.model } : {}),
         },
       });
-      setRunId(id);
-      setView('run');
-      pushToast('Run started', 'info');
-      await queryClient.invalidateQueries({ queryKey: ['runs'] });
+      setSessionId(id);
+      setView('session');
+      pushToast('Session started', 'info');
+      await queryClient.invalidateQueries({ queryKey: ['sessions'] });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to start run';
+      const msg = err instanceof Error ? err.message : 'Failed to start session';
       pushToast(msg, 'error');
     }
-  }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools]);
+  }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools, setSessionId]);
 
   const handleStop = useCallback(async () => {
-    if (!runId) {
+    if (!sessionId) {
       return;
     }
     try {
-      await api.cancelRun(runId);
+      await api.cancelSession(sessionId);
       pushToast('Stop request sent', 'info');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not cancel run';
+      const msg = err instanceof Error ? err.message : 'Could not cancel session';
       pushToast(msg, 'error');
     }
-  }, [runId, pushToast]);
+  }, [sessionId, pushToast]);
 
-  const handleDeleteRun = useCallback(
+  const handleDeleteSession = useCallback(
     async (id: string) => {
       try {
-        await api.deleteRun(id);
-        if (runId === id) {
-          setRunId(null);
-          setForm({ query: '' });
+        await api.deleteSession(id);
+        if (sessionId === id) {
+          setSessionId(null);
+          setForm({ query: '', model: '' });
         }
-        await queryClient.invalidateQueries({ queryKey: ['runs'] });
-        pushToast('Run deleted', 'info');
+        await queryClient.invalidateQueries({ queryKey: ['sessions'] });
+        pushToast('Session deleted', 'info');
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to delete run';
+        const msg = err instanceof Error ? err.message : 'Failed to delete session';
         pushToast(msg, 'error');
       }
     },
-    [runId, pushToast, queryClient],
+    [sessionId, pushToast, queryClient, setSessionId],
   );
 
   const handleRetry = useCallback(async () => {
@@ -182,45 +214,49 @@ export function App() {
               | undefined)
           : undefined;
 
-      const { id } = await api.createRun({
+      const { id } = await api.createSession({
         toolId: activeTool,
         question: form.query,
         settings: {
           ...(toolOverrides ?? {}),
+          ...(form.model ? { model: form.model } : {}),
         },
       });
-      setRunId(id);
-      setView('run');
-      pushToast('Retrying run', 'info');
-      await queryClient.invalidateQueries({ queryKey: ['runs'] });
+      setSessionId(id);
+      setView('session');
+      pushToast('Retrying session', 'info');
+      await queryClient.invalidateQueries({ queryKey: ['sessions'] });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to retry run';
+      const msg = err instanceof Error ? err.message : 'Failed to retry session';
       pushToast(msg, 'error');
     }
-  }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools]);
+  }, [activeTool, form, pushToast, queryClient, settingsQuery.data?.tools, setSessionId]);
 
-  const handleNewRun = useCallback(() => {
-    setRunId(null);
-    setForm({ query: '' });
-    setView('run');
-  }, []);
+  const handleNewSession = useCallback(() => {
+    setSessionId(null);
+    setForm({ query: '', model: '' });
+    setView('session');
+  }, [setSessionId]);
 
-  const handleSelectRun = useCallback((run: RunMeta) => {
-    setRunId(run.id);
-    setActiveTool(run.toolId);
-    setForm((prev) => ({ ...prev, query: run.question }));
-    setView('run');
-  }, []);
+  const handleSelectSession = useCallback(
+    (session: SessionMeta) => {
+      setSessionId(session.id);
+      setActiveTool(session.toolId);
+      setForm((prev) => ({ ...prev, query: session.question }));
+      setView('session');
+    },
+    [setSessionId],
+  );
 
   const handleHitlReject = useCallback(async () => {
-    if (!runId) {
+    if (!sessionId) {
       setHitl({ open: false, plan: null, initialPlan: null });
       return;
     }
-    await api.approveRun(runId, { decision: 'reject' });
+    await api.approveSession(sessionId, { decision: 'reject' });
     pushToast('Plan approval rejected', 'info');
     setHitl({ open: false, plan: null, initialPlan: null });
-  }, [runId, pushToast]);
+  }, [sessionId, pushToast]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -245,22 +281,24 @@ export function App() {
       }
       if (view === 'settings') {
         e.preventDefault();
-        setView('run');
+        setView('session');
       }
     };
     window.addEventListener('keydown', onEscape, true);
     return () => window.removeEventListener('keydown', onEscape, true);
   }, [handleHitlReject, hitl.open, view]);
 
-  const showStream = Boolean(runId && (stream.events.length > 0 || stream.status === 'running'));
+  const showStream = Boolean(
+    sessionId && (stream.events.length > 0 || stream.status === 'running'),
+  );
 
   useEffect(() => {
-    if (!showStream && view !== 'run') {
-      setView('run');
+    if (!showStream && view !== 'session') {
+      setView('session');
     }
   }, [showStream, view]);
 
-  const runs = runsQuery.data?.runs ?? [];
+  const sessions = sessionsQuery.data?.sessions ?? [];
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -269,10 +307,10 @@ export function App() {
         open={hitl.open}
         plan={hitl.plan}
         onApprove={async (approvedPlan) => {
-          if (!runId) {
+          if (!sessionId) {
             return;
           }
-          await api.approveRun(runId, {
+          await api.approveSession(sessionId, {
             decision: 'approve',
             ...(isSameSerializedPlan(approvedPlan, hitl.initialPlan)
               ? {}
@@ -315,11 +353,11 @@ export function App() {
           </span>
         </div>
         <HistorySidebar
-          runs={runs}
-          activeRunId={runId}
-          onSelectRun={handleSelectRun}
-          onDeleteRun={(id) => void handleDeleteRun(id)}
-          onNewRun={handleNewRun}
+          sessions={sessions}
+          activeSessionId={sessionId}
+          onSelectSession={handleSelectSession}
+          onDeleteSession={(id) => void handleDeleteSession(id)}
+          onNewSession={handleNewSession}
           searchQuery={historySearch}
           setSearchQuery={setHistorySearch}
           filterStatus={historyFilter}
@@ -380,7 +418,6 @@ export function App() {
               </p>
             )}
           </div>
-          {/* retry button in header for quick access */}
           {showStream && (status === 'failed' || status === 'cancelled') && (
             <button
               type="button"
@@ -402,7 +439,7 @@ export function App() {
           )}
           <button
             type="button"
-            onClick={() => setView((v) => (v === 'settings' ? 'run' : 'settings'))}
+            onClick={() => setView((v) => (v === 'settings' ? 'session' : 'settings'))}
             style={{
               width: 28,
               height: 28,
@@ -426,7 +463,7 @@ export function App() {
           <SettingsPanel activeTool={activeTool} />
         ) : showStream ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <RunForm
+            <SessionForm
               form={form}
               setForm={setForm}
               onRun={handleRun}
@@ -436,8 +473,6 @@ export function App() {
             />
             <StreamView
               events={stream.events}
-              tokens={stream.tokens}
-              cost={stream.cost}
               status={status}
               onRetry={() => void handleRetry()}
               report={reportMarkdown}
@@ -445,7 +480,7 @@ export function App() {
           </div>
         ) : (
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            <RunForm
+            <SessionForm
               form={form}
               setForm={setForm}
               onRun={handleRun}
@@ -473,7 +508,7 @@ export function App() {
                   }}
                 >
                   <p style={{ fontSize: 'var(--text-md)', color: 'var(--text-tertiary)' }}>
-                    No active run
+                    No active session
                   </p>
                   <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-disabled)' }}>
                     Enter a research question above and press Run

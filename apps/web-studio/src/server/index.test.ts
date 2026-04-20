@@ -3,22 +3,22 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createApprovalStore } from './features/runs/runs.approval.ts';
-import { createHitlSessionStore } from './features/runs/runs.hitl.ts';
-import { createRunStore, type RunStore } from './features/runs/runs.store.ts';
+import { createApprovalStore } from './features/sessions/sessions.approval.ts';
+import { createHitlSessionStore } from './features/sessions/sessions.hitl.ts';
+import { createSessionStore, type SessionStore } from './features/sessions/sessions.store.ts';
 import { createSettingsStore, type SettingsStore } from './features/settings/settings.store.ts';
 import { createApp } from './index.ts';
 import { createDatabase } from './infra/db.ts';
 
 let db: Database;
-let runStore: RunStore;
+let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-app-'));
   db = createDatabase(tmpDir);
-  runStore = createRunStore(db);
+  sessionStore = createSessionStore(db);
   settingsStore = createSettingsStore(db);
 });
 
@@ -29,9 +29,9 @@ afterEach(() => {
 
 function makeApp() {
   return createApp({
-    runStore,
+    sessionStore,
     settingsStore,
-    getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
+    getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key', groq: 'test-key' }),
     approvalStore: createApprovalStore(),
     hitlSessionStore: createHitlSessionStore(),
   });
@@ -54,12 +54,12 @@ describe('web-studio server', () => {
     expect(body.tools.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('GET /api/runs returns 200 with empty list', async () => {
+  it('GET /api/sessions returns 200 with empty list', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs');
+    const res = await app.request('/api/sessions');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { runs: unknown[] };
-    expect(body.runs).toEqual([]);
+    const body = (await res.json()) as { sessions: unknown[] };
+    expect(body.sessions).toEqual([]);
   });
 
   it('GET /api/settings returns 200 with defaults', async () => {
@@ -71,9 +71,9 @@ describe('web-studio server', () => {
     expect(body.tools).toBeDefined();
   });
 
-  it('POST /api/runs validates input', async () => {
+  it('POST /api/sessions validates input', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs', {
+    const res = await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -81,9 +81,9 @@ describe('web-studio server', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /api/runs creates a run', async () => {
+  it('POST /api/sessions creates a session', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs', {
+    const res = await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -95,33 +95,33 @@ describe('web-studio server', () => {
     const body = (await res.json()) as { id: string };
     expect(body.id).toBeDefined();
 
-    const run = runStore.getRun(body.id);
-    expect(run?.status).toBe('running');
+    const session = sessionStore.getSession(body.id);
+    expect(session?.status).toBe('running');
   });
 
-  it('POST /api/runs accepts optional resumeRunId (ignored until resume is implemented)', async () => {
+  it('POST /api/sessions accepts optional resumeSessionId (ignored until resume is implemented)', async () => {
     const app = makeApp();
     const priorId = '00000000-0000-4000-8000-000000000001';
-    const res = await app.request('/api/runs', {
+    const res = await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toolId: 'deep-research',
         question: 'Resume test?',
-        resumeRunId: priorId,
+        resumeSessionId: priorId,
       }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { id: string };
     expect(body.id).toBeDefined();
     expect(body.id).not.toBe(priorId);
-    const run = runStore.getRun(body.id);
-    expect(run?.question).toBe('Resume test?');
+    const session = sessionStore.getSession(body.id);
+    expect(session?.question).toBe('Resume test?');
   });
 
-  it('GET /api/runs/:id returns 404 for missing run', async () => {
+  it('GET /api/sessions/:id returns 404 for missing session', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs/nonexistent');
+    const res = await app.request('/api/sessions/nonexistent');
     expect(res.status).toBe(404);
   });
 
@@ -144,9 +144,36 @@ describe('web-studio server', () => {
     expect(body.global.budgetUsd).toBe(1.5);
   });
 
-  it('POST /api/runs/:id/cancel returns 404 for unknown run', async () => {
+  it('POST /api/sessions/:id/cancel returns 404 for unknown session', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs/nope/cancel', { method: 'POST' });
+    const res = await app.request('/api/sessions/nope/cancel', { method: 'POST' });
     expect(res.status).toBe(404);
+  });
+
+  it('GET /api/models returns models for configured providers', async () => {
+    const app = makeApp();
+    const res = await app.request('/api/models');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { models: Array<{ id: string; provider: string }> };
+    expect(body.models.length).toBeGreaterThan(0);
+    const providers = [...new Set(body.models.map((m) => m.provider))];
+    expect(providers).toContain('google');
+    expect(providers).toContain('groq');
+    expect(providers).toContain('openrouter');
+  });
+
+  it('GET /api/models omits providers without keys', async () => {
+    const app = createApp({
+      sessionStore,
+      settingsStore,
+      getProviderKeys: () => ({ groq: 'test-key' }),
+      approvalStore: createApprovalStore(),
+      hitlSessionStore: createHitlSessionStore(),
+    });
+    const res = await app.request('/api/models');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { models: Array<{ id: string; provider: string }> };
+    const providers = [...new Set(body.models.map((m) => m.provider))];
+    expect(providers).toEqual(['groq']);
   });
 });

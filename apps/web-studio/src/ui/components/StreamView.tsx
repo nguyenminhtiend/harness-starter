@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { RunStatus, UIEvent } from '../../shared/events.ts';
+import type { SessionStatus, UIEvent } from '../../shared/events.ts';
 import { Button } from './primitives.tsx';
 import { InlineReport } from './ReportView.tsx';
 
@@ -33,9 +33,9 @@ function eventContent(ev: UIEvent): string {
     case 'agent':
       return ev.message ?? ev.phase;
     case 'metric':
-      return `${ev.inputTokens.toLocaleString()} in / ${ev.outputTokens.toLocaleString()} out · $${(ev.costUsd ?? 0).toFixed(4)}`;
+      return `${ev.inputTokens.toLocaleString()} in / ${ev.outputTokens.toLocaleString()} out`;
     case 'complete':
-      return `Done: ${ev.totalTokens.toLocaleString()} tokens · $${(ev.totalCostUsd ?? 0).toFixed(4)}`;
+      return 'Done';
     case 'error':
       return ev.message;
     case 'hitl-required':
@@ -168,64 +168,14 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
   );
 });
 
-interface CostCounterProps {
-  tokens: number;
-  cost: number;
-  status: RunStatus | 'idle';
-}
-
-function CostCounter({ tokens, cost, status }: CostCounterProps) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--s3)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 'var(--text-xs)',
-      }}
-    >
-      {status === 'running' && (
-        <span
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--s1)',
-            color: 'var(--status-running)',
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: 'currentColor',
-              display: 'inline-block',
-              animation: 'pulse 1.2s ease-in-out infinite',
-            }}
-          />
-          live
-        </span>
-      )}
-      <span style={{ color: 'var(--text-tertiary)' }}>{tokens.toLocaleString()} tok</span>
-      <span style={{ color: 'var(--text-tertiary)' }}>·</span>
-      <span style={{ color: cost > 5 ? 'var(--status-error)' : 'var(--text-secondary)' }}>
-        ${cost.toFixed(4)}
-      </span>
-    </div>
-  );
-}
-
 interface StreamViewProps {
   events: UIEvent[];
-  tokens: number;
-  cost: number;
-  status: RunStatus | 'idle';
+  status: SessionStatus | 'idle';
   onRetry?: () => void;
   report?: string | undefined;
 }
 
-export function StreamView({ events, tokens, cost, status, onRetry, report }: StreamViewProps) {
+export function StreamView({ events, status, onRetry, report }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
@@ -272,7 +222,30 @@ export function StreamView({ events, tokens, cost, status, onRetry, report }: St
         }}
       >
         <div style={{ flex: 1 }} />
-        <CostCounter tokens={tokens} cost={cost} status={status} />
+        {status === 'running' && (
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--s1)',
+              color: 'var(--status-running)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'currentColor',
+                display: 'inline-block',
+                animation: 'pulse 1.2s ease-in-out infinite',
+              }}
+            />
+            live
+          </span>
+        )}
         <button
           type="button"
           onClick={() => setVerbose((p) => !p)}

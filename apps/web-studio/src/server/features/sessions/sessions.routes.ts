@@ -8,29 +8,29 @@ import { createRunBroadcast, type RunBroadcast } from '../../infra/broadcast.ts'
 import { parseJsonBody } from '../../infra/parse-body.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { ResearchPlan } from '../tools/deep-research/schemas/plan.ts';
-import type { ApprovalStore, HitlPlanDecision } from './runs.approval.ts';
-import type { HitlSessionStore } from './runs.hitl.ts';
-import { type RunDeps, startRun } from './runs.runner.ts';
-import type { RunStore } from './runs.store.ts';
+import type { ApprovalStore, HitlPlanDecision } from './sessions.approval.ts';
+import type { HitlSessionStore } from './sessions.hitl.ts';
+import { type SessionDeps, startSession } from './sessions.runner.ts';
+import type { SessionStore } from './sessions.store.ts';
 
-export interface RunsRouteDeps {
-  runStore: RunStore;
+export interface SessionsRouteDeps {
+  sessionStore: SessionStore;
   settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
   getProviderKeys: () => ProviderKeys;
 }
 
-const CreateRunBody = z.object({
+const CreateSessionBody = z.object({
   toolId: z.string().min(1),
   question: z.string().min(1),
   settings: z.record(z.string(), z.unknown()).default({}),
-  resumeRunId: z
+  resumeSessionId: z
     .string()
     .uuid()
     .optional()
     .describe(
-      'Reserved for future checkpoint resume. When implemented, this will load graph state from the referenced run. Currently accepted but ignored.',
+      'Reserved for future checkpoint resume. When implemented, this will load graph state from the referenced session. Currently accepted but ignored.',
     ),
 });
 
@@ -41,12 +41,12 @@ const ApproveBody = z.object({
 
 async function applyApproveToCheckpoint(
   checkpointer: Checkpointer,
-  runId: string,
+  sessionId: string,
   editedPlan: unknown | undefined,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const saved = await checkpointer.load(runId);
+  const saved = await checkpointer.load(sessionId);
   if (!saved?.graphState) {
-    return { ok: false, error: 'No checkpoint for run' };
+    return { ok: false, error: 'No checkpoint for session' };
   }
   const gs = saved.graphState as { data: Record<string, unknown> };
   gs.data.approved = true;
@@ -57,49 +57,52 @@ async function applyApproveToCheckpoint(
     }
     gs.data.plan = parsed.data;
   }
-  await checkpointer.save(runId, saved);
+  await checkpointer.save(sessionId, saved);
   return { ok: true };
 }
 
 const inflight = new Set<string>();
 
-export function createRunsRoutes(deps: RunsRouteDeps) {
-  const { runStore, settingsStore, approvalStore, hitlSessionStore, getProviderKeys } = deps;
+export function createSessionsRoutes(deps: SessionsRouteDeps) {
+  const { sessionStore, settingsStore, approvalStore, hitlSessionStore, getProviderKeys } = deps;
   const routes = new Hono();
 
-  const activeRuns = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
+  const activeSessions = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
 
-  const runDeps: RunDeps = { runStore, settingsStore, approvalStore, hitlSessionStore };
-
-  // ── CRUD + streaming ──────────────────────────────────────────────
+  const sessionDeps: SessionDeps = {
+    sessionStore,
+    settingsStore,
+    approvalStore,
+    hitlSessionStore,
+  };
 
   routes.post('/', async (c) => {
-    const result = await parseJsonBody(c, CreateRunBody);
+    const result = await parseJsonBody(c, CreateSessionBody);
     if (!result.ok) {
       return result.response;
     }
 
-    const { toolId, question, settings, resumeRunId } = result.data;
-    const runId = crypto.randomUUID();
+    const { toolId, question, settings, resumeSessionId } = result.data;
+    const sessionId = crypto.randomUUID();
     const ac = new AbortController();
 
     try {
-      const handle = startRun(
+      const handle = startSession(
         {
-          runId,
+          sessionId,
           toolId,
           question,
           settings,
-          ...(resumeRunId !== undefined ? { resumeRunId } : {}),
+          ...(resumeSessionId !== undefined ? { resumeSessionId } : {}),
           signal: ac.signal,
           abortController: ac,
           providerKeys: getProviderKeys(),
         },
-        runDeps,
+        sessionDeps,
       );
 
       const broadcast = createRunBroadcast();
-      activeRuns.set(runId, { broadcast, abort: ac });
+      activeSessions.set(sessionId, { broadcast, abort: ac });
 
       void (async () => {
         try {
@@ -108,11 +111,11 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
           }
         } finally {
           broadcast.done();
-          activeRuns.delete(runId);
+          activeSessions.delete(sessionId);
         }
       })();
 
-      return c.json({ id: runId });
+      return c.json({ id: sessionId });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       return c.json({ error: message }, 400);
@@ -130,26 +133,26 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
       : undefined;
     const status = statusResult?.success ? statusResult.data : undefined;
 
-    const runs = runStore.listRuns({
+    const sessions = sessionStore.listSessions({
       ...(status ? { status } : {}),
       ...(q ? { q } : {}),
       ...(limit ? { limit } : {}),
     });
 
-    return c.json({ runs });
+    return c.json({ sessions });
   });
 
   routes.get('/:id', (c) => {
-    const run = runStore.getRun(c.req.param('id'));
-    if (!run) {
-      return c.json({ error: 'Run not found' }, 404);
+    const session = sessionStore.getSession(c.req.param('id'));
+    if (!session) {
+      return c.json({ error: 'Session not found' }, 404);
     }
-    return c.json(run);
+    return c.json(session);
   });
 
   routes.get('/:id/events', (c) => {
-    const runId = c.req.param('id');
-    const active = activeRuns.get(runId);
+    const sessionId = c.req.param('id');
+    const active = activeSessions.get(sessionId);
 
     if (active) {
       const sub = active.broadcast.subscribe();
@@ -164,12 +167,12 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
       });
     }
 
-    const run = runStore.getRun(runId);
-    if (!run) {
-      return c.json({ error: 'Run not found' }, 404);
+    const session = sessionStore.getSession(sessionId);
+    if (!session) {
+      return c.json({ error: 'Session not found' }, 404);
     }
 
-    const storedEvents = runStore.getEvents(runId);
+    const storedEvents = sessionStore.getEvents(sessionId);
     return streamSSE(c, async (stream) => {
       for (const stored of storedEvents) {
         await stream.writeSSE({
@@ -177,7 +180,7 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
           data: JSON.stringify({
             type: stored.type,
             ts: stored.ts,
-            runId,
+            runId: sessionId,
             ...stored.payload,
           }),
         });
@@ -187,37 +190,35 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
   });
 
   routes.delete('/:id', (c) => {
-    const runId = c.req.param('id');
-    const active = activeRuns.get(runId);
+    const sessionId = c.req.param('id');
+    const active = activeSessions.get(sessionId);
     if (active) {
       active.abort.abort();
       active.broadcast.done();
-      activeRuns.delete(runId);
+      activeSessions.delete(sessionId);
     }
-    runStore.deleteRun(runId);
+    sessionStore.deleteSession(sessionId);
     return c.json({ ok: true });
   });
 
   routes.post('/:id/cancel', (c) => {
-    const runId = c.req.param('id');
-    const active = activeRuns.get(runId);
+    const sessionId = c.req.param('id');
+    const active = activeSessions.get(sessionId);
     if (active) {
       active.abort.abort();
       return c.json({ cancelled: true });
     }
-    return c.json({ error: 'Run not found or already finished' }, 404);
+    return c.json({ error: 'Session not found or already finished' }, 404);
   });
 
-  // ── Plan approval ─────────────────────────────────────────────────
-
   routes.post('/:id/approve', async (c) => {
-    const runId = c.req.param('id');
-    const run = runStore.getRun(runId);
-    if (!run) {
-      return c.json({ error: 'Run not found' }, 404);
+    const sessionId = c.req.param('id');
+    const session = sessionStore.getSession(sessionId);
+    if (!session) {
+      return c.json({ error: 'Session not found' }, 404);
     }
 
-    if (inflight.has(runId)) {
+    if (inflight.has(sessionId)) {
       return c.json({ error: 'Approval already in progress' }, 409);
     }
 
@@ -226,20 +227,20 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
       return parsed.response;
     }
 
-    if (!approvalStore.hasPending(runId)) {
+    if (!approvalStore.hasPending(sessionId)) {
       return c.json({ error: 'No pending approval' }, 404);
     }
 
-    inflight.add(runId);
+    inflight.add(sessionId);
     try {
       if (parsed.data.decision === 'approve') {
-        const session = hitlSessionStore.get(runId);
-        if (!session) {
-          return c.json({ error: 'No active run session' }, 404);
+        const hitlSession = hitlSessionStore.get(sessionId);
+        if (!hitlSession) {
+          return c.json({ error: 'No active session' }, 404);
         }
         const applied = await applyApproveToCheckpoint(
-          session.checkpointer,
-          runId,
+          hitlSession.checkpointer,
+          sessionId,
           parsed.data.editedPlan,
         );
         if (!applied.ok) {
@@ -250,18 +251,18 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
       const resolvedEvent: UIEvent = {
         type: 'hitl-resolved',
         ts: Date.now(),
-        runId,
+        runId: sessionId,
         decision: parsed.data.decision,
         ...(parsed.data.decision === 'approve' && parsed.data.editedPlan !== undefined
           ? { editedPlan: parsed.data.editedPlan }
           : {}),
       };
-      runStore.appendEvent(runId, resolvedEvent);
+      sessionStore.appendEvent(sessionId, resolvedEvent);
 
       if (parsed.data.decision === 'reject') {
-        const session = hitlSessionStore.get(runId);
-        if (session) {
-          session.abortController.abort();
+        const hitlSession = hitlSessionStore.get(sessionId);
+        if (hitlSession) {
+          hitlSession.abortController.abort();
         }
       }
 
@@ -270,13 +271,13 @@ export function createRunsRoutes(deps: RunsRouteDeps) {
         ...(parsed.data.editedPlan !== undefined ? { editedPlan: parsed.data.editedPlan } : {}),
       };
 
-      if (!approvalStore.resolve(runId, decisionPayload)) {
+      if (!approvalStore.resolve(sessionId, decisionPayload)) {
         return c.json({ error: 'No pending approval' }, 404);
       }
 
       return c.json({ ok: true });
     } finally {
-      inflight.delete(runId);
+      inflight.delete(sessionId);
     }
   });
 

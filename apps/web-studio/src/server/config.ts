@@ -1,6 +1,7 @@
 export interface ProviderKeys {
   google?: string;
   openrouter?: string;
+  groq?: string;
 }
 
 export interface EnvConfig {
@@ -13,6 +14,7 @@ export interface EnvConfig {
 export function loadConfig(): EnvConfig {
   const google = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
   const openrouter = process.env.OPENROUTER_API_KEY ?? '';
+  const groq = process.env.GROQ_API_KEY ?? '';
 
   return {
     HOST: process.env.HOST ?? '127.0.0.1',
@@ -21,6 +23,7 @@ export function loadConfig(): EnvConfig {
     providerKeys: {
       ...(google ? { google } : {}),
       ...(openrouter ? { openrouter } : {}),
+      ...(groq ? { groq } : {}),
     },
   };
 }

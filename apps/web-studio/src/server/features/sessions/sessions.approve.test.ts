@@ -7,12 +7,12 @@ import { inMemoryCheckpointer } from '@harness/agent';
 import { createApp } from '../../index.ts';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
-import { type ApprovalStore, createApprovalStore } from './runs.approval.ts';
-import { createHitlSessionStore, type HitlSessionStore } from './runs.hitl.ts';
-import { createRunStore, type RunStore } from './runs.store.ts';
+import { type ApprovalStore, createApprovalStore } from './sessions.approval.ts';
+import { createHitlSessionStore, type HitlSessionStore } from './sessions.hitl.ts';
+import { createSessionStore, type SessionStore } from './sessions.store.ts';
 
 let db: Database;
-let runStore: RunStore;
+let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let tmpDir: string;
 let approvalStore: ApprovalStore;
@@ -21,7 +21,7 @@ let hitlSessionStore: HitlSessionStore;
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-approve-'));
   db = createDatabase(tmpDir);
-  runStore = createRunStore(db);
+  sessionStore = createSessionStore(db);
   settingsStore = createSettingsStore(db);
   approvalStore = createApprovalStore();
   hitlSessionStore = createHitlSessionStore();
@@ -34,7 +34,7 @@ afterEach(() => {
 
 function makeApp() {
   return createApp({
-    runStore,
+    sessionStore,
     settingsStore,
     getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
     approvalStore,
@@ -42,10 +42,10 @@ function makeApp() {
   });
 }
 
-describe('POST /api/runs/:id/approve', () => {
-  it('returns 404 when run does not exist', async () => {
+describe('POST /api/sessions/:id/approve', () => {
+  it('returns 404 when session does not exist', async () => {
     const app = makeApp();
-    const res = await app.request('/api/runs/missing/approve', {
+    const res = await app.request('/api/sessions/missing/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'approve' }),
@@ -55,13 +55,13 @@ describe('POST /api/runs/:id/approve', () => {
 
   it('returns 400 for invalid body', async () => {
     const app = makeApp();
-    runStore.createRun({
-      id: 'r1',
+    sessionStore.createSession({
+      id: 's1',
       toolId: 'deep-research',
       question: 'q',
       status: 'running',
     });
-    const res = await app.request('/api/runs/r1/approve', {
+    const res = await app.request('/api/sessions/s1/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'maybe' }),
@@ -71,13 +71,13 @@ describe('POST /api/runs/:id/approve', () => {
 
   it('returns 400 for invalid JSON body', async () => {
     const app = makeApp();
-    runStore.createRun({
-      id: 'r-json',
+    sessionStore.createSession({
+      id: 's-json',
       toolId: 'deep-research',
       question: 'q',
       status: 'running',
     });
-    const res = await app.request('/api/runs/r-json/approve', {
+    const res = await app.request('/api/sessions/s-json/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{',
@@ -89,13 +89,13 @@ describe('POST /api/runs/:id/approve', () => {
 
   it('returns 404 when there is no pending approval', async () => {
     const app = makeApp();
-    runStore.createRun({
-      id: 'r2',
+    sessionStore.createSession({
+      id: 's2',
       toolId: 'deep-research',
       question: 'q',
       status: 'running',
     });
-    const res = await app.request('/api/runs/r2/approve', {
+    const res = await app.request('/api/sessions/s2/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'approve' }),
@@ -105,17 +105,17 @@ describe('POST /api/runs/:id/approve', () => {
 
   it('resolves pending approval, persists hitl-resolved, and returns 200', async () => {
     const app = makeApp();
-    const runId = 'run-hitl-1';
-    runStore.createRun({
-      id: runId,
+    const sessionId = 'session-hitl-1';
+    sessionStore.createSession({
+      id: sessionId,
       toolId: 'deep-research',
       question: 'What is X?',
       status: 'running',
     });
 
     const checkpointer = inMemoryCheckpointer();
-    await checkpointer.save(runId, {
-      runId,
+    await checkpointer.save(sessionId, {
+      runId: sessionId,
       conversationId: 'conv-1',
       turn: 0,
       messages: [],
@@ -133,11 +133,11 @@ describe('POST /api/runs/:id/approve', () => {
     });
 
     const ac = new AbortController();
-    hitlSessionStore.register(runId, { checkpointer, abortController: ac });
+    hitlSessionStore.register(sessionId, { checkpointer, abortController: ac });
 
-    const approvalPromise = approvalStore.waitFor(runId);
+    const approvalPromise = approvalStore.waitFor(sessionId);
 
-    const res = await app.request(`/api/runs/${runId}/approve`, {
+    const res = await app.request(`/api/sessions/${sessionId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'approve' }),
@@ -149,27 +149,27 @@ describe('POST /api/runs/:id/approve', () => {
     const decision = await approvalPromise;
     expect(decision).toEqual({ decision: 'approve' });
 
-    const stored = runStore.getEvents(runId);
+    const stored = sessionStore.getEvents(sessionId);
     const resolved = stored.filter((e) => e.type === 'hitl-resolved');
     expect(resolved.length).toBe(1);
     expect(resolved[0]?.payload.decision).toBe('approve');
 
-    hitlSessionStore.unregister(runId);
+    hitlSessionStore.unregister(sessionId);
   });
 
   it('resolves reject decision, aborts session, and returns 200', async () => {
     const app = makeApp();
-    const runId = 'run-hitl-reject';
-    runStore.createRun({
-      id: runId,
+    const sessionId = 'session-hitl-reject';
+    sessionStore.createSession({
+      id: sessionId,
       toolId: 'deep-research',
       question: 'What?',
       status: 'running',
     });
 
     const checkpointer = inMemoryCheckpointer();
-    await checkpointer.save(runId, {
-      runId,
+    await checkpointer.save(sessionId, {
+      runId: sessionId,
       conversationId: 'conv-rej',
       turn: 0,
       messages: [],
@@ -187,11 +187,11 @@ describe('POST /api/runs/:id/approve', () => {
     });
 
     const ac = new AbortController();
-    hitlSessionStore.register(runId, { checkpointer, abortController: ac });
+    hitlSessionStore.register(sessionId, { checkpointer, abortController: ac });
 
-    const approvalPromise = approvalStore.waitFor(runId);
+    const approvalPromise = approvalStore.waitFor(sessionId);
 
-    const res = await app.request(`/api/runs/${runId}/approve`, {
+    const res = await app.request(`/api/sessions/${sessionId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'reject' }),
@@ -204,22 +204,22 @@ describe('POST /api/runs/:id/approve', () => {
     expect(decision).toEqual({ decision: 'reject' });
     expect(ac.signal.aborted).toBe(true);
 
-    hitlSessionStore.unregister(runId);
+    hitlSessionStore.unregister(sessionId);
   });
 
   it('returns 400 when editedPlan is invalid', async () => {
     const app = makeApp();
-    const runId = 'run-hitl-bad-plan';
-    runStore.createRun({
-      id: runId,
+    const sessionId = 'session-hitl-bad-plan';
+    sessionStore.createSession({
+      id: sessionId,
       toolId: 'deep-research',
       question: 'q',
       status: 'running',
     });
 
     const checkpointer = inMemoryCheckpointer();
-    await checkpointer.save(runId, {
-      runId,
+    await checkpointer.save(sessionId, {
+      runId: sessionId,
       conversationId: 'conv-2',
       turn: 0,
       messages: [],
@@ -236,14 +236,14 @@ describe('POST /api/runs/:id/approve', () => {
       },
     });
 
-    hitlSessionStore.register(runId, {
+    hitlSessionStore.register(sessionId, {
       checkpointer,
       abortController: new AbortController(),
     });
 
-    void approvalStore.waitFor(runId);
+    void approvalStore.waitFor(sessionId);
 
-    const res = await app.request(`/api/runs/${runId}/approve`, {
+    const res = await app.request(`/api/sessions/${sessionId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'approve', editedPlan: { invalid: true } }),
@@ -251,6 +251,6 @@ describe('POST /api/runs/:id/approve', () => {
 
     expect(res.status).toBe(400);
 
-    hitlSessionStore.unregister(runId);
+    hitlSessionStore.unregister(sessionId);
   });
 });
