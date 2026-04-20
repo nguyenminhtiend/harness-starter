@@ -9,9 +9,16 @@ export interface ToolOverrides {
   [key: string]: unknown;
 }
 
+export type ApiKeyMask = { set: boolean };
+
+export interface ToolSettingsView {
+  values: ToolOverrides;
+  inheritedFromGlobal: Record<string, boolean>;
+}
+
 export interface SettingsResponse {
   global: GlobalSettings;
-  tools: Record<string, ToolOverrides>;
+  tools: Record<string, ToolSettingsView>;
 }
 
 export interface SettingsUpdateRequest {

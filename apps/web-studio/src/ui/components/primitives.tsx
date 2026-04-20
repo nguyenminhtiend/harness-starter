@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /* ── Spinner ── */
 
@@ -952,12 +952,23 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, width = 480 }: ModalProps) {
+  const backdropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    backdropRef.current?.focus({ preventScroll: true });
+  }, [open]);
+
   if (!open) {
     return null;
   }
 
   return (
     <div
+      ref={backdropRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       style={{

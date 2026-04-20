@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RunStatus, UIEvent } from '../../shared/events.ts';
+import type { HitlRequiredEvent, RunStatus, UIEvent } from '../../shared/events.ts';
 import { connectSSE } from '../api.ts';
 
 export interface EventStreamState {
@@ -10,7 +10,11 @@ export interface EventStreamState {
   error?: string;
 }
 
-export function useEventStream(runId: string | null) {
+export interface UseEventStreamOptions {
+  onHitlRequired?: (ev: HitlRequiredEvent) => void;
+}
+
+export function useEventStream(runId: string | null, options?: UseEventStreamOptions) {
   const [state, setState] = useState<EventStreamState>({
     events: [],
     status: 'idle',
@@ -19,6 +23,8 @@ export function useEventStream(runId: string | null) {
   });
 
   const closeRef = useRef<(() => void) | null>(null);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   useEffect(() => {
     if (!runId) {
@@ -30,6 +36,9 @@ export function useEventStream(runId: string | null) {
     const close = connectSSE(
       runId,
       (ev) => {
+        if (ev.type === 'hitl-required') {
+          optionsRef.current?.onHitlRequired?.(ev);
+        }
         setState((prev) => {
           const events = [...prev.events, ev];
           let { tokens, cost, status } = prev;

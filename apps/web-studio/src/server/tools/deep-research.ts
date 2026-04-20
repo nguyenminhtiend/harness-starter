@@ -46,6 +46,15 @@ export const deepResearchToolDef: ToolDef<typeof settingsSchema> = {
         store: args.store,
         budgets,
         events: args.bus,
+        ...(s.plannerPrompt !== undefined && s.plannerPrompt !== ''
+          ? { plannerPrompt: s.plannerPrompt }
+          : {}),
+        ...(s.writerPrompt !== undefined && s.writerPrompt !== ''
+          ? { writerPrompt: s.writerPrompt }
+          : {}),
+        ...(s.factCheckerPrompt !== undefined && s.factCheckerPrompt !== ''
+          ? { factCheckerPrompt: s.factCheckerPrompt }
+          : {}),
       }),
     );
 

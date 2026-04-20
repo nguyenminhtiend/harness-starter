@@ -26,7 +26,7 @@ Guidelines:
 export function createWriterAgent(provider: Provider, opts?: BaseAgentOpts): Agent {
   return createAgent({
     provider,
-    systemPrompt: WRITER_PROMPT,
+    systemPrompt: opts?.systemPrompt ?? WRITER_PROMPT,
     compactor: summarizingCompactor(),
     memory: opts?.memory ?? inMemoryStore(),
     maxTurns: 3,

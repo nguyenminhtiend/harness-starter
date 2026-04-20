@@ -72,6 +72,7 @@ export interface HitlRequiredEvent extends UIEventBase {
 export interface HitlResolvedEvent extends UIEventBase {
   type: 'hitl-resolved';
   decision: 'approve' | 'reject';
+  editedPlan?: unknown;
 }
 
 export interface StatusEvent extends UIEventBase {

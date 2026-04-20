@@ -41,6 +41,7 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
         settings,
         ...(resumeRunId !== undefined ? { resumeRunId } : {}),
         signal: ac.signal,
+        abortController: ac,
         persistence,
         apiKey: getApiKey(),
       });

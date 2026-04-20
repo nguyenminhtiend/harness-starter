@@ -1,4 +1,5 @@
 import type { RunMeta } from '../../shared/events.ts';
+
 import { ToolPicker } from './ToolPicker.tsx';
 
 export type HistoryStatusFilter = 'all' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -66,7 +67,9 @@ export interface HistorySidebarProps {
   setSearchQuery: (q: string) => void;
   filterStatus: HistoryStatusFilter;
   setFilterStatus: (s: HistoryStatusFilter) => void;
+  /** Wired to `ToolPicker` at the top of the sidebar. */
   activeTool: string;
+  /** Wired to `ToolPicker` at the top of the sidebar. */
   onSelectTool: (id: string) => void;
 }
 

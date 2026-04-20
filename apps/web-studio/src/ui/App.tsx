@@ -3,13 +3,25 @@ import { useCallback, useEffect, useState } from 'react';
 import type { RunMeta, RunStatus } from '../shared/events.ts';
 import { api } from './api.ts';
 import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
-import { Badge } from './components/primitives.tsx';
+import { PlanApprovalModal } from './components/PlanApprovalModal.tsx';
+import { Badge, Toast } from './components/primitives.tsx';
 import { RunForm, type RunFormState } from './components/RunForm.tsx';
+import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { StreamView } from './components/StreamView.tsx';
 import { useEventStream } from './hooks/useEventStream.ts';
 import { useSettings } from './hooks/useSettings.ts';
 
 type ViewMode = 'run' | 'report' | 'settings';
+
+interface HitlModalState {
+  open: boolean;
+  plan: unknown;
+  initialPlan: unknown;
+}
+
+function isSameSerializedPlan(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 export function App() {
   const queryClient = useQueryClient();
@@ -25,19 +37,59 @@ export function App() {
   const [form, setForm] = useState<RunFormState>({ query: '', model: 'openrouter/free' });
   const [historySearch, setHistorySearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState<HistoryStatusFilter>('all');
+  const [hitl, setHitl] = useState<HitlModalState>({
+    open: false,
+    plan: null,
+    initialPlan: null,
+  });
+  const [toasts, setToasts] = useState<
+    { id: string; type: 'error' | 'success' | 'info'; message: string }[]
+  >([]);
 
-  const stream = useEventStream(runId);
+  const pushToast = useCallback((message: string) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, type: 'error', message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const stream = useEventStream(runId, {
+    onHitlRequired: (ev) => {
+      setHitl({ open: true, plan: ev.plan, initialPlan: ev.plan });
+    },
+  });
   const status = stream.status;
+
+  // Reset HITL when switching runs; effect body intentionally ignores `runId` values.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runId triggers reset on run change
+  useEffect(() => {
+    setHitl({ open: false, plan: null, initialPlan: null });
+  }, [runId]);
 
   const handleRun = useCallback(async () => {
     if (!form.query.trim()) {
       return;
     }
     try {
+      const toolOverrides =
+        activeTool === 'deep-research'
+          ? (settingsQuery.data?.tools['deep-research']?.values as
+              | Record<string, unknown>
+              | undefined)
+          : undefined;
+
       const { id } = await api.createRun({
         toolId: activeTool,
         question: form.query,
-        settings: { model: form.model },
+        settings: {
+          model: form.model,
+          ...(toolOverrides ?? {}),
+        },
       });
       setRunId(id);
       setView('run');
@@ -45,7 +97,7 @@ export function App() {
     } catch (err) {
       console.error('Failed to create run:', err);
     }
-  }, [activeTool, form, queryClient]);
+  }, [activeTool, form, queryClient, settingsQuery.data?.tools]);
 
   const handleStop = useCallback(async () => {
     if (runId) {
@@ -86,6 +138,31 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <Toast toasts={toasts} removeToast={removeToast} />
+      <PlanApprovalModal
+        open={hitl.open}
+        plan={hitl.plan}
+        onApprove={async (approvedPlan) => {
+          if (!runId) {
+            return;
+          }
+          await api.approveRun(runId, {
+            decision: 'approve',
+            ...(isSameSerializedPlan(approvedPlan, hitl.initialPlan)
+              ? {}
+              : { editedPlan: approvedPlan }),
+          });
+          setHitl({ open: false, plan: null, initialPlan: null });
+        }}
+        onReject={async () => {
+          if (!runId) {
+            return;
+          }
+          await api.approveRun(runId, { decision: 'reject' });
+          pushToast('Plan approval rejected');
+          setHitl({ open: false, plan: null, initialPlan: null });
+        }}
+      />
       {/* Sidebar */}
       <div
         style={{
@@ -245,29 +322,7 @@ export function App() {
 
         {/* Main content */}
         {view === 'settings' ? (
-          <div style={{ flex: 1, padding: 'var(--s5)', color: 'var(--text-secondary)' }}>
-            {settingsQuery.isPending && <p>Loading settings…</p>}
-            {settingsQuery.data && (
-              <p style={{ fontSize: 'var(--text-sm)' }}>
-                Default model:{' '}
-                <span style={{ color: 'var(--text-primary)' }}>
-                  {settingsQuery.data.global.defaultModel}
-                </span>
-              </p>
-            )}
-            {settingsQuery.isError && (
-              <p style={{ color: 'var(--status-error)' }}>Could not load settings.</p>
-            )}
-            <p
-              style={{
-                marginTop: 'var(--s4)',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-disabled)',
-              }}
-            >
-              Full settings editor coming soon.
-            </p>
-          </div>
+          <SettingsPanel activeTool={activeTool} />
         ) : showStream ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <RunForm

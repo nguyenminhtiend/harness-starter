@@ -1,11 +1,14 @@
-import type { AgentEvent } from '@harness/agent';
+import type { AgentEvent, RunState } from '@harness/agent';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import type { EventBus } from '@harness/core';
 import { aiSdkProvider, createEventBus } from '@harness/core';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { UIEvent } from '../shared/events.ts';
 import type { ToolDef } from '../shared/tool.ts';
+import { registerHitlRunSession, unregisterHitlRunSession } from './active-hitl-sessions.ts';
+import { waitForApproval } from './approval.ts';
 import type { Persistence } from './persistence.ts';
+import { mergeToolRuntimeSettings } from './settings-merge.ts';
 import { tools as registry } from './tools/registry.ts';
 
 export interface RunContext {
@@ -16,6 +19,7 @@ export interface RunContext {
   /** Accepted from API for future checkpoint resume; not used yet. */
   resumeRunId?: string;
   signal: AbortSignal;
+  abortController: AbortController;
   persistence: Persistence;
   apiKey: string;
 }
@@ -167,25 +171,39 @@ function bridgeBusToUIEvents(
   };
 }
 
+function isPausedAtPlanApproval(saved: RunState | null): boolean {
+  if (!saved?.graphState) {
+    return false;
+  }
+  const gs = saved.graphState as {
+    completed: boolean;
+    currentNode: string;
+    data: { approved?: boolean };
+  };
+  return !gs.completed && gs.currentNode === 'approve' && gs.data.approved !== true;
+}
+
+function planFromCheckpoint(saved: RunState | null): unknown {
+  const gs = saved?.graphState as { data: { plan?: unknown } } | undefined;
+  return gs?.data?.plan;
+}
+
 export function startRun(ctx: RunContext): RunHandle {
-  const { runId, toolId, question, settings, signal, persistence, apiKey } = ctx;
+  const { runId, toolId, question, settings, signal, abortController, persistence, apiKey } = ctx;
 
   const toolDef = registry[toolId] as ToolDef | undefined;
   if (!toolDef) {
     throw new Error(`Unknown tool: ${toolId}`);
   }
 
-  const modelId = (settings.model as string) ?? 'openrouter/free';
+  // Runtime merge: tool defaults ← persisted global ← persisted tool (row + prompts + keys) ← request body
+  const mergedSettings = mergeToolRuntimeSettings(toolId, persistence, settings);
+  const modelId = (mergedSettings.model as string) ?? 'openrouter/free';
   const provider = createProvider(apiKey, modelId);
   const store = inMemoryStore();
   const checkpointer = inMemoryCheckpointer();
   const bus = createEventBus();
 
-  const mergedSettings = Object.assign(
-    {},
-    toolDef.defaultSettings as Record<string, unknown>,
-    settings,
-  );
   const parsedSettings = toolDef.settingsSchema.parse(mergedSettings);
 
   const agent = toolDef.buildAgent({
@@ -209,18 +227,34 @@ export function startRun(ctx: RunContext): RunHandle {
       persistence.appendEvent(runId, ev);
     });
 
+    registerHitlRunSession(runId, { checkpointer, abortController });
+
     try {
       if (signal.aborted) {
         throw new DOMException('The operation was aborted.', 'AbortError');
       }
 
-      const stream = agent.stream(
-        { userMessage: `<user_question>${question}</user_question>` },
-        { signal, runId },
-      );
+      while (true) {
+        const stream = agent.stream(
+          { userMessage: `<user_question>${question}</user_question>` },
+          { signal, runId },
+        );
 
-      for await (const event of stream) {
-        // Drain any bus-originated events first
+        for await (const event of stream) {
+          while (pushQueue.length > 0) {
+            const queued = pushQueue.shift();
+            if (queued) {
+              yield queued;
+            }
+          }
+
+          const uiEvents = agentEventToUIEvents(event, runId, accUsage);
+          for (const uiEv of uiEvents) {
+            persistence.appendEvent(runId, uiEv);
+            yield uiEv;
+          }
+        }
+
         while (pushQueue.length > 0) {
           const queued = pushQueue.shift();
           if (queued) {
@@ -228,18 +262,55 @@ export function startRun(ctx: RunContext): RunHandle {
           }
         }
 
-        const uiEvents = agentEventToUIEvents(event, runId, accUsage);
-        for (const uiEv of uiEvents) {
-          persistence.appendEvent(runId, uiEv);
-          yield uiEv;
+        const saved = await checkpointer.load(runId);
+        if (!isPausedAtPlanApproval(saved)) {
+          break;
         }
-      }
 
-      // Drain remaining bus events
-      while (pushQueue.length > 0) {
-        const queued = pushQueue.shift();
-        if (queued) {
-          yield queued;
+        const approvalPromise = waitForApproval(runId);
+        const plan = planFromCheckpoint(saved);
+        const hitlRequired: UIEvent = {
+          type: 'hitl-required',
+          ts: Date.now(),
+          runId,
+          plan,
+        };
+        persistence.appendEvent(runId, hitlRequired);
+        yield hitlRequired;
+
+        const decision = await approvalPromise;
+
+        const resolvedUi: UIEvent = {
+          type: 'hitl-resolved',
+          ts: Date.now(),
+          runId,
+          decision: decision.decision,
+          ...(decision.editedPlan !== undefined ? { editedPlan: decision.editedPlan } : {}),
+        };
+        yield resolvedUi;
+
+        if (decision.decision === 'reject') {
+          persistence.updateRun(runId, {
+            status: 'cancelled',
+            finishedAt: new Date().toISOString(),
+          });
+
+          const rejectEvent: UIEvent = {
+            type: 'error',
+            ts: Date.now(),
+            runId,
+            message: 'Plan approval rejected',
+            code: 'HITL_REJECTED',
+          };
+          persistence.appendEvent(runId, rejectEvent);
+          yield rejectEvent;
+
+          yield { type: 'status', status: 'cancelled', ts: Date.now(), runId };
+          return;
+        }
+
+        if (signal.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
         }
       }
 
@@ -285,6 +356,7 @@ export function startRun(ctx: RunContext): RunHandle {
       yield { type: 'status', status, ts: Date.now(), runId };
     } finally {
       unsubBus();
+      unregisterHitlRunSession(runId);
     }
   }
 

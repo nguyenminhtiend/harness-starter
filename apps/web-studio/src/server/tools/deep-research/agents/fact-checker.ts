@@ -23,7 +23,7 @@ Be strict: if any citation cannot be verified, set pass to false.`;
 export function createFactCheckerAgent(provider: Provider, opts?: BaseAgentOpts): Agent {
   return createAgent({
     provider,
-    systemPrompt: FACT_CHECKER_PROMPT,
+    systemPrompt: opts?.systemPrompt ?? FACT_CHECKER_PROMPT,
     memory: opts?.memory ?? inMemoryStore(),
     maxTurns: 3,
     ...(opts?.budgets ? { budgets: opts.budgets } : {}),

@@ -27,7 +27,15 @@ Each subquestion should be specific, non-overlapping, and directly researchable 
 
 const MAX_PLAN_RETRIES = 3;
 
-export function createPlannerNode(provider: Provider, depth = 'medium'): GraphNode {
+export interface PlannerNodeOpts {
+  depth?: string;
+  /** Full system message; defaults to the built-in planner instructions. */
+  systemPrompt?: string;
+}
+
+export function createPlannerNode(provider: Provider, opts: PlannerNodeOpts = {}): GraphNode {
+  const depth = opts.depth ?? 'medium';
+  const systemPrompt = opts.systemPrompt ?? PLANNER_PROMPT;
   const targetCount = DEPTH_MAP[depth] ?? 5;
 
   return {
@@ -44,7 +52,7 @@ export function createPlannerNode(provider: Provider, depth = 'medium'): GraphNo
         const result = await provider.generate(
           {
             messages: [
-              { role: 'system', content: PLANNER_PROMPT },
+              { role: 'system', content: systemPrompt },
               {
                 role: 'user',
                 content: `<user_question>${question}</user_question>\n\nGenerate exactly ${targetCount} subquestions.${retryHint}`,

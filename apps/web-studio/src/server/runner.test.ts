@@ -37,6 +37,7 @@ describe('startRun', () => {
         question: 'test',
         settings: {},
         signal: ac.signal,
+        abortController: ac,
         persistence,
         apiKey: 'fake-key',
       }),
@@ -51,6 +52,7 @@ describe('startRun', () => {
       question: 'What is X?',
       settings: {},
       signal: ac.signal,
+      abortController: ac,
       persistence,
       apiKey: 'fake-key',
     });
@@ -72,6 +74,7 @@ describe('startRun', () => {
       question: 'What is Y?',
       settings: {},
       signal: ac.signal,
+      abortController: ac,
       persistence,
       apiKey: 'fake-key',
     });
@@ -103,6 +106,7 @@ describe('startRun', () => {
       question: 'Test persistence',
       settings: {},
       signal: ac.signal,
+      abortController: ac,
       persistence,
       apiKey: 'fake-key',
     });

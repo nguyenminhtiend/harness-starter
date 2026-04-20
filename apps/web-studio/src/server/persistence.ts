@@ -43,6 +43,7 @@ export interface StoredEvent {
 
 export interface Persistence {
   upsertSetting(key: string, value: unknown): void;
+  deleteSetting(key: string): void;
   getSetting<T = unknown>(key: string): T | undefined;
   getAllSettings(): Record<string, unknown>;
 
@@ -95,6 +96,7 @@ export function createPersistence(dataDir: string): Persistence {
     upsertSetting: db.prepare(
       'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2',
     ),
+    deleteSetting: db.prepare('DELETE FROM settings WHERE key = ?'),
     getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
     getAllSettings: db.prepare('SELECT key, value FROM settings'),
 
@@ -113,6 +115,10 @@ export function createPersistence(dataDir: string): Persistence {
   return {
     upsertSetting(key, value) {
       stmts.upsertSetting.run(key, JSON.stringify(value));
+    },
+
+    deleteSetting(key) {
+      stmts.deleteSetting.run(key);
     },
 
     getSetting<T = unknown>(key: string): T | undefined {

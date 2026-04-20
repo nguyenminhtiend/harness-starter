@@ -13,6 +13,8 @@ const PHASE_META: Record<string, { label: string; color: string }> = {
   tool: { label: 'Tool', color: 'var(--accent)' },
   metric: { label: 'Metric', color: 'var(--text-disabled)' },
   status: { label: 'Status', color: 'var(--text-tertiary)' },
+  'hitl-required': { label: 'Approval', color: 'var(--accent)' },
+  'hitl-resolved': { label: 'Approval', color: 'var(--text-secondary)' },
 };
 
 function eventPhase(ev: UIEvent): string {
