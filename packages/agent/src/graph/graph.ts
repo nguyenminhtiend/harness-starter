@@ -133,6 +133,17 @@ export function graph(def: GraphDef): Agent {
         yield { type: 'checkpoint', runId, turn: 0 };
       }
     }
+
+    // Persist final state so callers can read completed graph data
+    if (def.checkpointer && graphState.completed) {
+      await def.checkpointer.save(runId, {
+        runId,
+        conversationId,
+        turn: 0,
+        messages: [],
+        graphState,
+      });
+    }
   }
 
   async function run(input: RunInput, opts?: RunOptions): Promise<RunResult> {

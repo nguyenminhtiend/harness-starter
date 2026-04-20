@@ -2,6 +2,7 @@ import type { StreamRendererCallbacks } from '@harness/agent';
 import { createSpinner } from '@harness/tui/spinner';
 import pc from 'picocolors';
 
+const RESEARCH_NODES = ['researcher', 'research'] as const;
 const WRITE_NODES = ['writer', 'write'] as const;
 const FACT_CHECK_NODES = ['fact-check', 'fact-checker'] as const;
 
@@ -51,7 +52,9 @@ export function createDeepResearchRenderer(
 
     onHandoff: (_from, to) => {
       spinner.stop();
-      if (WRITE_NODES.some((n) => to.includes(n))) {
+      if (RESEARCH_NODES.some((n) => to.includes(n))) {
+        setPhase('researching', `\n${pc.cyan('📋')} plan created`);
+      } else if (WRITE_NODES.some((n) => to.includes(n))) {
         setPhase('writing', `\n${pc.cyan('✍️')}  writing…`);
       } else if (FACT_CHECK_NODES.some((n) => to.includes(n))) {
         setPhase('fact-checking', `\n${pc.cyan('🔍')} fact-checking…`);

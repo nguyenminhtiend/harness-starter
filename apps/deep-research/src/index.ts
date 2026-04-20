@@ -8,7 +8,7 @@ import {
   type StreamRenderer,
   type StreamSummary,
 } from '@harness/agent';
-import { BudgetExceededError, createEventBus, type EventBus } from '@harness/core';
+import { BudgetExceededError, createEventBus, type EventBus, type Usage } from '@harness/core';
 import { consoleSink, jsonlSink } from '@harness/observability';
 import { promptApproval } from '@harness/tui/approval';
 import { setupSigint } from '@harness/tui/sigint';
@@ -295,6 +295,27 @@ console.log(pc.bold(`\ndeep-research · "${question}"\n`));
 const rendererCallbacks = createDeepResearchRenderer();
 const renderer = createStreamRenderer(rendererCallbacks);
 
+// Bridge EventBus events to renderer — graph fn nodes don't yield AgentEvents,
+// but inner agents DO emit to the bus, so we forward them for UI feedback.
+let busUsage: Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+const busTeardowns: (() => void)[] = [];
+busTeardowns.push(bus.on('handoff', (p) => rendererCallbacks.onHandoff?.(p.from, p.to)));
+busTeardowns.push(
+  bus.on('tool.start', (p) => rendererCallbacks.onToolStart?.(p.runId, p.toolName, p.args)),
+);
+busTeardowns.push(
+  bus.on('tool.finish', (p) => rendererCallbacks.onToolResult?.(p.runId, p.result, p.durationMs)),
+);
+busTeardowns.push(
+  bus.on('provider.usage', (p) => {
+    busUsage = {
+      inputTokens: (busUsage.inputTokens ?? 0) + (p.tokens.inputTokens ?? 0),
+      outputTokens: (busUsage.outputTokens ?? 0) + (p.tokens.outputTokens ?? 0),
+      totalTokens: (busUsage.totalTokens ?? 0) + (p.tokens.totalTokens ?? 0),
+    };
+  }),
+);
+
 try {
   const summary = await runResearchLoop(
     agent,
@@ -306,28 +327,37 @@ try {
     skipApproval,
   );
 
-  const footer = formatUsage({
-    totalTokens: summary.usage.totalTokens ?? 0,
-    durationMs: summary.durationMs,
-  });
+  const totalTokens = (summary.usage.totalTokens ?? 0) || (busUsage.totalTokens ?? 0);
+  const footer = formatUsage({ totalTokens, durationMs: summary.durationMs });
 
   process.stdout.write('\n');
 
-  if (!noFile && summary.text.trim()) {
-    const finalCheckpoint = await checkpointer.load(runId);
-    const report: Report = readReportFromCheckpoint(finalCheckpoint) ?? {
+  const finalCheckpoint = await checkpointer.load(runId);
+  const report = readReportFromCheckpoint(finalCheckpoint);
+
+  if (!noFile && report) {
+    const filePath = await persistReport(report, outDir, slug);
+    console.log(pc.green(`✅ report saved → ${filePath}`));
+  } else if (!noFile && summary.text.trim()) {
+    const fallbackReport: Report = {
       title: question,
       sections: [{ heading: 'Research', body: summary.text }],
       references: [],
     };
-    const filePath = await persistReport(report, outDir, slug);
+    const filePath = await persistReport(fallbackReport, outDir, slug);
     console.log(pc.green(`✅ report saved → ${filePath}`));
   }
 
   console.log(pc.dim(footer));
+  for (const unsub of busTeardowns) {
+    unsub();
+  }
   shutdown(sinkTeardowns, persistence);
   process.exit(0);
 } catch (err) {
+  for (const unsub of busTeardowns) {
+    unsub();
+  }
   shutdown(sinkTeardowns, persistence);
   if ((err as Error).name === 'AbortError') {
     console.error(`\n${pc.dim('(cancelled)')}`);
