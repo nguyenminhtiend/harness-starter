@@ -14,7 +14,8 @@
       "!**/*.d.ts",
       "!**/bun.lock",
       "!**/.changeset",
-      "!**/.harness"
+      "!**/.harness",
+      "!**/sample-ui"
     ]
   },
   "assist": {
