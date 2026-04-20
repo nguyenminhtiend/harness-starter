@@ -50,10 +50,10 @@ describe('GET /api/settings', () => {
         { values: Record<string, unknown>; inheritedFromGlobal: Record<string, boolean> }
       >;
     };
-    expect(body.global.defaultModel).toBe('google:gemini-2.5-flash-preview-04-17');
+    expect(body.global.defaultModel).toBe('google:gemini-2.5-flash');
     const dr = body.tools['deep-research'];
     expect(dr).toBeDefined();
-    expect(dr.values.model).toBe('google:gemini-2.5-flash-preview-04-17');
+    expect(dr.values.model).toBe('google:gemini-2.5-flash');
     expect(dr.inheritedFromGlobal.model).toBe(true);
   });
 });

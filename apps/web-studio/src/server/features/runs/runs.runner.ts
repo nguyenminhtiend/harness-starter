@@ -81,7 +81,7 @@ export function startRun(ctx: RunContext, deps: RunDeps): RunHandle {
   }
 
   const mergedSettings = mergeToolRuntimeSettings(toolId, settingsStore, settings);
-  const modelSpec = (mergedSettings.model as string) ?? 'google:gemini-2.5-flash-preview-04-17';
+  const modelSpec = (mergedSettings.model as string) ?? 'google:gemini-2.5-flash';
   const provider = createProvider(providerKeys, modelSpec);
   const store = inMemoryStore();
   const checkpointer = inMemoryCheckpointer();
