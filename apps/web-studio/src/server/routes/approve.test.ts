@@ -55,6 +55,24 @@ describe('POST /api/runs/:id/approve', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns 400 for invalid JSON body', async () => {
+    const app = makeApp();
+    persistence.createRun({
+      id: 'r-json',
+      toolId: 'deep-research',
+      question: 'q',
+      status: 'running',
+    });
+    const res = await app.request('/api/runs/r-json/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain('JSON');
+  });
+
   it('returns 404 when there is no pending approval', async () => {
     const app = makeApp();
     persistence.createRun({
@@ -121,6 +139,56 @@ describe('POST /api/runs/:id/approve', () => {
     const resolved = stored.filter((e) => e.type === 'hitl-resolved');
     expect(resolved.length).toBe(1);
     expect(resolved[0]?.payload.decision).toBe('approve');
+
+    unregisterHitlRunSession(runId);
+  });
+
+  it('resolves reject decision, aborts session, and returns 200', async () => {
+    const app = makeApp();
+    const runId = 'run-hitl-reject';
+    persistence.createRun({
+      id: runId,
+      toolId: 'deep-research',
+      question: 'What?',
+      status: 'running',
+    });
+
+    const checkpointer = inMemoryCheckpointer();
+    await checkpointer.save(runId, {
+      runId,
+      conversationId: 'conv-rej',
+      turn: 0,
+      messages: [],
+      graphState: {
+        currentNode: 'approve',
+        completed: false,
+        data: {
+          userMessage: 'What?',
+          plan: {
+            question: 'What?',
+            subquestions: [{ id: 'q1', question: 'Details?', searchQueries: ['x'] }],
+          },
+        },
+      },
+    });
+
+    const ac = new AbortController();
+    registerHitlRunSession(runId, { checkpointer, abortController: ac });
+
+    const approvalPromise = waitForApproval(runId);
+
+    const res = await app.request(`/api/runs/${runId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'reject' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    const decision = await approvalPromise;
+    expect(decision).toEqual({ decision: 'reject' });
+    expect(ac.signal.aborted).toBe(true);
 
     unregisterHitlRunSession(runId);
   });

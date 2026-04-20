@@ -23,7 +23,12 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
   const activeRuns = new Map<string, { events: AsyncIterable<unknown>; abort: AbortController }>();
 
   routes.post('/', async (c) => {
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
     const parsed = CreateRunBody.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);

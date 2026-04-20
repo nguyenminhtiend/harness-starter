@@ -45,6 +45,13 @@ describe('settings', () => {
     const all = db.getAllSettings();
     expect(all).toEqual({ a: 1, b: 'two' });
   });
+
+  it('deleteSetting removes a key', () => {
+    db.upsertSetting('temp', 'gone');
+    expect(db.getSetting('temp')).toBe('gone');
+    db.deleteSetting('temp');
+    expect(db.getSetting('temp')).toBeUndefined();
+  });
 });
 
 describe('runs', () => {

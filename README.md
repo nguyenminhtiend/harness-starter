@@ -36,6 +36,7 @@ bun run chat
 | `bun run build`   | Build across all workspace packages            |
 | `bun test`        | Unit tests via `bun test` (excludes `*.eval.ts`) |
 | `bun run chat`    | Run the `apps/cli-chat` demo (Phase 9+)        |
+| `bun run web`     | Run the `apps/web-studio` demo (Vite UI + Hono API) |
 | `bun run server`  | Run the `apps/http-server` demo (Phase 10+)    |
 | `bun run eval`    | Invoke the `harness-eval` CLI (Phase 8+)       |
 
