@@ -50,7 +50,8 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
 
       return c.json({ id: runId });
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return c.json({ error: message }, 400);
     }
   });
 
@@ -99,7 +100,7 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
       });
     }
 
-    // Replay from SQLite for finished runs
+    // Finished run: replay persisted events from SQLite, then emit `done` for EventSource teardown.
     const run = persistence.getRun(runId);
     if (!run) {
       return c.json({ error: 'Run not found' }, 404);
