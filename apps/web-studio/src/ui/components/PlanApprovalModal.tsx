@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Subquestion } from '../../server/tools/deep-research/schemas/plan.ts';
-import { ResearchPlan as ResearchPlanSchema } from '../../server/tools/deep-research/schemas/plan.ts';
+import type { Subquestion } from '../../shared/plan.ts';
+import { ResearchPlan as ResearchPlanSchema } from '../../shared/plan.ts';
 import { Button, Input, Modal, Textarea } from './primitives.tsx';
 
 export interface PlanApprovalModalProps {

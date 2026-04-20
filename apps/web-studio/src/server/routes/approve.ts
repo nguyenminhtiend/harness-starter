@@ -2,7 +2,7 @@ import type { Checkpointer } from '@harness/agent';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { UIEvent } from '../../shared/events.ts';
-import { getHitlRunSession } from '../active-hitl-sessions.ts';
+import type { HitlRunSession } from '../active-hitl-sessions.ts';
 import type { HitlPlanDecision } from '../approval.ts';
 import type { Persistence } from '../persistence.ts';
 import { ResearchPlan } from '../tools/deep-research/schemas/plan.ts';
@@ -15,6 +15,7 @@ const ApproveBody = z.object({
 export interface ApproveRouteResolvers {
   hasPendingApproval: (runId: string) => boolean;
   resolveApproval: (runId: string, decision: HitlPlanDecision) => boolean;
+  getHitlSession: (runId: string) => HitlRunSession | undefined;
 }
 
 async function applyApproveToCheckpoint(
@@ -39,6 +40,8 @@ async function applyApproveToCheckpoint(
   return { ok: true };
 }
 
+const inflight = new Set<string>();
+
 export function createApproveRoute(persistence: Persistence, resolvers: ApproveRouteResolvers) {
   const routes = new Hono();
 
@@ -47,6 +50,10 @@ export function createApproveRoute(persistence: Persistence, resolvers: ApproveR
     const run = persistence.getRun(runId);
     if (!run) {
       return c.json({ error: 'Run not found' }, 404);
+    }
+
+    if (inflight.has(runId)) {
+      return c.json({ error: 'Approval already in progress' }, 409);
     }
 
     let body: unknown;
@@ -65,49 +72,54 @@ export function createApproveRoute(persistence: Persistence, resolvers: ApproveR
       return c.json({ error: 'No pending approval' }, 404);
     }
 
-    if (parsed.data.decision === 'approve') {
-      const session = getHitlRunSession(runId);
-      if (!session) {
-        return c.json({ error: 'No active run session' }, 404);
+    inflight.add(runId);
+    try {
+      if (parsed.data.decision === 'approve') {
+        const session = resolvers.getHitlSession(runId);
+        if (!session) {
+          return c.json({ error: 'No active run session' }, 404);
+        }
+        const applied = await applyApproveToCheckpoint(
+          session.checkpointer,
+          runId,
+          parsed.data.editedPlan,
+        );
+        if (!applied.ok) {
+          return c.json({ error: applied.error }, 400);
+        }
       }
-      const applied = await applyApproveToCheckpoint(
-        session.checkpointer,
+
+      const resolvedEvent: UIEvent = {
+        type: 'hitl-resolved',
+        ts: Date.now(),
         runId,
-        parsed.data.editedPlan,
-      );
-      if (!applied.ok) {
-        return c.json({ error: applied.error }, 400);
+        decision: parsed.data.decision,
+        ...(parsed.data.decision === 'approve' && parsed.data.editedPlan !== undefined
+          ? { editedPlan: parsed.data.editedPlan }
+          : {}),
+      };
+      persistence.appendEvent(runId, resolvedEvent);
+
+      if (parsed.data.decision === 'reject') {
+        const session = resolvers.getHitlSession(runId);
+        if (session) {
+          session.abortController.abort();
+        }
       }
-    }
 
-    const resolvedEvent: UIEvent = {
-      type: 'hitl-resolved',
-      ts: Date.now(),
-      runId,
-      decision: parsed.data.decision,
-      ...(parsed.data.decision === 'approve' && parsed.data.editedPlan !== undefined
-        ? { editedPlan: parsed.data.editedPlan }
-        : {}),
-    };
-    persistence.appendEvent(runId, resolvedEvent);
+      const decisionPayload: HitlPlanDecision = {
+        decision: parsed.data.decision,
+        ...(parsed.data.editedPlan !== undefined ? { editedPlan: parsed.data.editedPlan } : {}),
+      };
 
-    if (parsed.data.decision === 'reject') {
-      const session = getHitlRunSession(runId);
-      if (session) {
-        session.abortController.abort();
+      if (!resolvers.resolveApproval(runId, decisionPayload)) {
+        return c.json({ error: 'No pending approval' }, 404);
       }
+
+      return c.json({ ok: true });
+    } finally {
+      inflight.delete(runId);
     }
-
-    const decisionPayload: HitlPlanDecision = {
-      decision: parsed.data.decision,
-      ...(parsed.data.editedPlan !== undefined ? { editedPlan: parsed.data.editedPlan } : {}),
-    };
-
-    if (!resolvers.resolveApproval(runId, decisionPayload)) {
-      return c.json({ error: 'No pending approval' }, 404);
-    }
-
-    return c.json({ ok: true });
   });
 
   return routes;

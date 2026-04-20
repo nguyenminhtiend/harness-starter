@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { RunStatus, UIEvent } from '../../shared/events.ts';
 import { Button } from './primitives.tsx';
 
@@ -62,7 +62,11 @@ interface TimelineEventProps {
   verbose: boolean;
 }
 
-function TimelineEvent({ event, index, verbose: _verbose }: TimelineEventProps) {
+const TimelineEvent = memo(function TimelineEvent({
+  event,
+  index,
+  verbose: _verbose,
+}: TimelineEventProps) {
   const phase = eventPhase(event);
   const meta = PHASE_META[phase] ?? { label: phase, color: 'var(--text-tertiary)' };
   const content = eventContent(event);
@@ -171,7 +175,7 @@ function TimelineEvent({ event, index, verbose: _verbose }: TimelineEventProps) 
       </div>
     </div>
   );
-}
+});
 
 interface CostCounterProps {
   tokens: number;
@@ -236,12 +240,21 @@ export function StreamView({ events, tokens, cost, status, onViewReport }: Strea
   const [verbose, setVerbose] = useState(false);
 
   const visibleEvents = verbose ? events : events.filter((e) => !isVerbose(e));
+  const prevCountRef = useRef(0);
 
   useEffect(() => {
     if (pinned && bottomRef.current) {
       bottomRef.current.scrollIntoView({ block: 'end', behavior: 'smooth' });
     }
   }, [pinned]);
+
+  const count = visibleEvents.length;
+  if (count !== prevCountRef.current) {
+    prevCountRef.current = count;
+    if (pinned && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+  }
 
   const handleScroll = () => {
     const el = containerRef.current;

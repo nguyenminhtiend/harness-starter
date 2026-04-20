@@ -3,17 +3,21 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { inMemoryCheckpointer } from '@harness/agent';
-import { registerHitlRunSession, unregisterHitlRunSession } from '../active-hitl-sessions.ts';
-import { waitForApproval } from '../approval.ts';
+import { createHitlSessionStore, type HitlSessionStore } from '../active-hitl-sessions.ts';
+import { type ApprovalStore, createApprovalStore } from '../approval.ts';
 import { createApp } from '../index.ts';
 import { createPersistence, type Persistence } from '../persistence.ts';
 
 let persistence: Persistence;
 let tmpDir: string;
+let approvalStore: ApprovalStore;
+let hitlSessionStore: HitlSessionStore;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-approve-'));
   persistence = createPersistence(tmpDir);
+  approvalStore = createApprovalStore();
+  hitlSessionStore = createHitlSessionStore();
 });
 
 afterEach(() => {
@@ -25,6 +29,8 @@ function makeApp() {
   return createApp({
     persistence,
     getApiKey: () => 'test-key',
+    approvalStore,
+    hitlSessionStore,
   });
 }
 
@@ -119,9 +125,9 @@ describe('POST /api/runs/:id/approve', () => {
     });
 
     const ac = new AbortController();
-    registerHitlRunSession(runId, { checkpointer, abortController: ac });
+    hitlSessionStore.register(runId, { checkpointer, abortController: ac });
 
-    const approvalPromise = waitForApproval(runId);
+    const approvalPromise = approvalStore.waitFor(runId);
 
     const res = await app.request(`/api/runs/${runId}/approve`, {
       method: 'POST',
@@ -140,7 +146,7 @@ describe('POST /api/runs/:id/approve', () => {
     expect(resolved.length).toBe(1);
     expect(resolved[0]?.payload.decision).toBe('approve');
 
-    unregisterHitlRunSession(runId);
+    hitlSessionStore.unregister(runId);
   });
 
   it('resolves reject decision, aborts session, and returns 200', async () => {
@@ -173,9 +179,9 @@ describe('POST /api/runs/:id/approve', () => {
     });
 
     const ac = new AbortController();
-    registerHitlRunSession(runId, { checkpointer, abortController: ac });
+    hitlSessionStore.register(runId, { checkpointer, abortController: ac });
 
-    const approvalPromise = waitForApproval(runId);
+    const approvalPromise = approvalStore.waitFor(runId);
 
     const res = await app.request(`/api/runs/${runId}/approve`, {
       method: 'POST',
@@ -190,7 +196,7 @@ describe('POST /api/runs/:id/approve', () => {
     expect(decision).toEqual({ decision: 'reject' });
     expect(ac.signal.aborted).toBe(true);
 
-    unregisterHitlRunSession(runId);
+    hitlSessionStore.unregister(runId);
   });
 
   it('returns 400 when editedPlan is invalid', async () => {
@@ -222,12 +228,12 @@ describe('POST /api/runs/:id/approve', () => {
       },
     });
 
-    registerHitlRunSession(runId, {
+    hitlSessionStore.register(runId, {
       checkpointer,
       abortController: new AbortController(),
     });
 
-    void waitForApproval(runId);
+    void approvalStore.waitFor(runId);
 
     const res = await app.request(`/api/runs/${runId}/approve`, {
       method: 'POST',
@@ -237,6 +243,6 @@ describe('POST /api/runs/:id/approve', () => {
 
     expect(res.status).toBe(400);
 
-    unregisterHitlRunSession(runId);
+    hitlSessionStore.unregister(runId);
   });
 });

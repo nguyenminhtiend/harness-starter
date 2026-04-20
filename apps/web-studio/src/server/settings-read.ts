@@ -1,0 +1,92 @@
+import type { GlobalSettings, ToolSettingsView } from '../shared/settings.ts';
+import type { Persistence } from './persistence.ts';
+import {
+  applyGlobalLayer,
+  applyToolPersistenceLayer,
+  GLOBAL_TOOL_KEYS,
+  readMergedGlobalSettings,
+  TOOL_SECRET_STORAGE,
+} from './settings-constants.ts';
+import { tools as toolRegistry } from './tools/registry.ts';
+
+function maskSecretsForClient(values: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values };
+  for (const k of Object.keys(out)) {
+    if (k.endsWith('ApiKey')) {
+      const v = out[k];
+      const set = typeof v === 'string' && v.length > 0;
+      out[k] = { set };
+    }
+  }
+  return out;
+}
+
+function inheritedFromGlobalForTool(
+  toolId: string,
+  persistence: Persistence,
+): Record<string, boolean> {
+  const storedRow = persistence.getSetting<Record<string, unknown>>(toolId);
+  const inherited: Record<string, boolean> = {};
+  for (const key of GLOBAL_TOOL_KEYS) {
+    if (!storedRow || typeof storedRow !== 'object') {
+      inherited[key] = true;
+      continue;
+    }
+    inherited[key] = !(key in storedRow);
+  }
+  return inherited;
+}
+
+export function buildSettingsGetResponse(persistence: Persistence): {
+  global: GlobalSettings;
+  tools: Record<string, ToolSettingsView>;
+} {
+  const global = readMergedGlobalSettings(persistence);
+  const tools: Record<string, ToolSettingsView> = {};
+
+  for (const toolId of Object.keys(toolRegistry)) {
+    const toolDef = toolRegistry[toolId];
+    if (!toolDef) {
+      continue;
+    }
+    const merged: Record<string, unknown> = {
+      ...(toolDef.defaultSettings as Record<string, unknown>),
+    };
+    applyGlobalLayer(merged, global);
+    applyToolPersistenceLayer(toolId, persistence, merged);
+    const values = maskSecretsForClient(merged);
+    const secretMap = TOOL_SECRET_STORAGE[toolId];
+    if (secretMap) {
+      for (const fieldName of Object.keys(secretMap)) {
+        const raw = merged[fieldName];
+        values[fieldName] = {
+          set: typeof raw === 'string' && raw.length > 0,
+        };
+      }
+    }
+    tools[toolId] = {
+      values,
+      inheritedFromGlobal: inheritedFromGlobalForTool(toolId, persistence),
+    };
+  }
+
+  return { global, tools };
+}
+
+export function mergeToolRuntimeSettings(
+  toolId: string,
+  persistence: Persistence,
+  requestSettings: Record<string, unknown>,
+): Record<string, unknown> {
+  const toolDef = toolRegistry[toolId];
+  if (!toolDef) {
+    return { ...requestSettings };
+  }
+  const merged: Record<string, unknown> = {
+    ...(toolDef.defaultSettings as Record<string, unknown>),
+  };
+  const global = readMergedGlobalSettings(persistence);
+  applyGlobalLayer(merged, global);
+  applyToolPersistenceLayer(toolId, persistence, merged);
+  return { ...merged, ...requestSettings };
+}

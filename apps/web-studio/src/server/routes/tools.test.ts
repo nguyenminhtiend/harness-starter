@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createHitlSessionStore } from '../active-hitl-sessions.ts';
+import { createApprovalStore } from '../approval.ts';
 import { createApp } from '../index.ts';
 import { createPersistence, type Persistence } from '../persistence.ts';
 
@@ -20,7 +22,12 @@ afterEach(() => {
 
 describe('GET /api/tools', () => {
   it('returns each tool with id, title, description, and JSON Schema', async () => {
-    const app = createApp({ persistence, getApiKey: () => 'k' });
+    const app = createApp({
+      persistence,
+      getApiKey: () => 'k',
+      approvalStore: createApprovalStore(),
+      hitlSessionStore: createHitlSessionStore(),
+    });
     const res = await app.request('/api/tools');
     expect(res.status).toBe(200);
     const body = (await res.json()) as {

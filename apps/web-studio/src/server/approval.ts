@@ -3,29 +3,34 @@ export interface HitlPlanDecision {
   editedPlan?: unknown;
 }
 
-const approvalResolvers = new Map<string, { resolve: (value: HitlPlanDecision) => void }>();
-
-export function hasPendingApproval(runId: string): boolean {
-  return approvalResolvers.has(runId);
+export interface ApprovalStore {
+  hasPending(runId: string): boolean;
+  waitFor(runId: string): Promise<HitlPlanDecision>;
+  resolve(runId: string, decision: HitlPlanDecision): boolean;
 }
 
-export function waitForApproval(runId: string): Promise<HitlPlanDecision> {
-  return new Promise((resolve) => {
-    approvalResolvers.set(runId, { resolve });
-  });
-}
+export function createApprovalStore(): ApprovalStore {
+  const resolvers = new Map<string, { resolve: (value: HitlPlanDecision) => void }>();
 
-export function resolveApproval(runId: string, decision: HitlPlanDecision): boolean {
-  const pending = approvalResolvers.get(runId);
-  if (!pending) {
-    return false;
-  }
-  approvalResolvers.delete(runId);
-  pending.resolve(decision);
-  return true;
-}
+  return {
+    hasPending(runId) {
+      return resolvers.has(runId);
+    },
 
-export const approvalRouteDeps = {
-  hasPendingApproval,
-  resolveApproval,
-} as const;
+    waitFor(runId) {
+      return new Promise((resolve) => {
+        resolvers.set(runId, { resolve });
+      });
+    },
+
+    resolve(runId, decision) {
+      const pending = resolvers.get(runId);
+      if (!pending) {
+        return false;
+      }
+      resolvers.delete(runId);
+      pending.resolve(decision);
+      return true;
+    },
+  };
+}

@@ -240,16 +240,26 @@ export function ReportView({ report, runId, onBack }: ReportViewProps) {
                     </pre>
                   );
                 },
-                a: ({ href, children }) => (
-                  <a
-                    href={href}
-                    style={{ color: 'var(--accent)', textDecoration: 'underline' }}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {children}
-                  </a>
-                ),
+                a: ({ href, children }) => {
+                  const isSafe = typeof href === 'string' && /^https?:\/\//.test(href);
+                  if (!isSafe) {
+                    return (
+                      <span style={{ color: 'var(--text-secondary)', textDecoration: 'underline' }}>
+                        {children}
+                      </span>
+                    );
+                  }
+                  return (
+                    <a
+                      href={href}
+                      style={{ color: 'var(--accent)', textDecoration: 'underline' }}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {children}
+                    </a>
+                  );
+                },
                 blockquote: ({ children }) => (
                   <blockquote
                     style={{

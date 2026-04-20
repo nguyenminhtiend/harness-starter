@@ -107,10 +107,25 @@ export function createPersistence(dataDir: string): Persistence {
 
     appendEvent: db.prepare(
       `INSERT INTO events (runId, seq, ts, type, payload)
-       VALUES ($runId, (SELECT COALESCE(MAX(seq), 0) + 1 FROM events WHERE runId = $runId), $ts, $type, $payload)`,
+       VALUES ($runId, $seq, $ts, $type, $payload)`,
     ),
     getEvents: db.prepare('SELECT seq, ts, type, payload FROM events WHERE runId = ? ORDER BY seq'),
   };
+
+  const seqCounters = new Map<string, number>();
+
+  function nextSeq(runId: string): number {
+    let seq = seqCounters.get(runId);
+    if (seq === undefined) {
+      const row = db
+        .prepare('SELECT COALESCE(MAX(seq), 0) AS maxSeq FROM events WHERE runId = ?')
+        .get(runId) as { maxSeq: number } | null;
+      seq = row?.maxSeq ?? 0;
+    }
+    seq += 1;
+    seqCounters.set(runId, seq);
+    return seq;
+  }
 
   return {
     upsertSetting(key, value) {
@@ -191,8 +206,11 @@ export function createPersistence(dataDir: string): Persistence {
       }
 
       const where = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
-      const limit = filter?.limit ? `LIMIT ${filter.limit}` : '';
-      const sql = `SELECT * FROM runs ${where} ORDER BY createdAt DESC, rowid DESC ${limit}`;
+      const safeLimit = filter?.limit
+        ? Math.max(1, Math.min(500, Math.round(filter.limit)))
+        : undefined;
+      const limitClause = safeLimit !== undefined ? `LIMIT ${safeLimit}` : '';
+      const sql = `SELECT * FROM runs ${where} ORDER BY createdAt DESC, rowid DESC ${limitClause}`;
       return db.prepare(sql).all(params) as RunRow[];
     },
 
@@ -200,6 +218,7 @@ export function createPersistence(dataDir: string): Persistence {
       const { type, ts, ...rest } = event;
       stmts.appendEvent.run({
         $runId: runId,
+        $seq: nextSeq(runId),
         $ts: ts,
         $type: type,
         $payload: JSON.stringify(rest),

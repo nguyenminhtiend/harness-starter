@@ -4,8 +4,8 @@ import { aiSdkProvider, createEventBus } from '@harness/core';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { UIEvent } from '../shared/events.ts';
 import type { ToolDef } from '../shared/tool.ts';
-import { registerHitlRunSession, unregisterHitlRunSession } from './active-hitl-sessions.ts';
-import { waitForApproval } from './approval.ts';
+import type { HitlSessionStore } from './active-hitl-sessions.ts';
+import type { ApprovalStore } from './approval.ts';
 import type { Persistence } from './persistence.ts';
 import { agentEventToUIEvents, bridgeBusToUIEvents } from './runner-bridge.ts';
 import { mergeToolRuntimeSettings } from './settings-merge.ts';
@@ -22,6 +22,8 @@ export interface RunContext {
   abortController: AbortController;
   persistence: Persistence;
   apiKey: string;
+  approvalStore: ApprovalStore;
+  hitlSessionStore: HitlSessionStore;
 }
 
 export interface RunHandle {
@@ -53,14 +55,24 @@ function planFromCheckpoint(saved: RunState | null): unknown {
 }
 
 export function startRun(ctx: RunContext): RunHandle {
-  const { runId, toolId, question, settings, signal, abortController, persistence, apiKey } = ctx;
+  const {
+    runId,
+    toolId,
+    question,
+    settings,
+    signal,
+    abortController,
+    persistence,
+    apiKey,
+    approvalStore,
+    hitlSessionStore,
+  } = ctx;
 
   const toolDef = registry[toolId] as ToolDef | undefined;
   if (!toolDef) {
     throw new Error(`Unknown tool: ${toolId}`);
   }
 
-  // Runtime merge: tool defaults ← persisted global ← persisted tool (row + prompts + keys) ← request body
   const mergedSettings = mergeToolRuntimeSettings(toolId, persistence, settings);
   const modelId = (mergedSettings.model as string) ?? 'openrouter/free';
   const provider = createProvider(apiKey, modelId);
@@ -91,7 +103,7 @@ export function startRun(ctx: RunContext): RunHandle {
       persistence.appendEvent(runId, ev);
     });
 
-    registerHitlRunSession(runId, { checkpointer, abortController });
+    hitlSessionStore.register(runId, { checkpointer, abortController });
 
     try {
       if (signal.aborted) {
@@ -131,7 +143,7 @@ export function startRun(ctx: RunContext): RunHandle {
           break;
         }
 
-        const approvalPromise = waitForApproval(runId);
+        const approvalPromise = approvalStore.waitFor(runId);
         const plan = planFromCheckpoint(saved);
         const hitlRequired: UIEvent = {
           type: 'hitl-required',
@@ -220,7 +232,7 @@ export function startRun(ctx: RunContext): RunHandle {
       yield { type: 'status', status, ts: Date.now(), runId };
     } finally {
       unsubBus();
-      unregisterHitlRunSession(runId);
+      hitlSessionStore.unregister(runId);
     }
   }
 

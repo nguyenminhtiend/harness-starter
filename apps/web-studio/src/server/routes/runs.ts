@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
+import type { HitlSessionStore } from '../active-hitl-sessions.ts';
+import type { ApprovalStore } from '../approval.ts';
 import type { Persistence } from '../persistence.ts';
+import { createRunBroadcast, type RunBroadcast } from '../run-broadcast.ts';
 import { startRun } from '../runner.ts';
 
 const CreateRunBody = z.object({
@@ -17,10 +20,15 @@ const CreateRunBody = z.object({
     ),
 });
 
-export function createRunsRoutes(persistence: Persistence, getApiKey: () => string) {
+export function createRunsRoutes(
+  persistence: Persistence,
+  getApiKey: () => string,
+  approvalStore: ApprovalStore,
+  hitlSessionStore: HitlSessionStore,
+) {
   const routes = new Hono();
 
-  const activeRuns = new Map<string, { events: AsyncIterable<unknown>; abort: AbortController }>();
+  const activeRuns = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
 
   routes.post('/', async (c) => {
     let body: unknown;
@@ -49,9 +57,23 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
         abortController: ac,
         persistence,
         apiKey: getApiKey(),
+        approvalStore,
+        hitlSessionStore,
       });
 
-      activeRuns.set(runId, { events: handle.events, abort: ac });
+      const broadcast = createRunBroadcast();
+      activeRuns.set(runId, { broadcast, abort: ac });
+
+      void (async () => {
+        try {
+          for await (const event of handle.events) {
+            broadcast.push(event);
+          }
+        } finally {
+          broadcast.done();
+          activeRuns.delete(runId);
+        }
+      })();
 
       return c.json({ id: runId });
     } catch (err) {
@@ -61,15 +83,18 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
   });
 
   routes.get('/', (c) => {
-    const status = c.req.query('status');
+    const rawStatus = c.req.query('status');
     const q = c.req.query('q');
     const limitStr = c.req.query('limit');
     const limit = limitStr ? Number(limitStr) : undefined;
 
+    const statusResult = rawStatus
+      ? z.enum(['pending', 'running', 'completed', 'failed', 'cancelled']).safeParse(rawStatus)
+      : undefined;
+    const status = statusResult?.success ? statusResult.data : undefined;
+
     const runs = persistence.listRuns({
-      ...(status
-        ? { status: status as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' }
-        : {}),
+      ...(status ? { status } : {}),
       ...(q ? { q } : {}),
       ...(limit ? { limit } : {}),
     });
@@ -90,22 +115,18 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
     const active = activeRuns.get(runId);
 
     if (active) {
+      const sub = active.broadcast.subscribe();
       return streamSSE(c, async (stream) => {
-        try {
-          for await (const event of active.events) {
-            await stream.writeSSE({
-              event: 'event',
-              data: JSON.stringify(event),
-            });
-          }
-          await stream.writeSSE({ event: 'done', data: '{}' });
-        } finally {
-          activeRuns.delete(runId);
+        for await (const event of sub) {
+          await stream.writeSSE({
+            event: 'event',
+            data: JSON.stringify(event),
+          });
         }
+        await stream.writeSSE({ event: 'done', data: '{}' });
       });
     }
 
-    // Finished run: replay persisted events from SQLite, then emit `done` for EventSource teardown.
     const run = persistence.getRun(runId);
     if (!run) {
       return c.json({ error: 'Run not found' }, 404);
@@ -140,6 +161,3 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
 
   return routes;
 }
-
-export const runsRoutes = new Hono();
-runsRoutes.get('/', (c) => c.json({ runs: [] }));

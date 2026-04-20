@@ -3,6 +3,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { UIEvent } from '../shared/events.ts';
+import { createHitlSessionStore } from './active-hitl-sessions.ts';
+import { createApprovalStore } from './approval.ts';
 import { createPersistence, type Persistence } from './persistence.ts';
 import { startRun } from './runner.ts';
 
@@ -27,35 +29,42 @@ async function collectEvents(iter: AsyncIterable<UIEvent>): Promise<UIEvent[]> {
   return events;
 }
 
+function makeRunCtx(overrides: {
+  runId: string;
+  toolId?: string;
+  question?: string;
+  signal: AbortSignal;
+  abortController: AbortController;
+}) {
+  return {
+    runId: overrides.runId,
+    toolId: overrides.toolId ?? 'deep-research',
+    question: overrides.question ?? 'test',
+    settings: {},
+    signal: overrides.signal,
+    abortController: overrides.abortController,
+    persistence,
+    apiKey: 'fake-key',
+    approvalStore: createApprovalStore(),
+    hitlSessionStore: createHitlSessionStore(),
+  };
+}
+
 describe('startRun', () => {
   it('throws for unknown tool', () => {
     const ac = new AbortController();
     expect(() =>
-      startRun({
-        runId: 'r1',
-        toolId: 'nonexistent',
-        question: 'test',
-        settings: {},
-        signal: ac.signal,
-        abortController: ac,
-        persistence,
-        apiKey: 'fake-key',
-      }),
+      startRun(
+        makeRunCtx({ runId: 'r1', toolId: 'nonexistent', signal: ac.signal, abortController: ac }),
+      ),
     ).toThrow('Unknown tool: nonexistent');
   });
 
-  it('creates a run record in persistence', () => {
+  it('creates a run record in persistence', async () => {
     const ac = new AbortController();
-    const handle = startRun({
-      runId: 'r1',
-      toolId: 'deep-research',
-      question: 'What is X?',
-      settings: {},
-      signal: ac.signal,
-      abortController: ac,
-      persistence,
-      apiKey: 'fake-key',
-    });
+    const handle = startRun(
+      makeRunCtx({ runId: 'r1', question: 'What is X?', signal: ac.signal, abortController: ac }),
+    );
 
     expect(handle.runId).toBe('r1');
     const run = persistence.getRun('r1');
@@ -64,22 +73,15 @@ describe('startRun', () => {
     expect(run?.toolId).toBe('deep-research');
 
     ac.abort();
+    await collectEvents(handle.events);
   });
 
   it('emits error events on abort and marks run cancelled', async () => {
     const ac = new AbortController();
-    const handle = startRun({
-      runId: 'r2',
-      toolId: 'deep-research',
-      question: 'What is Y?',
-      settings: {},
-      signal: ac.signal,
-      abortController: ac,
-      persistence,
-      apiKey: 'fake-key',
-    });
+    const handle = startRun(
+      makeRunCtx({ runId: 'r2', question: 'What is Y?', signal: ac.signal, abortController: ac }),
+    );
 
-    // Abort immediately so the agent stream fails
     ac.abort();
 
     const events = await collectEvents(handle.events);
@@ -100,18 +102,15 @@ describe('startRun', () => {
 
   it('persists events to SQLite', async () => {
     const ac = new AbortController();
-    const handle = startRun({
-      runId: 'r3',
-      toolId: 'deep-research',
-      question: 'Test persistence',
-      settings: {},
-      signal: ac.signal,
-      abortController: ac,
-      persistence,
-      apiKey: 'fake-key',
-    });
+    const handle = startRun(
+      makeRunCtx({
+        runId: 'r3',
+        question: 'Test persistence',
+        signal: ac.signal,
+        abortController: ac,
+      }),
+    );
 
-    // Abort to trigger quick termination
     ac.abort();
     await collectEvents(handle.events);
 

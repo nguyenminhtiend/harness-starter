@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createHitlSessionStore } from '../active-hitl-sessions.ts';
+import { createApprovalStore } from '../approval.ts';
 import { createApp } from '../index.ts';
 import { createPersistence, type Persistence } from '../persistence.ts';
 import { promptStorageKey } from '../settings-merge.ts';
@@ -23,6 +25,8 @@ function makeApp() {
   return createApp({
     persistence,
     getApiKey: () => 'test-key',
+    approvalStore: createApprovalStore(),
+    hitlSessionStore: createHitlSessionStore(),
   });
 }
 

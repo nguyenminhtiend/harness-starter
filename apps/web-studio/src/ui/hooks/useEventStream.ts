@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HitlRequiredEvent, RunStatus, UIEvent } from '../../shared/events.ts';
 import { connectSSE } from '../api.ts';
 
-export interface EventStreamState {
-  events: UIEvent[];
+interface StreamMeta {
   status: RunStatus | 'idle';
   tokens: number;
   cost: number;
   error?: string;
+  /** Incremented on each push to trigger re-render without copying the array. */
+  tick: number;
 }
 
 export interface UseEventStreamOptions {
@@ -15,11 +16,12 @@ export interface UseEventStreamOptions {
 }
 
 export function useEventStream(runId: string | null, options?: UseEventStreamOptions) {
-  const [state, setState] = useState<EventStreamState>({
-    events: [],
+  const eventsRef = useRef<UIEvent[]>([]);
+  const [meta, setMeta] = useState<StreamMeta>({
     status: 'idle',
     tokens: 0,
     cost: 0,
+    tick: 0,
   });
 
   const closeRef = useRef<(() => void) | null>(null);
@@ -31,7 +33,8 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
       return;
     }
 
-    setState({ events: [], status: 'running', tokens: 0, cost: 0 });
+    eventsRef.current = [];
+    setMeta({ status: 'running', tokens: 0, cost: 0, tick: 0 });
 
     const close = connectSSE(
       runId,
@@ -39,8 +42,8 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
         if (ev.type === 'hitl-required') {
           optionsRef.current?.onHitlRequired?.(ev);
         }
-        setState((prev) => {
-          const events = [...prev.events, ev];
+        eventsRef.current.push(ev);
+        setMeta((prev) => {
           let { tokens, cost, status } = prev;
 
           if (ev.type === 'metric') {
@@ -55,17 +58,17 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
             cost = ev.totalCostUsd ?? cost;
           }
 
-          return { events, status, tokens, cost };
+          return { status, tokens, cost, tick: prev.tick + 1 };
         });
       },
       () => {
-        setState((prev) => ({
+        setMeta((prev) => ({
           ...prev,
           status: prev.status === 'running' ? 'completed' : prev.status,
         }));
       },
       (err) => {
-        setState((prev) => ({ ...prev, error: err.message }));
+        setMeta((prev) => ({ ...prev, error: err.message }));
       },
     );
 
@@ -77,5 +80,14 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
     closeRef.current?.();
   }, []);
 
-  return { ...state, disconnect };
+  const events = eventsRef.current;
+
+  return {
+    events,
+    status: meta.status,
+    tokens: meta.tokens,
+    cost: meta.cost,
+    error: meta.error,
+    disconnect,
+  };
 }
