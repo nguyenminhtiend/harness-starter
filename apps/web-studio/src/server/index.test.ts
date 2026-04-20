@@ -87,6 +87,26 @@ describe('web-studio server', () => {
     expect(run?.status).toBe('running');
   });
 
+  it('POST /api/runs accepts optional resumeRunId (ignored until resume is implemented)', async () => {
+    const app = makeApp();
+    const priorId = '00000000-0000-4000-8000-000000000001';
+    const res = await app.request('/api/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toolId: 'deep-research',
+        question: 'Resume test?',
+        resumeRunId: priorId,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string };
+    expect(body.id).toBeDefined();
+    expect(body.id).not.toBe(priorId);
+    const run = persistence.getRun(body.id);
+    expect(run?.question).toBe('Resume test?');
+  });
+
   it('GET /api/runs/:id returns 404 for missing run', async () => {
     const app = makeApp();
     const res = await app.request('/api/runs/nonexistent');

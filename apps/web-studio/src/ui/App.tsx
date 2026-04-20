@@ -1,19 +1,30 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
-import type { RunStatus } from '../shared/events.ts';
+import type { RunMeta, RunStatus } from '../shared/events.ts';
 import { api } from './api.ts';
+import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
 import { Badge } from './components/primitives.tsx';
 import { RunForm, type RunFormState } from './components/RunForm.tsx';
 import { StreamView } from './components/StreamView.tsx';
-import { ToolPicker } from './components/ToolPicker.tsx';
 import { useEventStream } from './hooks/useEventStream.ts';
+import { useSettings } from './hooks/useSettings.ts';
 
 type ViewMode = 'run' | 'report' | 'settings';
 
 export function App() {
+  const queryClient = useQueryClient();
+  const settingsQuery = useSettings();
+  const runsQuery = useQuery({
+    queryKey: ['runs'],
+    queryFn: () => api.listRuns({ limit: 200 }),
+  });
+
   const [activeTool, setActiveTool] = useState('deep-research');
   const [view, setView] = useState<ViewMode>('run');
   const [runId, setRunId] = useState<string | null>(null);
   const [form, setForm] = useState<RunFormState>({ query: '', model: 'openrouter/free' });
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyFilter, setHistoryFilter] = useState<HistoryStatusFilter>('all');
 
   const stream = useEventStream(runId);
   const status = stream.status;
@@ -30,10 +41,11 @@ export function App() {
       });
       setRunId(id);
       setView('run');
+      await queryClient.invalidateQueries({ queryKey: ['runs'] });
     } catch (err) {
       console.error('Failed to create run:', err);
     }
-  }, [activeTool, form]);
+  }, [activeTool, form, queryClient]);
 
   const handleStop = useCallback(async () => {
     if (runId) {
@@ -51,6 +63,13 @@ export function App() {
     setView('run');
   }, [form.model]);
 
+  const handleSelectRun = useCallback((run: RunMeta) => {
+    setRunId(run.id);
+    setActiveTool(run.toolId);
+    setForm((prev) => ({ ...prev, query: run.question }));
+    setView('run');
+  }, []);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && status === 'idle' && form.query.trim()) {
@@ -61,7 +80,9 @@ export function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [status, form.query, handleRun]);
 
-  const showStream = runId && stream.events.length > 0;
+  const showStream = Boolean(runId && (stream.events.length > 0 || stream.status === 'running'));
+
+  const runs = runsQuery.data?.runs ?? [];
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -98,54 +119,18 @@ export function App() {
             web-studio
           </span>
         </div>
-        <ToolPicker activeTool={activeTool} onSelect={setActiveTool} />
-        <div style={{ height: 1, background: 'var(--border-subtle)', margin: '0 var(--s2)' }} />
-        <div style={{ flex: 1, padding: 'var(--s3) var(--s2)', overflowY: 'auto' }}>
-          <div
-            style={{
-              fontSize: 'var(--text-2xs)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--text-tertiary)',
-              letterSpacing: 'var(--tracking-wide)',
-              textTransform: 'uppercase',
-              padding: '0 var(--s2) var(--s2)',
-            }}
-          >
-            History
-          </div>
-          <div
-            style={{
-              padding: 'var(--s4)',
-              textAlign: 'center',
-              color: 'var(--text-disabled)',
-              fontSize: 'var(--text-xs)',
-            }}
-          >
-            No runs yet
-          </div>
-        </div>
-        <div
-          style={{ padding: 'var(--s3) var(--s2)', borderTop: '1px solid var(--border-subtle)' }}
-        >
-          <button
-            type="button"
-            onClick={handleNewRun}
-            style={{
-              width: '100%',
-              padding: '6px var(--s3)',
-              borderRadius: 'var(--r-sm)',
-              background: 'var(--accent-subtle)',
-              border: '1px solid var(--accent-border)',
-              color: 'var(--accent)',
-              cursor: 'pointer',
-              fontSize: 'var(--text-sm)',
-              fontFamily: 'var(--font-sans)',
-              transition: 'all var(--t-fast)',
-            }}
-          >
-            + New Run
-          </button>
-        </div>
+        <HistorySidebar
+          runs={runs}
+          activeRunId={runId}
+          onSelectRun={handleSelectRun}
+          onNewRun={handleNewRun}
+          searchQuery={historySearch}
+          setSearchQuery={setHistorySearch}
+          filterStatus={historyFilter}
+          setFilterStatus={setHistoryFilter}
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
+        />
       </div>
 
       {/* Center */}
@@ -261,7 +246,27 @@ export function App() {
         {/* Main content */}
         {view === 'settings' ? (
           <div style={{ flex: 1, padding: 'var(--s5)', color: 'var(--text-secondary)' }}>
-            Settings panel (coming soon)
+            {settingsQuery.isPending && <p>Loading settings…</p>}
+            {settingsQuery.data && (
+              <p style={{ fontSize: 'var(--text-sm)' }}>
+                Default model:{' '}
+                <span style={{ color: 'var(--text-primary)' }}>
+                  {settingsQuery.data.global.defaultModel}
+                </span>
+              </p>
+            )}
+            {settingsQuery.isError && (
+              <p style={{ color: 'var(--status-error)' }}>Could not load settings.</p>
+            )}
+            <p
+              style={{
+                marginTop: 'var(--s4)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-disabled)',
+              }}
+            >
+              Full settings editor coming soon.
+            </p>
           </div>
         ) : showStream ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

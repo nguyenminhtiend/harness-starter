@@ -24,7 +24,13 @@ export const api = {
 
   tools: () => json<{ tools: ToolEntry[] }>('/tools'),
 
-  createRun: (body: { toolId: string; question: string; settings?: Record<string, unknown> }) =>
+  createRun: (body: {
+    toolId: string;
+    question: string;
+    settings?: Record<string, unknown>;
+    /** Reserved; server accepts but does not resume yet. */
+    resumeRunId?: string;
+  }) =>
     json<{ id: string }>('/runs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

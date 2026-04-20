@@ -13,6 +13,8 @@ export interface RunContext {
   toolId: string;
   question: string;
   settings: Record<string, unknown>;
+  /** Accepted from API for future checkpoint resume; not used yet. */
+  resumeRunId?: string;
   signal: AbortSignal;
   persistence: Persistence;
   apiKey: string;

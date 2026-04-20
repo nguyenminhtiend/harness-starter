@@ -8,6 +8,13 @@ const CreateRunBody = z.object({
   toolId: z.string().min(1),
   question: z.string().min(1),
   settings: z.record(z.string(), z.unknown()).default({}),
+  resumeRunId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      'Reserved for future checkpoint resume. When implemented, this will load graph state from the referenced run. Currently accepted but ignored.',
+    ),
 });
 
 export function createRunsRoutes(persistence: Persistence, getApiKey: () => string) {
@@ -22,7 +29,7 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
-    const { toolId, question, settings } = parsed.data;
+    const { toolId, question, settings, resumeRunId } = parsed.data;
     const runId = crypto.randomUUID();
     const ac = new AbortController();
 
@@ -32,6 +39,7 @@ export function createRunsRoutes(persistence: Persistence, getApiKey: () => stri
         toolId,
         question,
         settings,
+        ...(resumeRunId !== undefined ? { resumeRunId } : {}),
         signal: ac.signal,
         persistence,
         apiKey: getApiKey(),
