@@ -3,11 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createApprovalStore, createHitlSessionStore } from '@harness/hitl';
+import { createSessionStore, type SessionStore } from '@harness/session-store';
 import { createApp } from '../../index.ts';
 import { createDatabase } from '../../infra/db.ts';
-import { createApprovalStore } from '../sessions/sessions.approval.ts';
-import { createHitlSessionStore } from '../sessions/sessions.hitl.ts';
-import { createSessionStore, type SessionStore } from '../sessions/sessions.store.ts';
 import { promptStorageKey } from './settings.constants.ts';
 import { createSettingsStore, type SettingsStore } from './settings.store.ts';
 

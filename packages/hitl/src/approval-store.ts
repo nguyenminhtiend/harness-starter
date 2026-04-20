@@ -1,16 +1,13 @@
-export interface HitlPlanDecision {
-  decision: 'approve' | 'reject';
-  editedPlan?: unknown;
-}
+import type { ApprovalDecision } from './types.ts';
 
 export interface ApprovalStore {
   hasPending(runId: string): boolean;
-  waitFor(runId: string): Promise<HitlPlanDecision>;
-  resolve(runId: string, decision: HitlPlanDecision): boolean;
+  waitFor(runId: string): Promise<ApprovalDecision>;
+  resolve(runId: string, decision: ApprovalDecision): boolean;
 }
 
 export function createApprovalStore(): ApprovalStore {
-  const resolvers = new Map<string, { resolve: (value: HitlPlanDecision) => void }>();
+  const resolvers = new Map<string, { resolve: (value: ApprovalDecision) => void }>();
 
   return {
     hasPending(runId) {

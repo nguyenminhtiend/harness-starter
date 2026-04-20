@@ -1,9 +1,4 @@
-import type { Checkpointer } from '@harness/agent';
-
-export interface HitlRunSession {
-  checkpointer: Checkpointer;
-  abortController: AbortController;
-}
+import type { HitlRunSession } from './types.ts';
 
 export interface HitlSessionStore {
   register(runId: string, session: HitlRunSession): void;

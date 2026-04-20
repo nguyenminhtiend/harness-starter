@@ -1,31 +1,12 @@
 import { Database } from 'bun:sqlite';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { SESSION_STORE_SCHEMA } from '@harness/session-store';
 
-const SCHEMA = `
+const SETTINGS_SCHEMA = `
   CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS runs (
-    id          TEXT PRIMARY KEY,
-    toolId      TEXT NOT NULL,
-    question    TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'pending',
-    costUsd     REAL,
-    totalTokens INTEGER,
-    createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
-    finishedAt  TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS events (
-    runId   TEXT NOT NULL,
-    seq     INTEGER NOT NULL,
-    ts      REAL NOT NULL,
-    type    TEXT NOT NULL,
-    payload TEXT NOT NULL,
-    PRIMARY KEY (runId, seq)
   );
 `;
 
@@ -34,6 +15,7 @@ export function createDatabase(dataDir: string): Database {
   const dbPath = path.join(dataDir, 'web-studio.db');
   const db = new Database(dbPath);
   db.exec('PRAGMA journal_mode = WAL;');
-  db.exec(SCHEMA);
+  db.exec(SETTINGS_SCHEMA);
+  db.exec(SESSION_STORE_SCHEMA);
   return db;
 }

@@ -56,13 +56,14 @@
       "name": "@harness/example-web-studio",
       "version": "0.0.0",
       "dependencies": {
-        "@ai-sdk/google": "3.0.64",
-        "@ai-sdk/groq": "3.0.35",
         "@harness/agent": "workspace:*",
         "@harness/core": "workspace:*",
+        "@harness/hitl": "workspace:*",
+        "@harness/llm-adapter": "workspace:*",
         "@harness/observability": "workspace:*",
+        "@harness/session-events": "workspace:*",
+        "@harness/session-store": "workspace:*",
         "@harness/tools": "workspace:*",
-        "@openrouter/ai-sdk-provider": "1.5.4",
         "@tanstack/react-query": "^5.0.0",
         "hono": "^4.0.0",
         "react": "^19.0.0",
@@ -140,6 +141,31 @@
         "langfuse",
       ],
     },
+    "packages/hitl": {
+      "name": "@harness/hitl",
+      "version": "0.0.0",
+      "dependencies": {
+        "@harness/agent": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
+    "packages/llm-adapter": {
+      "name": "@harness/llm-adapter",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/google": "3.0.64",
+        "@ai-sdk/groq": "3.0.35",
+        "@harness/core": "workspace:*",
+        "@openrouter/ai-sdk-provider": "1.5.4",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
     "packages/mcp": {
       "name": "@harness/mcp",
       "version": "0.0.0",
@@ -186,6 +212,26 @@
         "@opentelemetry/api",
         "langfuse",
       ],
+    },
+    "packages/session-events": {
+      "name": "@harness/session-events",
+      "version": "0.0.0",
+      "dependencies": {
+        "@harness/agent": "workspace:*",
+        "@harness/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
+    "packages/session-store": {
+      "name": "@harness/session-store",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
     },
     "packages/tools": {
       "name": "@harness/tools",
@@ -440,11 +486,19 @@
 
     "@harness/example-web-studio": ["@harness/example-web-studio@workspace:apps/web-studio"],
 
+    "@harness/hitl": ["@harness/hitl@workspace:packages/hitl"],
+
+    "@harness/llm-adapter": ["@harness/llm-adapter@workspace:packages/llm-adapter"],
+
     "@harness/mcp": ["@harness/mcp@workspace:packages/mcp"],
 
     "@harness/memory-sqlite": ["@harness/memory-sqlite@workspace:packages/memory-sqlite"],
 
     "@harness/observability": ["@harness/observability@workspace:packages/observability"],
+
+    "@harness/session-events": ["@harness/session-events@workspace:packages/session-events"],
+
+    "@harness/session-store": ["@harness/session-store@workspace:packages/session-store"],
 
     "@harness/tools": ["@harness/tools@workspace:packages/tools"],
 

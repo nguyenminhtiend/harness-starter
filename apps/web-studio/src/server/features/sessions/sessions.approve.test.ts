@@ -4,12 +4,16 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { inMemoryCheckpointer } from '@harness/agent';
+import {
+  type ApprovalStore,
+  createApprovalStore,
+  createHitlSessionStore,
+  type HitlSessionStore,
+} from '@harness/hitl';
+import { createSessionStore, type SessionStore } from '@harness/session-store';
 import { createApp } from '../../index.ts';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
-import { type ApprovalStore, createApprovalStore } from './sessions.approval.ts';
-import { createHitlSessionStore, type HitlSessionStore } from './sessions.hitl.ts';
-import { createSessionStore, type SessionStore } from './sessions.store.ts';
 
 let db: Database;
 let sessionStore: SessionStore;

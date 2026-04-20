@@ -10,13 +10,14 @@
     "start": "bun run src/server/index.ts"
   },
   "dependencies": {
-    "@ai-sdk/google": "3.0.64",
-    "@ai-sdk/groq": "3.0.35",
     "@harness/agent": "workspace:*",
     "@harness/core": "workspace:*",
+    "@harness/hitl": "workspace:*",
+    "@harness/llm-adapter": "workspace:*",
     "@harness/observability": "workspace:*",
+    "@harness/session-events": "workspace:*",
+    "@harness/session-store": "workspace:*",
     "@harness/tools": "workspace:*",
-    "@openrouter/ai-sdk-provider": "1.5.4",
     "@tanstack/react-query": "^5.0.0",
     "hono": "^4.0.0",
     "react": "^19.0.0",

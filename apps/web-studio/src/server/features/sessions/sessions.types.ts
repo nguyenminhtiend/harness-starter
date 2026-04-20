@@ -1,39 +1,5 @@
-import type { SessionStatus, UIEvent } from '../../../shared/events.ts';
-import type { ProviderKeys } from '../../config.ts';
-
-export interface SessionRow {
-  id: string;
-  toolId: string;
-  question: string;
-  status: SessionStatus;
-  createdAt: string;
-  finishedAt?: string;
-}
-
-export interface CreateSessionInput {
-  id: string;
-  toolId: string;
-  question: string;
-  status: SessionStatus;
-}
-
-export interface UpdateSessionInput {
-  status?: SessionStatus;
-  finishedAt?: string;
-}
-
-export interface ListSessionsFilter {
-  status?: SessionStatus;
-  q?: string;
-  limit?: number;
-}
-
-export interface StoredEvent {
-  seq: number;
-  ts: number;
-  type: string;
-  payload: Record<string, unknown>;
-}
+import type { ProviderKeys } from '@harness/llm-adapter';
+import type { UIEvent } from '@harness/session-events';
 
 export interface SessionContext {
   sessionId: string;

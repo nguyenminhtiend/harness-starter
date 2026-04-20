@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { UIEvent } from '../../../shared/events.ts';
+import { createApprovalStore, createHitlSessionStore } from '@harness/hitl';
+import { parseModelSpec } from '@harness/llm-adapter';
+import type { UIEvent } from '@harness/session-events';
+import { createSessionStore, type SessionStore } from '@harness/session-store';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
-import { createApprovalStore } from './sessions.approval.ts';
-import { createHitlSessionStore } from './sessions.hitl.ts';
-import { parseModelSpec, startSession } from './sessions.runner.ts';
-import { createSessionStore, type SessionStore } from './sessions.store.ts';
+import { startSession } from './sessions.runner.ts';
 
 let db: Database;
 let sessionStore: SessionStore;
@@ -143,7 +143,7 @@ describe('startSession', () => {
     expect(statusEvts.length).toBeGreaterThanOrEqual(1);
 
     const lastStatus = statusEvts[statusEvts.length - 1];
-    if (lastStatus.type === 'status') {
+    if (lastStatus?.type === 'status') {
       expect(lastStatus.status).toBe('cancelled');
     }
 

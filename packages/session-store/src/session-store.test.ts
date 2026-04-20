@@ -1,24 +1,20 @@
-import type { Database } from 'bun:sqlite';
+import { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { createSessionStore, type SessionStore } from '@harness/session-store';
-import { createDatabase } from '../../infra/db.ts';
+import { SESSION_STORE_SCHEMA } from './schema.ts';
+import type { SessionStore } from './session-store.ts';
+import { createSessionStore } from './session-store.ts';
 
 let db: Database;
 let store: SessionStore;
-let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-sessionstore-'));
-  db = createDatabase(tmpDir);
+  db = new Database(':memory:');
+  db.exec(SESSION_STORE_SCHEMA);
   store = createSessionStore(db);
 });
 
 afterEach(() => {
   db.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('sessions', () => {
@@ -42,11 +38,24 @@ describe('sessions', () => {
     expect(store.getSession('nope')).toBeUndefined();
   });
 
-  it('updates a session', () => {
+  it('updates a session status', () => {
     store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'pending' });
     store.updateSession('s1', { status: 'completed' });
     const session = store.getSession('s1');
     expect(session?.status).toBe('completed');
+  });
+
+  it('updates a session finishedAt', () => {
+    store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'running' });
+    store.updateSession('s1', { status: 'completed', finishedAt: '2026-01-01T00:00:00Z' });
+    const session = store.getSession('s1');
+    expect(session?.finishedAt).toBe('2026-01-01T00:00:00Z');
+  });
+
+  it('no-ops when update has no fields', () => {
+    store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'pending' });
+    store.updateSession('s1', {});
+    expect(store.getSession('s1')?.status).toBe('pending');
   });
 
   it('lists sessions ordered by createdAt desc', () => {
@@ -96,6 +105,27 @@ describe('sessions', () => {
     const sessions = store.listSessions({ limit: 2 });
     expect(sessions).toHaveLength(2);
   });
+
+  it('clamps limit to safe range', () => {
+    for (let i = 0; i < 3; i++) {
+      store.createSession({
+        id: `s${i}`,
+        toolId: 't1',
+        question: `q${i}`,
+        status: 'completed',
+      });
+    }
+    const sessions = store.listSessions({ limit: -10 });
+    expect(sessions.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('deletes a session and its events', () => {
+    store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'running' });
+    store.appendEvent('s1', { type: 'status', ts: 1000, status: 'running', runId: 's1' });
+    store.deleteSession('s1');
+    expect(store.getSession('s1')).toBeUndefined();
+    expect(store.getEvents('s1')).toEqual([]);
+  });
 });
 
 describe('events', () => {
@@ -115,5 +145,41 @@ describe('events', () => {
   it('returns empty array for session with no events', () => {
     store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'running' });
     expect(store.getEvents('s1')).toEqual([]);
+  });
+
+  it('stores payload fields beyond type and ts', () => {
+    store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'running' });
+    store.appendEvent('s1', {
+      type: 'tool',
+      ts: 1000,
+      runId: 's1',
+      toolName: 'search',
+      args: { q: 'test' },
+    });
+    const events = store.getEvents('s1');
+    expect(events[0]?.payload.toolName).toBe('search');
+    expect(events[0]?.payload.args).toEqual({ q: 'test' });
+  });
+
+  it('seq counter survives across multiple appends', () => {
+    store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'running' });
+    for (let i = 0; i < 5; i++) {
+      store.appendEvent('s1', { type: 'status', ts: 1000 + i, runId: 's1' });
+    }
+    const events = store.getEvents('s1');
+    expect(events).toHaveLength(5);
+    expect(events[4]?.seq).toBe(5);
+  });
+
+  it('seq counter initializes from DB on fresh store instance', () => {
+    store.createSession({ id: 's1', toolId: 't1', question: 'q', status: 'running' });
+    store.appendEvent('s1', { type: 'status', ts: 1000, runId: 's1' });
+    store.appendEvent('s1', { type: 'status', ts: 1001, runId: 's1' });
+
+    const store2 = createSessionStore(db);
+    store2.appendEvent('s1', { type: 'status', ts: 1002, runId: 's1' });
+    const events = store2.getEvents('s1');
+    expect(events).toHaveLength(3);
+    expect(events[2]?.seq).toBe(3);
   });
 });

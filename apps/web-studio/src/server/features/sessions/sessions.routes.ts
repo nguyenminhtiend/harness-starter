@@ -1,17 +1,16 @@
 import type { Checkpointer } from '@harness/agent';
+import type { ApprovalDecision, ApprovalStore, HitlSessionStore } from '@harness/hitl';
+import type { ProviderKeys } from '@harness/llm-adapter';
+import type { UIEvent } from '@harness/session-events';
+import type { SessionStore } from '@harness/session-store';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
-import type { UIEvent } from '../../../shared/events.ts';
-import type { ProviderKeys } from '../../config.ts';
 import { createRunBroadcast, type RunBroadcast } from '../../infra/broadcast.ts';
 import { parseJsonBody } from '../../infra/parse-body.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { ResearchPlan } from '../tools/deep-research/schemas/plan.ts';
-import type { ApprovalStore, HitlPlanDecision } from './sessions.approval.ts';
-import type { HitlSessionStore } from './sessions.hitl.ts';
 import { type SessionDeps, startSession } from './sessions.runner.ts';
-import type { SessionStore } from './sessions.store.ts';
 
 export interface SessionsRouteDeps {
   sessionStore: SessionStore;
@@ -266,7 +265,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
         }
       }
 
-      const decisionPayload: HitlPlanDecision = {
+      const decisionPayload: ApprovalDecision = {
         decision: parsed.data.decision,
         ...(parsed.data.editedPlan !== undefined ? { editedPlan: parsed.data.editedPlan } : {}),
       };

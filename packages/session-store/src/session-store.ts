@@ -1,12 +1,12 @@
 import type { Database } from 'bun:sqlite';
-import type { UIEvent } from '../../../shared/events.ts';
 import type {
   CreateSessionInput,
+  EventInput,
   ListSessionsFilter,
   SessionRow,
   StoredEvent,
   UpdateSessionInput,
-} from './sessions.types.ts';
+} from './types.ts';
 
 export interface SessionStore {
   createSession(input: CreateSessionInput): void;
@@ -14,7 +14,7 @@ export interface SessionStore {
   getSession(id: string): SessionRow | undefined;
   listSessions(filter?: ListSessionsFilter): SessionRow[];
   deleteSession(id: string): void;
-  appendEvent(sessionId: string, event: UIEvent): void;
+  appendEvent<T extends EventInput>(sessionId: string, event: T): void;
   getEvents(sessionId: string): StoredEvent[];
 }
 

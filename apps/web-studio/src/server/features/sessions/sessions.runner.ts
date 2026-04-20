@@ -1,19 +1,15 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createGroq } from '@ai-sdk/groq';
 import type { RunState } from '@harness/agent';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
-import { aiSdkProvider, createEventBus } from '@harness/core';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import type { UIEvent } from '../../../shared/events.ts';
+import { createEventBus } from '@harness/core';
+import type { ApprovalStore, HitlSessionStore } from '@harness/hitl';
+import { createProvider } from '@harness/llm-adapter';
+import type { UIEvent } from '@harness/session-events';
+import { agentEventToUIEvents, bridgeBusToUIEvents } from '@harness/session-events';
+import type { SessionStore } from '@harness/session-store';
 import type { ToolDef } from '../../../shared/tool.ts';
-import type { ProviderKeys } from '../../config.ts';
 import { mergeToolRuntimeSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { tools as registry } from '../tools/tools.registry.ts';
-import type { ApprovalStore } from './sessions.approval.ts';
-import { agentEventToUIEvents, bridgeBusToUIEvents } from './sessions.bridge.ts';
-import type { HitlSessionStore } from './sessions.hitl.ts';
-import type { SessionStore } from './sessions.store.ts';
 import type { SessionContext, SessionHandle } from './sessions.types.ts';
 
 export interface SessionDeps {
@@ -23,48 +19,7 @@ export interface SessionDeps {
   hitlSessionStore: HitlSessionStore;
 }
 
-export function parseModelSpec(raw: string): { provider: string; model: string } {
-  const idx = raw.indexOf(':');
-  if (idx === -1) {
-    return { provider: 'openrouter', model: raw };
-  }
-  return { provider: raw.slice(0, idx), model: raw.slice(idx + 1) };
-}
-
-function createProvider(keys: ProviderKeys, modelSpec: string) {
-  const { provider, model } = parseModelSpec(modelSpec);
-
-  if (provider === 'google') {
-    const key = keys.google;
-    if (!key) {
-      throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured');
-    }
-    const google = createGoogleGenerativeAI({ apiKey: key });
-    return aiSdkProvider(google(model));
-  }
-
-  if (provider === 'openrouter') {
-    const key = keys.openrouter;
-    if (!key) {
-      throw new Error('OPENROUTER_API_KEY not configured');
-    }
-    const openrouter = createOpenRouter({ apiKey: key });
-    return aiSdkProvider(openrouter.chat(model));
-  }
-
-  if (provider === 'groq') {
-    const key = keys.groq;
-    if (!key) {
-      throw new Error('GROQ_API_KEY not configured');
-    }
-    const groq = createGroq({ apiKey: key });
-    return aiSdkProvider(groq(model));
-  }
-
-  throw new Error(
-    `Unknown provider: "${provider}". Use "google:", "openrouter:", or "groq:" prefix.`,
-  );
-}
+export { parseModelSpec } from '@harness/llm-adapter';
 
 function isPausedAtPlanApproval(saved: RunState | null): boolean {
   if (!saved?.graphState) {
