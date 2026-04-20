@@ -28,9 +28,8 @@ Each subquestion should be specific, non-overlapping, and directly researchable 
 const MAX_PLAN_RETRIES = 3;
 
 export interface PlannerNodeOpts {
-  depth?: string;
-  /** Full system message; defaults to the built-in planner instructions. */
-  systemPrompt?: string;
+  depth?: string | undefined;
+  systemPrompt?: string | undefined;
 }
 
 export function createPlannerNode(provider: Provider, opts: PlannerNodeOpts = {}): GraphNode {

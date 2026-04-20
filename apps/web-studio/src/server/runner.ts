@@ -8,7 +8,7 @@ import type { HitlSessionStore } from './active-hitl-sessions.ts';
 import type { ApprovalStore } from './approval.ts';
 import type { Persistence } from './persistence.ts';
 import { agentEventToUIEvents, bridgeBusToUIEvents } from './runner-bridge.ts';
-import { mergeToolRuntimeSettings } from './settings-merge.ts';
+import { mergeToolRuntimeSettings } from './settings-read.ts';
 import { tools as registry } from './tools/registry.ts';
 
 export interface RunContext {
@@ -103,6 +103,15 @@ export function startRun(ctx: RunContext): RunHandle {
       persistence.appendEvent(runId, ev);
     });
 
+    function* drainQueue(): Generator<UIEvent> {
+      while (pushQueue.length > 0) {
+        const queued = pushQueue.shift();
+        if (queued) {
+          yield queued;
+        }
+      }
+    }
+
     hitlSessionStore.register(runId, { checkpointer, abortController });
 
     try {
@@ -117,12 +126,7 @@ export function startRun(ctx: RunContext): RunHandle {
         );
 
         for await (const event of stream) {
-          while (pushQueue.length > 0) {
-            const queued = pushQueue.shift();
-            if (queued) {
-              yield queued;
-            }
-          }
+          yield* drainQueue();
 
           const uiEvents = agentEventToUIEvents(event, runId, accUsage);
           for (const uiEv of uiEvents) {
@@ -131,12 +135,7 @@ export function startRun(ctx: RunContext): RunHandle {
           }
         }
 
-        while (pushQueue.length > 0) {
-          const queued = pushQueue.shift();
-          if (queued) {
-            yield queued;
-          }
-        }
+        yield* drainQueue();
 
         const saved = await checkpointer.load(runId);
         if (!isPausedAtPlanApproval(saved)) {

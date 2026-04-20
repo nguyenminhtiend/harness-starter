@@ -6,7 +6,7 @@ import { createHitlSessionStore } from '../active-hitl-sessions.ts';
 import { createApprovalStore } from '../approval.ts';
 import { createApp } from '../index.ts';
 import { createPersistence, type Persistence } from '../persistence.ts';
-import { promptStorageKey } from '../settings-merge.ts';
+import { promptStorageKey } from '../settings-constants.ts';
 
 let persistence: Persistence;
 let tmpDir: string;

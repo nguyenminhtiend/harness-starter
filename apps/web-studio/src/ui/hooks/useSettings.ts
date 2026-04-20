@@ -75,9 +75,7 @@ export function useSettings() {
       debounceTimer.current = null;
     }
     const entries = [...pending.current.entries()];
-    for (const [scope] of entries) {
-      pending.current.delete(scope);
-    }
+    pending.current.clear();
     if (entries.length === 0) {
       return;
     }

@@ -147,8 +147,9 @@ export function App() {
     try {
       await api.cancelRun(runId);
       pushToast('Stop request sent', 'info');
-    } catch {
-      pushToast('Could not cancel run', 'error');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not cancel run';
+      pushToast(msg, 'error');
     }
   }, [runId, pushToast]);
 
@@ -235,7 +236,6 @@ export function App() {
         }}
         onReject={handleHitlReject}
       />
-      {/* Sidebar */}
       <div
         style={{
           width: 'var(--sidebar-w)',
@@ -282,7 +282,6 @@ export function App() {
         />
       </div>
 
-      {/* Center */}
       <div
         style={{
           flex: 1,
@@ -292,7 +291,6 @@ export function App() {
           minWidth: 0,
         }}
       >
-        {/* Top bar */}
         <div
           style={{
             display: 'flex',
@@ -335,41 +333,39 @@ export function App() {
               </p>
             )}
           </div>
-          {showStream &&
-            (status === ('completed' as RunStatus) || status === ('running' as RunStatus)) && (
-              <div
-                style={{
-                  display: 'flex',
-                  background: 'var(--bg-elevated)',
-                  borderRadius: 'var(--r-sm)',
-                  padding: 2,
-                  border: '1px solid var(--border-subtle)',
-                  gap: 2,
-                }}
-              >
-                {(['run', 'report'] as const).map((v) => (
-                  <button
-                    type="button"
-                    key={v}
-                    onClick={() => setView(v)}
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: 'var(--r-xs)',
-                      fontSize: 'var(--text-xs)',
-                      background: view === v ? 'var(--bg-overlay)' : 'transparent',
-                      border:
-                        view === v ? '1px solid var(--border-subtle)' : '1px solid transparent',
-                      color: view === v ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-sans)',
-                      transition: 'all var(--t-fast)',
-                    }}
-                  >
-                    {v === 'run' ? 'Stream' : 'Report'}
-                  </button>
-                ))}
-              </div>
-            )}
+          {showStream && (status === 'completed' || status === 'running') && (
+            <div
+              style={{
+                display: 'flex',
+                background: 'var(--bg-elevated)',
+                borderRadius: 'var(--r-sm)',
+                padding: 2,
+                border: '1px solid var(--border-subtle)',
+                gap: 2,
+              }}
+            >
+              {(['run', 'report'] as const).map((v) => (
+                <button
+                  type="button"
+                  key={v}
+                  onClick={() => setView(v)}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: 'var(--r-xs)',
+                    fontSize: 'var(--text-xs)',
+                    background: view === v ? 'var(--bg-overlay)' : 'transparent',
+                    border: view === v ? '1px solid var(--border-subtle)' : '1px solid transparent',
+                    color: view === v ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-sans)',
+                    transition: 'all var(--t-fast)',
+                  }}
+                >
+                  {v === 'run' ? 'Stream' : 'Report'}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setView((v) => (v === 'settings' ? 'run' : 'settings'))}
@@ -392,7 +388,6 @@ export function App() {
           </button>
         </div>
 
-        {/* Main content */}
         {view === 'settings' ? (
           <SettingsPanel activeTool={activeTool} />
         ) : showStream ? (

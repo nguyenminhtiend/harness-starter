@@ -6,6 +6,7 @@ import type { ApprovalStore } from '../approval.ts';
 import type { Persistence } from '../persistence.ts';
 import { createRunBroadcast, type RunBroadcast } from '../run-broadcast.ts';
 import { startRun } from '../runner.ts';
+import { parseJsonBody } from './parse-body.ts';
 
 const CreateRunBody = z.object({
   toolId: z.string().min(1),
@@ -31,18 +32,12 @@ export function createRunsRoutes(
   const activeRuns = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
 
   routes.post('/', async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
-    const parsed = CreateRunBody.safeParse(body);
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.flatten() }, 400);
+    const result = await parseJsonBody(c, CreateRunBody);
+    if (!result.ok) {
+      return result.response;
     }
 
-    const { toolId, question, settings, resumeRunId } = parsed.data;
+    const { toolId, question, settings, resumeRunId } = result.data;
     const runId = crypto.randomUUID();
     const ac = new AbortController();
 

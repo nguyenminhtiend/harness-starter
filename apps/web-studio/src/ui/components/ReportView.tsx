@@ -34,14 +34,17 @@ export function deriveReportMarkdown(events: readonly UIEvent[]): string | undef
     }
   }
 
-  let fromWriter = '';
+  const writerDeltas: string[] = [];
   for (const ev of events) {
     if (ev.type === 'writer' && ev.delta) {
-      fromWriter += ev.delta;
+      writerDeltas.push(ev.delta);
     }
   }
-  if (fromWriter.trim().length > 0) {
-    return fromWriter;
+  if (writerDeltas.length > 0) {
+    const joined = writerDeltas.join('');
+    if (joined.trim().length > 0) {
+      return joined;
+    }
   }
   return undefined;
 }

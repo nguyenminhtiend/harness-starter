@@ -4,7 +4,7 @@ import { fetchTool } from '@harness/tools';
 const HTTPS_ONLY = /^https:\/\//;
 
 export interface SearchToolsOpts {
-  braveApiKey?: string;
+  braveApiKey?: string | undefined;
   signal?: AbortSignal;
 }
 

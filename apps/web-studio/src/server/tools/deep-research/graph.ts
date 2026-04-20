@@ -35,10 +35,9 @@ export interface ResearchGraphOpts {
   store?: ConversationStore;
   budgets?: BudgetSplit;
   events?: EventBus;
-  /** Overrides default system prompts when provided (persisted tool settings). */
-  plannerPrompt?: string;
-  writerPrompt?: string;
-  factCheckerPrompt?: string;
+  plannerPrompt?: string | undefined;
+  writerPrompt?: string | undefined;
+  factCheckerPrompt?: string | undefined;
 }
 
 export function createResearchGraph(opts: ResearchGraphOpts): Agent {
@@ -58,8 +57,8 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const agentStore = store ?? inMemoryStore();
 
   const planNode = createPlannerNode(provider, {
-    ...(depth !== undefined ? { depth } : {}),
-    ...(plannerPrompt !== undefined && plannerPrompt !== '' ? { systemPrompt: plannerPrompt } : {}),
+    depth,
+    systemPrompt: plannerPrompt,
   });
 
   const approveNode: GraphNode = {
@@ -120,9 +119,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
         memory: agentStore,
         budgets: budgets?.writer,
         events,
-        ...(writerPrompt !== undefined && writerPrompt !== ''
-          ? { systemPrompt: writerPrompt }
-          : {}),
+        systemPrompt: writerPrompt,
       });
       const findings = s.findings ?? [];
       const findingsText = findings
@@ -162,9 +159,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
         memory: agentStore,
         budgets: budgets?.factChecker,
         events,
-        ...(factCheckerPrompt !== undefined && factCheckerPrompt !== ''
-          ? { systemPrompt: factCheckerPrompt }
-          : {}),
+        systemPrompt: factCheckerPrompt,
       });
       const retries = (s.factCheckRetries ?? 0) + 1;
 

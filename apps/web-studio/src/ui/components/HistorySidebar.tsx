@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { RunMeta } from '../../shared/events.ts';
 
 import { ToolPicker } from './ToolPicker.tsx';
@@ -85,20 +86,22 @@ export function HistorySidebar({
   activeTool,
   onSelectTool,
 }: HistorySidebarProps) {
-  const q = searchQuery.trim().toLowerCase();
-  const filtered = runs.filter((run) => {
-    if (filterStatus !== 'all' && run.status !== filterStatus) {
-      return false;
-    }
-    if (!q) {
-      return true;
-    }
-    return (
-      run.question.toLowerCase().includes(q) ||
-      run.toolId.toLowerCase().includes(q) ||
-      run.id.toLowerCase().includes(q)
-    );
-  });
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return runs.filter((run) => {
+      if (filterStatus !== 'all' && run.status !== filterStatus) {
+        return false;
+      }
+      if (!q) {
+        return true;
+      }
+      return (
+        run.question.toLowerCase().includes(q) ||
+        run.toolId.toLowerCase().includes(q) ||
+        run.id.toLowerCase().includes(q)
+      );
+    });
+  }, [runs, searchQuery, filterStatus]);
 
   return (
     <>

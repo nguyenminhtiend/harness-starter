@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Persistence } from '../persistence.ts';
-import { applySettingsPut, buildSettingsGetResponse } from '../settings-merge.ts';
+import { buildSettingsGetResponse } from '../settings-read.ts';
+import { applySettingsPut } from '../settings-write.ts';
+import { parseJsonBody } from './parse-body.ts';
 
 const SettingsUpdateBody = z.object({
   scope: z.string().min(1),
@@ -16,15 +18,9 @@ export function createSettingsRoutes(persistence: Persistence) {
   });
 
   routes.put('/', async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
-    const parsed = SettingsUpdateBody.safeParse(body);
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.flatten() }, 400);
+    const parsed = await parseJsonBody(c, SettingsUpdateBody);
+    if (!parsed.ok) {
+      return parsed.response;
     }
 
     const result = applySettingsPut(persistence, parsed.data.scope, parsed.data.settings);

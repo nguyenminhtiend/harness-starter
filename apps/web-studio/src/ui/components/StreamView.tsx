@@ -17,10 +17,6 @@ const PHASE_META: Record<string, { label: string; color: string }> = {
   'hitl-resolved': { label: 'Approval', color: 'var(--text-secondary)' },
 };
 
-function eventPhase(ev: UIEvent): string {
-  return ev.type;
-}
-
 function eventContent(ev: UIEvent): string {
   switch (ev.type) {
     case 'planner':
@@ -59,16 +55,10 @@ function isVerbose(ev: UIEvent): boolean {
 interface TimelineEventProps {
   event: UIEvent;
   index: number;
-  verbose: boolean;
 }
 
-const TimelineEvent = memo(function TimelineEvent({
-  event,
-  index,
-  verbose: _verbose,
-}: TimelineEventProps) {
-  const phase = eventPhase(event);
-  const meta = PHASE_META[phase] ?? { label: phase, color: 'var(--text-tertiary)' };
+const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEventProps) {
+  const meta = PHASE_META[event.type] ?? { label: event.type, color: 'var(--text-tertiary)' };
   const content = eventContent(event);
   const isV = isVerbose(event);
 
@@ -344,12 +334,7 @@ export function StreamView({ events, tokens, cost, status, onViewReport }: Strea
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {visibleEvents.map((ev, i) => (
-              <TimelineEvent
-                key={`${ev.ts}-${ev.type}-${ev.runId}`}
-                event={ev}
-                index={i}
-                verbose={verbose}
-              />
+              <TimelineEvent key={`${ev.ts}-${ev.type}-${ev.runId}`} event={ev} index={i} />
             ))}
             {status === 'completed' && onViewReport && (
               <div style={{ padding: 'var(--s5)', textAlign: 'center' }}>

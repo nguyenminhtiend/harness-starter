@@ -4,6 +4,10 @@ import { splitBudget } from './deep-research/budgets.ts';
 import { createResearchGraph } from './deep-research/graph.ts';
 import { createSearchTools } from './deep-research/search.ts';
 
+function nonEmpty(v: string | undefined): string | undefined {
+  return v !== undefined && v !== '' ? v : undefined;
+}
+
 const settingsSchema = z.object({
   model: z.string().default('openrouter/free'),
   depth: z.enum(['shallow', 'medium', 'deep']).default('medium'),
@@ -32,7 +36,7 @@ export const deepResearchToolDef: ToolDef<typeof settingsSchema> = {
     const budgets = splitBudget({ usd: s.budgetUsd, tokens: s.maxTokens });
 
     const toolsPromise = createSearchTools({
-      ...(s.braveApiKey ? { braveApiKey: s.braveApiKey } : {}),
+      braveApiKey: nonEmpty(s.braveApiKey),
       signal: args.signal,
     });
 
@@ -46,15 +50,9 @@ export const deepResearchToolDef: ToolDef<typeof settingsSchema> = {
         store: args.store,
         budgets,
         events: args.bus,
-        ...(s.plannerPrompt !== undefined && s.plannerPrompt !== ''
-          ? { plannerPrompt: s.plannerPrompt }
-          : {}),
-        ...(s.writerPrompt !== undefined && s.writerPrompt !== ''
-          ? { writerPrompt: s.writerPrompt }
-          : {}),
-        ...(s.factCheckerPrompt !== undefined && s.factCheckerPrompt !== ''
-          ? { factCheckerPrompt: s.factCheckerPrompt }
-          : {}),
+        plannerPrompt: nonEmpty(s.plannerPrompt),
+        writerPrompt: nonEmpty(s.writerPrompt),
+        factCheckerPrompt: nonEmpty(s.factCheckerPrompt),
       }),
     );
 

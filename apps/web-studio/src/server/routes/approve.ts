@@ -6,6 +6,7 @@ import type { HitlRunSession } from '../active-hitl-sessions.ts';
 import type { HitlPlanDecision } from '../approval.ts';
 import type { Persistence } from '../persistence.ts';
 import { ResearchPlan } from '../tools/deep-research/schemas/plan.ts';
+import { parseJsonBody } from './parse-body.ts';
 
 const ApproveBody = z.object({
   decision: z.enum(['approve', 'reject']),
@@ -56,16 +57,9 @@ export function createApproveRoute(persistence: Persistence, resolvers: ApproveR
       return c.json({ error: 'Approval already in progress' }, 409);
     }
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
-
-    const parsed = ApproveBody.safeParse(body);
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.flatten() }, 400);
+    const parsed = await parseJsonBody(c, ApproveBody);
+    if (!parsed.ok) {
+      return parsed.response;
     }
 
     if (!resolvers.hasPendingApproval(runId)) {

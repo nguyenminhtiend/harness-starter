@@ -37,13 +37,12 @@ export function PlanApprovalModal({ open, plan, onApprove, onReject }: PlanAppro
     }
 
     frozenPlanRef.current = plan;
-    const p = ResearchPlanSchema.safeParse(plan);
-    if (p.success) {
-      setDraftSubquestions(cloneSubquestions(p.data.subquestions));
+    if (parsedPlan.success) {
+      setDraftSubquestions(cloneSubquestions(parsedPlan.data.subquestions));
     } else {
       setDraftSubquestions([]);
     }
-  }, [open, plan]);
+  }, [open, plan, parsedPlan]);
 
   const handleReject = useCallback(async () => {
     await onReject();
