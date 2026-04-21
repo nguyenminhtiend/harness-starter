@@ -31,7 +31,10 @@ beforeEach(() => {
   hitlSessionStore = createHitlSessionStore();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

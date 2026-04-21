@@ -1,13 +1,18 @@
 import type { ProviderKeys } from './types.ts';
 
 export function loadProviderKeysFromEnv(): ProviderKeys {
-  const google = process.env.GOOGLE_GENERATIVE_AI_API_KEY || undefined;
-  const openrouter = process.env.OPENROUTER_API_KEY || undefined;
-  const groq = process.env.GROQ_API_KEY || undefined;
-
-  return {
-    ...(google ? { google } : {}),
-    ...(openrouter ? { openrouter } : {}),
-    ...(groq ? { groq } : {}),
-  };
+  const keys: ProviderKeys = {};
+  const google = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const openrouter = process.env.OPENROUTER_API_KEY;
+  const groq = process.env.GROQ_API_KEY;
+  if (google) {
+    keys.google = google;
+  }
+  if (openrouter) {
+    keys.openrouter = openrouter;
+  }
+  if (groq) {
+    keys.groq = groq;
+  }
+  return keys;
 }

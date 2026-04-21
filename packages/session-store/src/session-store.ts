@@ -95,7 +95,10 @@ export function createSessionStore(db: Database): SessionStore {
       const safeLimit = filter?.limit
         ? Math.max(1, Math.min(500, Math.round(filter.limit)))
         : undefined;
-      const limitClause = safeLimit !== undefined ? `LIMIT ${safeLimit}` : '';
+      const limitClause = safeLimit !== undefined ? 'LIMIT $limit' : '';
+      if (safeLimit !== undefined) {
+        params.$limit = safeLimit;
+      }
       const sql = `SELECT * FROM runs ${where} ORDER BY createdAt DESC, rowid DESC ${limitClause}`;
       return db.prepare(sql).all(params) as SessionRow[];
     },

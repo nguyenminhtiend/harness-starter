@@ -17,7 +17,7 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 5. **Retries wrap provider calls only**, never the outer loop. A tool that throws becomes a tool-result with `isError: true`.
 6. **`AbortSignal` flows top-down:** `run → provider.stream → tool.execute`.
 7. **Runtime boundary:** `@harness/core` uses only Web-standard APIs (`fetch`, `ReadableStream`, `AbortSignal`). Node/Bun-only functionality (SQLite, fs, OTel exporters) must live in sibling packages — never in `core`.
-8. **Clone-and-own invariant:** deleting any of `packages/eval/`, `packages/mcp/`, `packages/memory-sqlite/`, `packages/tui/`, or any `apps/*` must leave the rest building and testing cleanly.
+8. **Clone-and-own invariant:** deleting any of `packages/eval/`, `packages/mcp/`, `packages/memory-sqlite/`, `packages/tui/`, `packages/llm-adapter/`, `packages/session-store/`, `packages/session-events/`, `packages/hitl/`, or any `apps/*` must leave the rest building and testing cleanly.
 
 ## Non-goals — do not build these
 
@@ -37,9 +37,13 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 core ─┬─> agent ─┬─> tools
       │          ├─> mcp
       │          ├─> memory-sqlite
+      │          ├─> hitl
       │          └─> eval ─> cli
+      ├─> llm-adapter
       └─> observability
 
+session-store (standalone — zero harness deps)
+session-events ─> agent, core, session-store
 tui (standalone — no harness deps)
 ```
 

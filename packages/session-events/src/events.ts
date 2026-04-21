@@ -1,4 +1,7 @@
-export type SessionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+import type { SessionStatus } from '@harness/session-store';
+
+export type { SessionRow as SessionMeta } from '@harness/session-store';
+export type { SessionStatus };
 
 export interface UIEventBase {
   ts: number;
@@ -71,12 +74,3 @@ export type UIEvent =
   | HitlRequiredEvent
   | HitlResolvedEvent
   | WriterEvent;
-
-export interface SessionMeta {
-  id: string;
-  toolId: string;
-  question: string;
-  status: SessionStatus;
-  createdAt: string;
-  finishedAt?: string;
-}

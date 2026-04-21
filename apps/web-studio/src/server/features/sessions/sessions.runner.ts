@@ -19,8 +19,6 @@ export interface SessionDeps {
   hitlSessionStore: HitlSessionStore;
 }
 
-export { parseModelSpec } from '@harness/llm-adapter';
-
 function isPausedAtPlanApproval(saved: RunState | null): boolean {
   if (!saved?.graphState) {
     return false;
@@ -200,10 +198,14 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
       const status = isAbort ? 'cancelled' : 'failed';
       const message = isAbort ? 'Session cancelled' : ((err as Error).message ?? 'Unknown error');
 
-      sessionStore.updateSession(sessionId, {
-        status,
-        finishedAt: new Date().toISOString(),
-      });
+      try {
+        sessionStore.updateSession(sessionId, {
+          status,
+          finishedAt: new Date().toISOString(),
+        });
+      } catch (_dbErr) {
+        // DB may be unavailable during cleanup (e.g. connection closed)
+      }
 
       const errorEvent: UIEvent = {
         type: 'error',
@@ -212,7 +214,11 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
         message,
         code: isAbort ? 'CANCELLED' : 'RUNTIME_ERROR',
       };
-      sessionStore.appendEvent(sessionId, errorEvent);
+      try {
+        sessionStore.appendEvent(sessionId, errorEvent);
+      } catch (_dbErr) {
+        // DB may be unavailable during cleanup
+      }
       yield errorEvent;
 
       yield { type: 'status', status, ts: Date.now(), runId: sessionId };

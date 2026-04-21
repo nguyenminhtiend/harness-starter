@@ -1,4 +1,4 @@
-import { loadProviderKeysFromEnv } from '@harness/llm-adapter';
+import { loadProviderKeysFromEnv, type ProviderKeys } from '@harness/llm-adapter';
 
 export type { ProviderKeys } from '@harness/llm-adapter';
 
@@ -6,7 +6,7 @@ export interface EnvConfig {
   HOST: string;
   PORT: number;
   DATA_DIR: string;
-  providerKeys: ReturnType<typeof loadProviderKeysFromEnv>;
+  providerKeys: ProviderKeys;
 }
 
 export function loadConfig(): EnvConfig {

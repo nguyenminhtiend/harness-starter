@@ -273,7 +273,6 @@
               "options": {
                 "paths": {
                   "@harness/llm-adapter": "session-events must not import from @harness/llm-adapter (dependency direction violation)",
-                  "@harness/session-store": "session-events must not import from @harness/session-store (dependency direction violation)",
                   "@harness/hitl": "session-events must not import from @harness/hitl (dependency direction violation)"
                 }
               }

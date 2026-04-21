@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@harness/agent": "workspace:*",
-    "@harness/core": "workspace:*"
+    "@harness/core": "workspace:*",
+    "@harness/session-store": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

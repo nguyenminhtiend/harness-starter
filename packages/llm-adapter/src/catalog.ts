@@ -34,16 +34,5 @@ export const knownModels: readonly ModelEntry[] = [
 ];
 
 export function listAvailableModels(keys: ProviderKeys): ModelEntry[] {
-  return knownModels.filter((m) => {
-    if (m.provider === 'google') {
-      return Boolean(keys.google);
-    }
-    if (m.provider === 'openrouter') {
-      return Boolean(keys.openrouter);
-    }
-    if (m.provider === 'groq') {
-      return Boolean(keys.groq);
-    }
-    return false;
-  });
+  return knownModels.filter((m) => Boolean(keys[m.provider]));
 }

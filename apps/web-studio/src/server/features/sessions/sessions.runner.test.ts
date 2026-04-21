@@ -23,7 +23,12 @@ beforeEach(() => {
   settingsStore = createSettingsStore(db);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Flush pending microtasks so in-flight generator catch/finally blocks
+  // complete their DB writes before the connection closes.
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
