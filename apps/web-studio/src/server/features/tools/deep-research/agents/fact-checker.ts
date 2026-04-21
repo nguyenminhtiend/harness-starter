@@ -1,7 +1,6 @@
-import type { Agent } from '@harness/agent';
-import { createAgent, inMemoryStore } from '@harness/agent';
 import type { Provider } from '@harness/core';
-import type { BaseAgentOpts } from './types.ts';
+import type { FactCheckResult } from '../schemas/fact-check.ts';
+import { FactCheckResult as FactCheckResultSchema } from '../schemas/fact-check.ts';
 
 const FACT_CHECKER_PROMPT = `You are a fact-checking assistant. You receive a research report and verify its citations.
 
@@ -10,23 +9,36 @@ For each citation in the report:
 2. Check that the claim matches what the source says
 3. Flag any unsupported or fabricated citations
 
-Respond with ONLY valid JSON (no markdown fences, no explanation):
-{
-  "pass": true/false,
-  "issues": [
-    "<description of each issue found, or empty array if all citations check out>"
-  ]
-}
-
 Be strict: if any citation cannot be verified, set pass to false.`;
 
-export function createFactCheckerAgent(provider: Provider, opts?: BaseAgentOpts): Agent {
-  return createAgent({
-    provider,
-    systemPrompt: opts?.systemPrompt ?? FACT_CHECKER_PROMPT,
-    memory: opts?.memory ?? inMemoryStore(),
-    maxTurns: 3,
-    ...(opts?.budgets ? { budgets: opts.budgets } : {}),
-    ...(opts?.events ? { events: opts.events } : {}),
-  });
+export interface FactCheckerOpts {
+  systemPrompt?: string | undefined;
+}
+
+export async function checkFacts(
+  provider: Provider,
+  prompt: string,
+  signal: AbortSignal,
+  opts?: FactCheckerOpts,
+): Promise<FactCheckResult> {
+  const result = await provider.generate(
+    {
+      messages: [
+        { role: 'system', content: opts?.systemPrompt ?? FACT_CHECKER_PROMPT },
+        { role: 'user', content: prompt },
+      ],
+      responseFormat: FactCheckResultSchema,
+    },
+    signal,
+  );
+
+  const text =
+    typeof result.message.content === 'string'
+      ? result.message.content
+      : result.message.content
+          .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+          .map((p) => p.text)
+          .join('');
+
+  return FactCheckResultSchema.parse(JSON.parse(text));
 }

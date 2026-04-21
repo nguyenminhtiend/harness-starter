@@ -2,15 +2,15 @@
 import type { Agent, Checkpointer, ConversationStore, GraphNode, Tool } from '@harness/agent';
 import { graph, inMemoryStore, interrupt } from '@harness/agent';
 import type { EventBus, Provider } from '@harness/core';
-import { createFactCheckerAgent } from './agents/fact-checker.ts';
+import { checkFacts } from './agents/fact-checker.ts';
 import { createPlannerNode } from './agents/planner.ts';
 import { createResearcherTool } from './agents/researcher.ts';
-import { createWriterAgent } from './agents/writer.ts';
+import { generateReport } from './agents/writer.ts';
 import type { BudgetSplit } from './budgets.ts';
 import { extractUrls } from './guardrails/citation-check.ts';
 import type { ResearchPlan } from './schemas/plan.ts';
 import type { Finding, Report } from './schemas/report.ts';
-import { Finding as FindingSchema, Report as ReportSchema } from './schemas/report.ts';
+import { Finding as FindingSchema } from './schemas/report.ts';
 
 const MAX_FACT_CHECK_RETRIES = 2;
 
@@ -24,6 +24,7 @@ export interface ResearchState {
   reportText?: string;
   factCheckPassed?: boolean;
   factCheckRetries?: number;
+  factCheckIssues?: string[];
 }
 
 export interface ResearchGraphOpts {
@@ -113,12 +114,6 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
     id: 'write',
     fn: async (state, ctx) => {
       const s = state as ResearchState;
-      const writer = createWriterAgent(provider, {
-        memory: agentStore,
-        budgets: budgets?.writer,
-        events,
-        systemPrompt: writerPrompt,
-      });
       const findings = s.findings ?? [];
       const findingsText = findings
         .map(
@@ -127,24 +122,17 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
         )
         .join('\n\n');
 
-      const result = await writer.run(
-        { userMessage: `Write a research report from these findings:\n\n${findingsText}` },
-        { signal: ctx.signal },
-      );
+      const issuesHint =
+        s.factCheckIssues && s.factCheckIssues.length > 0
+          ? `\n\nIMPORTANT — the previous draft failed fact-checking. Fix these issues:\n${s.factCheckIssues.map((i) => `- ${i}`).join('\n')}`
+          : '';
 
-      const raw = result.finalMessage as string;
-      let report: Report;
-      try {
-        report = ReportSchema.parse(JSON.parse(raw));
-      } catch {
-        report = {
-          title: s.userMessage,
-          sections: [{ heading: 'Research', body: raw }],
-          references: [],
-        };
-      }
+      const report = await generateReport(provider, `${findingsText}${issuesHint}`, ctx.signal, {
+        systemPrompt: writerPrompt,
+      });
 
-      return { ...state, report, reportText: result.finalMessage };
+      const reportText = JSON.stringify(report);
+      return { ...state, report, reportText };
     },
   };
 
@@ -152,12 +140,6 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
     id: 'fact-check',
     fn: async (state, ctx) => {
       const s = state as ResearchState;
-      const checker = createFactCheckerAgent(provider, {
-        memory: agentStore,
-        budgets: budgets?.factChecker,
-        events,
-        systemPrompt: factCheckerPrompt,
-      });
       const retries = (s.factCheckRetries ?? 0) + 1;
 
       const findings = s.findings ?? [];
@@ -174,14 +156,16 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
         prompt += `\n\nWARNING: These URLs appear in the report but were NOT found in research sources: ${unfetchedUrls.join(', ')}`;
       }
 
-      const result = await checker.run({ userMessage: prompt }, { signal: ctx.signal });
+      const parsed = await checkFacts(provider, prompt, ctx.signal, {
+        systemPrompt: factCheckerPrompt,
+      });
 
-      try {
-        const parsed = JSON.parse(result.finalMessage as string);
-        return { ...state, factCheckPassed: parsed.pass === true, factCheckRetries: retries };
-      } catch {
-        return { ...state, factCheckPassed: false, factCheckRetries: retries };
-      }
+      return {
+        ...state,
+        factCheckPassed: parsed.pass,
+        factCheckRetries: retries,
+        factCheckIssues: parsed.issues,
+      };
     },
   };
 

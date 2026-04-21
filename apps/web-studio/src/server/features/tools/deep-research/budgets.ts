@@ -10,14 +10,24 @@ export interface BudgetSplit {
   factChecker: BudgetLimits;
 }
 
-const RATIOS = {
+export interface BudgetRatios {
+  planner: number;
+  researcher: number;
+  writer: number;
+  factChecker: number;
+}
+
+export const DEFAULT_BUDGET_RATIOS: BudgetRatios = {
   planner: 0.1,
   researcher: 0.6,
   writer: 0.2,
   factChecker: 0.1,
-} as const;
+};
 
-export function splitBudget(total: { usd?: number; tokens?: number }): BudgetSplit {
+export function splitBudget(
+  total: { usd?: number; tokens?: number },
+  ratios: BudgetRatios = DEFAULT_BUDGET_RATIOS,
+): BudgetSplit {
   function carve(ratio: number): BudgetLimits {
     const result: BudgetLimits = {};
     if (total.usd != null) {
@@ -30,9 +40,9 @@ export function splitBudget(total: { usd?: number; tokens?: number }): BudgetSpl
   }
 
   return {
-    planner: carve(RATIOS.planner),
-    researcher: carve(RATIOS.researcher),
-    writer: carve(RATIOS.writer),
-    factChecker: carve(RATIOS.factChecker),
+    planner: carve(ratios.planner),
+    researcher: carve(ratios.researcher),
+    writer: carve(ratios.writer),
+    factChecker: carve(ratios.factChecker),
   };
 }

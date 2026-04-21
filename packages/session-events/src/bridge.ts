@@ -6,6 +6,7 @@ export function agentEventToUIEvents(
   e: AgentEvent,
   runId: string,
   accUsage: { inputTokens: number; outputTokens: number; costUsd: number },
+  toolNames: Map<string, string>,
 ): UIEvent[] {
   const ts = Date.now();
   const base = { ts, runId };
@@ -16,19 +17,28 @@ export function agentEventToUIEvents(
       events.push({ ...base, type: 'agent', phase: `turn-${e.turn}` });
       break;
     case 'tool-start':
+      toolNames.set(e.id, e.name);
       events.push({ ...base, type: 'tool', toolName: e.name, args: e.args });
       break;
     case 'tool-result':
       events.push({
         ...base,
         type: 'tool',
-        toolName: '',
+        toolName: toolNames.get(e.id) ?? 'unknown',
         result: String(e.result),
         durationMs: e.durationMs,
       });
+      toolNames.delete(e.id);
       break;
     case 'tool-error':
-      events.push({ ...base, type: 'tool', toolName: '', isError: true, result: e.error.message });
+      events.push({
+        ...base,
+        type: 'tool',
+        toolName: toolNames.get(e.id) ?? 'unknown',
+        isError: true,
+        result: e.error.message,
+      });
+      toolNames.delete(e.id);
       break;
     case 'usage': {
       const inp = e.tokens.inputTokens ?? 0;

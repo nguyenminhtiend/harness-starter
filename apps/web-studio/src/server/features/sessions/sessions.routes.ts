@@ -60,13 +60,12 @@ async function applyApproveToCheckpoint(
   return { ok: true };
 }
 
-const inflight = new Set<string>();
-
 export function createSessionsRoutes(deps: SessionsRouteDeps) {
   const { sessionStore, settingsStore, approvalStore, hitlSessionStore, getProviderKeys } = deps;
   const routes = new Hono();
 
   const activeSessions = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
+  const inflight = new Set<string>();
 
   const sessionDeps: SessionDeps = {
     sessionStore,

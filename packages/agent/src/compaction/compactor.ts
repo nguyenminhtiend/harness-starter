@@ -1,4 +1,5 @@
 import type { Message, Provider } from '@harness/core';
+import { encode } from 'gpt-tokenizer';
 import type { CompactionContext, Compactor } from '../types.ts';
 
 export interface SummarizingCompactorOpts {
@@ -51,7 +52,7 @@ function estimateTokens(messages: Message[]): number {
   let total = 0;
   for (const m of messages) {
     const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-    total += Math.ceil(text.length / 4);
+    total += encode(text).length;
   }
   return total;
 }

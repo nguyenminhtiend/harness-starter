@@ -3,13 +3,14 @@ import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import { createEventBus } from '@harness/core';
 import type { ApprovalStore, HitlSessionStore } from '@harness/hitl';
 import { createProvider } from '@harness/llm-adapter';
+import { consoleSink } from '@harness/observability';
 import type { UIEvent } from '@harness/session-events';
-import { agentEventToUIEvents, bridgeBusToUIEvents } from '@harness/session-events';
+import { agentEventToUIEvents } from '@harness/session-events';
 import type { SessionStore } from '@harness/session-store';
-import type { ToolDef } from '../../../shared/tool.ts';
 import { mergeToolRuntimeSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { tools as registry } from '../tools/tools.registry.ts';
+import type { ToolDef } from '../tools/types.ts';
 import type { SessionContext, SessionHandle } from './sessions.types.ts';
 
 export interface SessionDeps {
@@ -72,22 +73,10 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
   });
 
   const accUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  const toolNames = new Map<string, string>();
 
   async function* generate(): AsyncGenerator<UIEvent> {
-    const pushQueue: UIEvent[] = [];
-    const unsubBus = bridgeBusToUIEvents(bus, sessionId, accUsage, (ev) => {
-      pushQueue.push(ev);
-      sessionStore.appendEvent(sessionId, ev);
-    });
-
-    function* drainQueue(): Generator<UIEvent> {
-      while (pushQueue.length > 0) {
-        const queued = pushQueue.shift();
-        if (queued) {
-          yield queued;
-        }
-      }
-    }
+    const unsubConsole = consoleSink(bus, { level: 'normal' });
 
     hitlSessionStore.register(sessionId, { checkpointer, abortController });
 
@@ -103,16 +92,12 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
         );
 
         for await (const event of stream) {
-          yield* drainQueue();
-
-          const uiEvents = agentEventToUIEvents(event, sessionId, accUsage);
+          const uiEvents = agentEventToUIEvents(event, sessionId, accUsage, toolNames);
           for (const uiEv of uiEvents) {
             sessionStore.appendEvent(sessionId, uiEv);
             yield uiEv;
           }
         }
-
-        yield* drainQueue();
 
         const saved = await checkpointer.load(sessionId);
         if (!isPausedAtPlanApproval(saved)) {
@@ -223,7 +208,7 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
 
       yield { type: 'status', status, ts: Date.now(), runId: sessionId };
     } finally {
-      unsubBus();
+      unsubConsole();
       hitlSessionStore.unregister(sessionId);
     }
   }

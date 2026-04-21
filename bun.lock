@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "harness-starter",
+      "dependencies": {
+        "gpt-tokenizer": "3.4.0",
+      },
       "devDependencies": {
         "@biomejs/biome": "2.4.12",
         "@changesets/cli": "2.30.0",
@@ -28,28 +31,6 @@
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5.7.0",
-      },
-    },
-    "apps/deep-research": {
-      "name": "@harness/example-deep-research",
-      "version": "0.0.0",
-      "dependencies": {
-        "@harness/agent": "workspace:*",
-        "@harness/core": "workspace:*",
-        "@harness/observability": "workspace:*",
-        "@harness/tools": "workspace:*",
-        "@harness/tui": "workspace:*",
-        "@openrouter/ai-sdk-provider": "1.5.4",
-        "picocolors": "1.1.1",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-        "typescript": "^5.7.0",
-      },
-      "optionalDependencies": {
-        "@harness/mcp": "workspace:*",
-        "@harness/memory-sqlite": "workspace:*",
       },
     },
     "apps/web-studio": {
@@ -482,8 +463,6 @@
     "@harness/eval": ["@harness/eval@workspace:packages/eval"],
 
     "@harness/example-cli-chat": ["@harness/example-cli-chat@workspace:apps/cli-chat"],
-
-    "@harness/example-deep-research": ["@harness/example-deep-research@workspace:apps/deep-research"],
 
     "@harness/example-web-studio": ["@harness/example-web-studio@workspace:apps/web-studio"],
 
@@ -924,6 +903,8 @@
     "globby": ["globby@11.1.0", "", { "dependencies": { "array-union": "^2.1.0", "dir-glob": "^3.0.1", "fast-glob": "^3.2.9", "ignore": "^5.2.0", "merge2": "^1.4.1", "slash": "^3.0.0" } }, "sha512-jhIXaOzy1sb8IyocaruWSn1TjmnBVs8Ayhcy83rmxNJ8q2uWKCAj3CnJY+KpGSXCueAPc0i05kVvVKtP1t9S3g=="],
 
     "gopd": ["gopd@1.2.0", "", {}, "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="],
+
+    "gpt-tokenizer": ["gpt-tokenizer@3.4.0", "", {}, "sha512-wxFLnhIXTDjYebd9A9pGl3e31ZpSypbpIJSOswbgop5jLte/AsZVDvjlbEuVFlsqZixVKqbcoNmRlFDf6pz/UQ=="],
 
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
 

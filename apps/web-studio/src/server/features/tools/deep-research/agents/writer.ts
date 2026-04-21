@@ -1,20 +1,8 @@
-import type { Agent } from '@harness/agent';
-import { createAgent, inMemoryStore, summarizingCompactor } from '@harness/agent';
 import type { Provider } from '@harness/core';
-import type { BaseAgentOpts } from './types.ts';
+import type { Report } from '../schemas/report.ts';
+import { Report as ReportSchema } from '../schemas/report.ts';
 
 const WRITER_PROMPT = `You are a report writer. You receive research findings and synthesize them into a structured report.
-
-Respond with ONLY valid JSON (no markdown fences, no explanation) matching this schema:
-{
-  "title": "<clear, descriptive report title>",
-  "sections": [
-    { "heading": "<section heading>", "body": "<section content with inline [n] citations>" }
-  ],
-  "references": [
-    { "url": "<source URL>", "title": "<optional human-readable title>" }
-  ]
-}
 
 Guidelines:
 - Organize findings into logical sections with clear headings
@@ -23,14 +11,37 @@ Guidelines:
 - Be thorough but concise — no filler or repetition
 - The references array must include every URL cited in the report`;
 
-export function createWriterAgent(provider: Provider, opts?: BaseAgentOpts): Agent {
-  return createAgent({
-    provider,
-    systemPrompt: opts?.systemPrompt ?? WRITER_PROMPT,
-    compactor: summarizingCompactor(),
-    memory: opts?.memory ?? inMemoryStore(),
-    maxTurns: 3,
-    ...(opts?.budgets ? { budgets: opts.budgets } : {}),
-    ...(opts?.events ? { events: opts.events } : {}),
-  });
+export interface WriterOpts {
+  systemPrompt?: string | undefined;
+}
+
+export async function generateReport(
+  provider: Provider,
+  findingsText: string,
+  signal: AbortSignal,
+  opts?: WriterOpts,
+): Promise<Report> {
+  const result = await provider.generate(
+    {
+      messages: [
+        { role: 'system', content: opts?.systemPrompt ?? WRITER_PROMPT },
+        {
+          role: 'user',
+          content: `Write a research report from these findings:\n\n${findingsText}`,
+        },
+      ],
+      responseFormat: ReportSchema,
+    },
+    signal,
+  );
+
+  const text =
+    typeof result.message.content === 'string'
+      ? result.message.content
+      : result.message.content
+          .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+          .map((p) => p.text)
+          .join('');
+
+  return ReportSchema.parse(JSON.parse(text));
 }

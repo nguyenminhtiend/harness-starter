@@ -29,5 +29,8 @@
     "@commitlint/types": "20.5.0",
     "lefthook": "2.1.6",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "3.4.0"
   }
 }

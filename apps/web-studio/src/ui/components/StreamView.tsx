@@ -43,14 +43,8 @@ function formatArgs(args: unknown): string {
 
 function eventContent(ev: UIEvent): string {
   switch (ev.type) {
-    case 'planner':
-      return `Plan: ${ev.subquestions.length} subquestions`;
-    case 'researcher':
-      return ev.result ?? `Researching: ${ev.subquestion}`;
     case 'writer':
       return ev.delta ?? 'Writing…';
-    case 'factchecker':
-      return ev.verdict ? `Verdict: ${ev.verdict}` : 'Checking facts…';
     case 'tool': {
       if (ev.isError) {
         return ev.result ?? 'Tool error';
