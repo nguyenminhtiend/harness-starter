@@ -31,8 +31,15 @@ export const knownModels: readonly ModelEntry[] = [
     label: 'Gemini 2.5 Flash (OR)',
     provider: 'openrouter',
   },
+
+  { id: 'ollama:qwen2.5:3b', label: 'Qwen 2.5 3B (local)', provider: 'ollama' },
 ];
 
 export function listAvailableModels(keys: ProviderKeys): ModelEntry[] {
-  return knownModels.filter((m) => Boolean(keys[m.provider]));
+  return knownModels.filter((m) => {
+    if (m.provider === 'ollama') {
+      return true;
+    }
+    return Boolean(keys[m.provider]);
+  });
 }

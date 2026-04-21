@@ -12,6 +12,25 @@ import type { ResearchPlan } from './schemas/plan.ts';
 import type { Finding, Report } from './schemas/report.ts';
 import { Finding as FindingSchema } from './schemas/report.ts';
 
+function reportToMarkdown(report: Report): string {
+  const lines: string[] = [`# ${report.title}`, ''];
+
+  for (const section of report.sections) {
+    lines.push(`## ${section.heading}`, '', section.body, '');
+  }
+
+  if (report.references.length > 0) {
+    lines.push('## References', '');
+    for (const [i, ref] of report.references.entries()) {
+      const label = ref.title ?? ref.url;
+      lines.push(`${i + 1}. [${label}](${ref.url})`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
 const MAX_FACT_CHECK_RETRIES = 2;
 
 export interface ResearchState {
@@ -131,7 +150,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
         systemPrompt: writerPrompt,
       });
 
-      const reportText = JSON.stringify(report);
+      const reportText = reportToMarkdown(report);
       return { ...state, report, reportText };
     },
   };

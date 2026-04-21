@@ -72,5 +72,6 @@ if (import.meta.main) {
     fetch: app.fetch,
     hostname: config.HOST,
     port: config.PORT,
+    idleTimeout: 255,
   });
 }

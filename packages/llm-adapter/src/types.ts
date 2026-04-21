@@ -1,4 +1,4 @@
-export type ProviderId = 'google' | 'openrouter' | 'groq';
+export type ProviderId = 'google' | 'openrouter' | 'groq' | 'ollama';
 
 export interface ModelSpec {
   provider: ProviderId;
@@ -9,6 +9,7 @@ export interface ProviderKeys {
   google?: string;
   openrouter?: string;
   groq?: string;
+  ollamaBaseUrl?: string;
 }
 
 export interface ModelEntry {

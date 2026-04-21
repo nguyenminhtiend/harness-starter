@@ -14,5 +14,9 @@ export function loadProviderKeysFromEnv(): ProviderKeys {
   if (groq) {
     keys.groq = groq;
   }
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL;
+  if (ollamaBaseUrl) {
+    keys.ollamaBaseUrl = ollamaBaseUrl;
+  }
   return keys;
 }

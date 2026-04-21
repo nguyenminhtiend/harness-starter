@@ -1,5 +1,6 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createGroq } from '@ai-sdk/groq';
+import { createOpenAI } from '@ai-sdk/openai';
 import { aiSdkProvider, type Provider } from '@harness/core';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { ModelSpec, ProviderId, ProviderKeys } from './types.ts';
@@ -29,8 +30,8 @@ export function createProvider(keys: ProviderKeys, spec: string): Provider {
     if (!key) {
       throw new Error('OPENROUTER_API_KEY not configured');
     }
-    const openrouter = createOpenRouter({ apiKey: key });
-    return aiSdkProvider(openrouter.chat(model));
+    const or = createOpenRouter({ apiKey: key });
+    return aiSdkProvider(or.chat(model));
   }
 
   if (provider === 'groq') {
@@ -42,7 +43,13 @@ export function createProvider(keys: ProviderKeys, spec: string): Provider {
     return aiSdkProvider(groq(model));
   }
 
+  if (provider === 'ollama') {
+    const baseURL = keys.ollamaBaseUrl ?? 'http://localhost:11434/v1';
+    const ollama = createOpenAI({ baseURL, apiKey: 'ollama' });
+    return aiSdkProvider(ollama(model));
+  }
+
   throw new Error(
-    `Unknown provider "${provider}". Use "google:", "openrouter:", or "groq:" prefix.`,
+    `Unknown provider "${provider}". Use "google:", "openrouter:", "groq:", or "ollama:" prefix.`,
   );
 }

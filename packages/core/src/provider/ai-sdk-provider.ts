@@ -1,5 +1,5 @@
 import type { LanguageModelV2, LanguageModelV3 } from '@ai-sdk/provider';
-import { generateText, streamText } from 'ai';
+import { generateObject, generateText, streamText } from 'ai';
 import { ProviderError } from '../errors.ts';
 import type {
   FinishReason,
@@ -161,6 +161,10 @@ export function aiSdkProvider(
 
   async function generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResult> {
     try {
+      if (req.responseFormat) {
+        return await generateStructured(req, signal);
+      }
+
       const params: Record<string, unknown> = {
         model: model as never,
         messages: toAiSdkMessages(req.messages) as never,
@@ -210,6 +214,36 @@ export function aiSdkProvider(
     } catch (e) {
       throw classifyError(e);
     }
+  }
+
+  async function generateStructured(
+    req: GenerateRequest,
+    signal?: AbortSignal,
+  ): Promise<GenerateResult> {
+    const params: Record<string, unknown> = {
+      model: model as never,
+      messages: toAiSdkMessages(req.messages) as never,
+      schema: req.responseFormat,
+      maxRetries: 0,
+    };
+    if (req.temperature != null) {
+      params.temperature = req.temperature;
+    }
+    if (req.maxTokens != null) {
+      params.maxOutputTokens = req.maxTokens;
+    }
+    if (signal != null) {
+      params.abortSignal = signal;
+    }
+
+    const result = await generateObject(params as never);
+    const obj = (result as unknown as { object: unknown }).object;
+
+    return {
+      message: { role: 'assistant', content: JSON.stringify(obj) },
+      usage: mapUsage(result.usage),
+      finishReason: result.finishReason as FinishReason,
+    };
   }
 
   async function* stream(req: GenerateRequest, signal?: AbortSignal): AsyncGenerator<StreamEvent> {

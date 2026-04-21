@@ -1,4 +1,5 @@
 import type { Provider } from '@harness/core';
+import { messageTextContent, parseModelJson } from '../lib/parse-json.ts';
 import type { FactCheckResult } from '../schemas/fact-check.ts';
 import { FactCheckResult as FactCheckResultSchema } from '../schemas/fact-check.ts';
 
@@ -32,13 +33,6 @@ export async function checkFacts(
     signal,
   );
 
-  const text =
-    typeof result.message.content === 'string'
-      ? result.message.content
-      : result.message.content
-          .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-          .map((p) => p.text)
-          .join('');
-
-  return FactCheckResultSchema.parse(JSON.parse(text));
+  const text = messageTextContent(result.message.content);
+  return parseModelJson(text, FactCheckResultSchema);
 }
