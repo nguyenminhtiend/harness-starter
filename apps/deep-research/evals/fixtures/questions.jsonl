@@ -1,3 +1,0 @@
-{"question":"What are CRDTs and how do they differ from OT?","expectedDomains":["wikipedia.org","crdt.tech"],"minSections":2}
-{"question":"What is WebAssembly and why was it created?","expectedDomains":["webassembly.org","developer.mozilla.org"],"minSections":2}
-{"question":"How does Raft consensus algorithm work?","expectedDomains":["raft.github.io","wikipedia.org"],"minSections":2}
