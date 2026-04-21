@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ToolDef } from '../types.ts';
+import type { ToolDef } from '../tools/types.ts';
 import { splitBudget } from './budgets.ts';
 import { createResearchGraph } from './graph.ts';
 import { createSearchTools } from './search.ts';

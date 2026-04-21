@@ -34,6 +34,34 @@ function inheritedFromGlobalForTool(toolId: string, store: SettingsStore): Recor
   return inherited;
 }
 
+/**
+ * Resolve the full settings for a tool through the precedence chain:
+ *   defaults → global → tool persistence → secret storage → request overrides
+ *
+ * Returns the raw runtime values (with real secrets).
+ */
+export function resolveSettings(
+  toolId: string,
+  store: SettingsStore,
+  requestOverrides?: Record<string, unknown>,
+): Record<string, unknown> {
+  const toolDef = toolRegistry[toolId];
+  if (!toolDef) {
+    return { ...(requestOverrides ?? {}) };
+  }
+  const merged: Record<string, unknown> = {
+    ...(toolDef.defaultSettings as Record<string, unknown>),
+  };
+  const global = readMergedGlobalSettings(store);
+  applyGlobalLayer(merged, global);
+  applyToolPersistenceLayer(toolId, store, merged);
+  if (requestOverrides) {
+    Object.assign(merged, requestOverrides);
+  }
+  return merged;
+}
+
+/** Build the full GET /settings response with masked secrets. */
 export function buildSettingsGetResponse(store: SettingsStore): {
   global: GlobalSettings;
   tools: Record<string, ToolSettingsView>;
@@ -42,20 +70,12 @@ export function buildSettingsGetResponse(store: SettingsStore): {
   const tools: Record<string, ToolSettingsView> = {};
 
   for (const toolId of Object.keys(toolRegistry)) {
-    const toolDef = toolRegistry[toolId];
-    if (!toolDef) {
-      continue;
-    }
-    const merged: Record<string, unknown> = {
-      ...(toolDef.defaultSettings as Record<string, unknown>),
-    };
-    applyGlobalLayer(merged, global);
-    applyToolPersistenceLayer(toolId, store, merged);
-    const values = maskSecretsForClient(merged);
+    const resolved = resolveSettings(toolId, store);
+    const values = maskSecretsForClient(resolved);
     const secretMap = TOOL_SECRET_STORAGE[toolId];
     if (secretMap) {
       for (const fieldName of Object.keys(secretMap)) {
-        const raw = merged[fieldName];
+        const raw = resolved[fieldName];
         values[fieldName] = {
           set: typeof raw === 'string' && raw.length > 0,
         };
@@ -70,20 +90,13 @@ export function buildSettingsGetResponse(store: SettingsStore): {
   return { global, tools };
 }
 
+/**
+ * @deprecated Use `resolveSettings(toolId, store, requestSettings)` instead.
+ */
 export function mergeToolRuntimeSettings(
   toolId: string,
   store: SettingsStore,
   requestSettings: Record<string, unknown>,
 ): Record<string, unknown> {
-  const toolDef = toolRegistry[toolId];
-  if (!toolDef) {
-    return { ...requestSettings };
-  }
-  const merged: Record<string, unknown> = {
-    ...(toolDef.defaultSettings as Record<string, unknown>),
-  };
-  const global = readMergedGlobalSettings(store);
-  applyGlobalLayer(merged, global);
-  applyToolPersistenceLayer(toolId, store, merged);
-  return { ...merged, ...requestSettings };
+  return resolveSettings(toolId, store, requestSettings);
 }

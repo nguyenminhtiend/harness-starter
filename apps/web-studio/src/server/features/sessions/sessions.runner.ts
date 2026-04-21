@@ -7,7 +7,7 @@ import { consoleSink } from '@harness/observability';
 import type { UIEvent } from '@harness/session-events';
 import { agentEventToUIEvents } from '@harness/session-events';
 import type { SessionStore } from '@harness/session-store';
-import { mergeToolRuntimeSettings } from '../settings/settings.reader.ts';
+import { resolveSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { tools as registry } from '../tools/tools.registry.ts';
 import type { ToolDef } from '../tools/types.ts';
@@ -46,7 +46,7 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
     throw new Error(`Unknown tool: ${toolId}`);
   }
 
-  const mergedSettings = mergeToolRuntimeSettings(toolId, settingsStore, settings);
+  const mergedSettings = resolveSettings(toolId, settingsStore, settings);
   const modelSpec = (mergedSettings.model as string) ?? 'google:gemini-2.5-flash';
   const provider = createProvider(providerKeys, modelSpec);
   const store = inMemoryStore();

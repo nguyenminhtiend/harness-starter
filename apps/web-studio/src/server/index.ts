@@ -11,6 +11,7 @@ import { createSettingsRoutes } from './features/settings/settings.routes.ts';
 import { createSettingsStore, type SettingsStore } from './features/settings/settings.store.ts';
 import { createToolsRoutes } from './features/tools/tools.routes.ts';
 import { createDatabase } from './infra/db.ts';
+import { bodyLimit } from './middleware/body-limit.ts';
 import { localCors } from './middleware/cors.ts';
 
 export interface AppDeps {
@@ -25,6 +26,7 @@ export function createApp(deps: AppDeps) {
   const app = new Hono();
 
   app.use('/api/*', localCors());
+  app.use('/api/*', bodyLimit());
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
 

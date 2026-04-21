@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HitlRequiredEvent, SessionStatus, UIEvent } from '../../shared/events.ts';
 import { api, connectSSE } from '../api.ts';
 
-interface StreamMeta {
+interface StreamState {
+  events: UIEvent[];
   status: SessionStatus | 'idle';
   error?: string;
-  tick: number;
 }
 
 export interface UseEventStreamOptions {
@@ -13,10 +13,9 @@ export interface UseEventStreamOptions {
 }
 
 export function useEventStream(sessionId: string | null, options?: UseEventStreamOptions) {
-  const eventsRef = useRef<UIEvent[]>([]);
-  const [meta, setMeta] = useState<StreamMeta>({
+  const [state, setState] = useState<StreamState>({
+    events: [],
     status: 'idle',
-    tick: 0,
   });
 
   const closeRef = useRef<(() => void) | null>(null);
@@ -25,13 +24,11 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
 
   useEffect(() => {
     if (!sessionId) {
-      eventsRef.current = [];
-      setMeta({ status: 'idle', tick: 0 });
+      setState({ events: [], status: 'idle' });
       return;
     }
 
-    eventsRef.current = [];
-    setMeta({ status: 'running', tick: 0 });
+    setState({ events: [], status: 'running' });
     let disposed = false;
     const sid = sessionId;
 
@@ -41,14 +38,11 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
         if (ev.type === 'hitl-required') {
           optionsRef.current?.onHitlRequired?.(ev);
         }
-        eventsRef.current.push(ev);
-        setMeta((prev) => {
-          let { status } = prev;
-          if (ev.type === 'status') {
-            status = ev.status;
-          }
-          return { ...prev, status, tick: prev.tick + 1 };
-        });
+        setState((prev) => ({
+          ...prev,
+          events: [...prev.events, ev],
+          ...(ev.type === 'status' ? { status: ev.status } : {}),
+        }));
       },
       () => {
         if (disposed) {
@@ -58,12 +52,12 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
           .getSession(sid)
           .then((session) => {
             if (!disposed) {
-              setMeta((prev) => ({ ...prev, status: session.status }));
+              setState((prev) => ({ ...prev, status: session.status }));
             }
           })
           .catch(() => {
             if (!disposed) {
-              setMeta((prev) => ({
+              setState((prev) => ({
                 ...prev,
                 status: prev.status === 'running' ? 'completed' : prev.status,
               }));
@@ -78,7 +72,7 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
           .getSession(sid)
           .then((session) => {
             if (!disposed) {
-              setMeta((prev) => ({
+              setState((prev) => ({
                 ...prev,
                 error: err.message,
                 status: session.status,
@@ -87,7 +81,7 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
           })
           .catch(() => {
             if (!disposed) {
-              setMeta((prev) => ({ ...prev, error: err.message }));
+              setState((prev) => ({ ...prev, error: err.message }));
             }
           });
       },
@@ -104,12 +98,10 @@ export function useEventStream(sessionId: string | null, options?: UseEventStrea
     closeRef.current?.();
   }, []);
 
-  const events = eventsRef.current;
-
   return {
-    events,
-    status: meta.status,
-    error: meta.error,
+    events: state.events,
+    status: state.status,
+    error: state.error,
     disconnect,
   };
 }

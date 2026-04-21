@@ -2,8 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import { createEventBus } from '@harness/core';
 import { fakeProvider } from '@harness/core/testing';
-import { tools } from '../tools.registry.ts';
-import type { ToolDef } from '../types.ts';
+import { tools } from '../tools/tools.registry.ts';
+import type { ToolDef } from '../tools/types.ts';
 import { deepResearchToolDef } from './index.ts';
 
 describe('deep-research ToolDef', () => {

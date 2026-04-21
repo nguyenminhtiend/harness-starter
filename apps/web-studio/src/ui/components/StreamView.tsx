@@ -203,7 +203,7 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
 });
 
 interface StreamViewProps {
-  events: UIEvent[];
+  events: readonly UIEvent[];
   status: SessionStatus | 'idle';
   onRetry?: () => void;
   report?: string | undefined;

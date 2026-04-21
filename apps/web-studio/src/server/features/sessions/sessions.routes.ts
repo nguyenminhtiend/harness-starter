@@ -8,8 +8,8 @@ import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { createRunBroadcast, type RunBroadcast } from '../../infra/broadcast.ts';
 import { parseJsonBody } from '../../infra/parse-body.ts';
+import { ResearchPlan } from '../deep-research/schemas/plan.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
-import { ResearchPlan } from '../tools/deep-research/schemas/plan.ts';
 import { type SessionDeps, startSession } from './sessions.runner.ts';
 
 export interface SessionsRouteDeps {
@@ -104,8 +104,8 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
 
       void (async () => {
         try {
-          for await (const event of handle.events) {
-            broadcast.push(event);
+          for await (const ev of handle.events) {
+            broadcast.push(ev);
           }
         } finally {
           broadcast.done();
@@ -153,11 +153,14 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
     const active = activeSessions.get(sessionId);
 
     if (active) {
-      const sub = active.broadcast.subscribe();
+      const lastEventId = c.req.header('Last-Event-ID');
+      const fromSeq = lastEventId ? Number.parseInt(lastEventId, 10) + 1 : 0;
+      const sub = active.broadcast.subscribe(Number.isNaN(fromSeq) ? 0 : fromSeq);
       return streamSSE(c, async (stream) => {
-        for await (const event of sub) {
+        for await (const { seq, event } of sub) {
           await stream.writeSSE({
             event: 'event',
+            id: String(seq),
             data: JSON.stringify(event),
           });
         }
@@ -171,17 +174,24 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
     }
 
     const storedEvents = sessionStore.getEvents(sessionId);
+    const lastEventId = c.req.header('Last-Event-ID');
+    const replayFrom = lastEventId ? Number.parseInt(lastEventId, 10) + 1 : 0;
     return streamSSE(c, async (stream) => {
+      let seq = 0;
       for (const stored of storedEvents) {
-        await stream.writeSSE({
-          event: 'event',
-          data: JSON.stringify({
-            type: stored.type,
-            ts: stored.ts,
-            runId: sessionId,
-            ...stored.payload,
-          }),
-        });
+        if (seq >= (Number.isNaN(replayFrom) ? 0 : replayFrom)) {
+          await stream.writeSSE({
+            event: 'event',
+            id: String(seq),
+            data: JSON.stringify({
+              type: stored.type,
+              ts: stored.ts,
+              runId: sessionId,
+              ...stored.payload,
+            }),
+          });
+        }
+        seq++;
       }
       await stream.writeSSE({ event: 'done', data: '{}' });
     });

@@ -3,8 +3,9 @@ import type { UIEvent } from '../../shared/events.ts';
 export interface RunBroadcast {
   push(event: UIEvent): void;
   done(): void;
-  subscribe(): AsyncIterable<UIEvent>;
+  subscribe(fromSeq?: number): AsyncIterable<{ seq: number; event: UIEvent }>;
   readonly finished: boolean;
+  readonly length: number;
 }
 
 export function createRunBroadcast(): RunBroadcast {
@@ -23,6 +24,10 @@ export function createRunBroadcast(): RunBroadcast {
       return finished;
     },
 
+    get length() {
+      return buffer.length;
+    },
+
     push(event) {
       if (finished) {
         return;
@@ -36,8 +41,8 @@ export function createRunBroadcast(): RunBroadcast {
       notify();
     },
 
-    subscribe(): AsyncIterable<UIEvent> {
-      let cursor = 0;
+    subscribe(fromSeq = 0): AsyncIterable<{ seq: number; event: UIEvent }> {
+      let cursor = Math.max(0, fromSeq);
       return {
         [Symbol.asyncIterator]() {
           return {
@@ -48,10 +53,11 @@ export function createRunBroadcast(): RunBroadcast {
                 });
               }
               if (cursor < buffer.length) {
-                const value = buffer[cursor];
+                const event = buffer[cursor];
+                const seq = cursor;
                 cursor++;
-                if (value) {
-                  return { done: false, value };
+                if (event) {
+                  return { done: false, value: { seq, event } };
                 }
               }
               return { done: true, value: undefined };

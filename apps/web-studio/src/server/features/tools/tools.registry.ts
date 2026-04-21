@@ -1,4 +1,4 @@
-import { deepResearchToolDef } from './deep-research/index.ts';
+import { deepResearchToolDef } from '../deep-research/index.ts';
 import type { ToolDef } from './types.ts';
 
 export const tools: Record<string, ToolDef> = {
