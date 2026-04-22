@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug cli-chat",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/cli-chat/src/index.ts",
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": false,
+      "watchMode": false,
+      "internalConsoleOptions": "neverOpen",
+      "env": {}
+    },
+    {
+      "name": "Debug cli-chat (stop on entry)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/cli-chat/src/index.ts",
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": true,
+      "watchMode": false,
+      "internalConsoleOptions": "neverOpen",
+      "env": {}
+    },
+    {
+      "name": "Debug web-studio server",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/web-studio/src/server/index.ts",
+      "cwd": "${workspaceFolder}/apps/web-studio",
+      "stopOnEntry": false,
+      "watchMode": false,
+      "internalConsoleOptions": "neverOpen",
+      "env": {}
+    },
+    {
+      "name": "Debug web-studio server (stop on entry)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/web-studio/src/server/index.ts",
+      "cwd": "${workspaceFolder}/apps/web-studio",
+      "stopOnEntry": true,
+      "watchMode": false,
+      "internalConsoleOptions": "neverOpen",
+      "env": {}
+    }
+  ]
+}
