@@ -1,4 +1,4 @@
-import type { RunState } from '@harness/agent';
+import type { ConversationStore, RunState } from '@harness/agent';
 import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
 import { createEventBus } from '@harness/core';
 import type { ApprovalStore, HitlSessionStore } from '@harness/hitl';
@@ -18,6 +18,7 @@ export interface SessionDeps {
   settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
+  conversationStores?: Map<string, ConversationStore>;
 }
 
 function isPausedAtPlanApproval(saved: RunState | null): boolean {
@@ -72,7 +73,19 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
   const mergedSettings = resolveSettings(toolId, settingsStore, settings);
   const modelSpec = (mergedSettings.model as string) ?? 'google:gemini-2.5-flash';
   const provider = createProvider(providerKeys, modelSpec);
-  const store = inMemoryStore();
+
+  let store: ConversationStore;
+  if (ctx.conversationId && deps.conversationStores) {
+    const existing = deps.conversationStores.get(ctx.conversationId);
+    if (existing) {
+      store = existing;
+    } else {
+      store = inMemoryStore();
+      deps.conversationStores.set(ctx.conversationId, store);
+    }
+  } else {
+    store = inMemoryStore();
+  }
   const checkpointer = inMemoryCheckpointer();
   const bus = createEventBus();
 

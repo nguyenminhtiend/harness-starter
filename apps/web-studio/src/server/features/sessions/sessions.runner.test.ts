@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import type { ConversationStore } from '@harness/agent';
 import { createApprovalStore, createHitlSessionStore } from '@harness/hitl';
 import { parseModelSpec } from '@harness/llm-adapter';
 import type { UIEvent } from '@harness/session-events';
 import { createSessionStore, type SessionStore } from '@harness/session-store';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
+import type { SessionDeps } from './sessions.runner.ts';
 import { startSession } from './sessions.runner.ts';
 
 let db: Database;
@@ -173,5 +175,55 @@ describe('startSession', () => {
 
     const storedEvents = sessionStore.getEvents('s3');
     expect(storedEvents.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('sessions with same conversationId share a ConversationStore', async () => {
+    const convId = crypto.randomUUID();
+    const conversationStores = new Map<string, ConversationStore>();
+    const deps: SessionDeps = { ...makeDeps(), conversationStores };
+
+    const ac1 = new AbortController();
+    const h1 = startSession(
+      {
+        ...makeSessionCtx({ sessionId: 'c1', signal: ac1.signal, abortController: ac1 }),
+        conversationId: convId,
+      },
+      deps,
+    );
+    ac1.abort();
+    await collectEvents(h1.events);
+
+    expect(conversationStores.size).toBe(1);
+    expect(conversationStores.has(convId)).toBe(true);
+    const store1 = conversationStores.get(convId);
+
+    const ac2 = new AbortController();
+    const h2 = startSession(
+      {
+        ...makeSessionCtx({ sessionId: 'c2', signal: ac2.signal, abortController: ac2 }),
+        conversationId: convId,
+      },
+      deps,
+    );
+    ac2.abort();
+    await collectEvents(h2.events);
+
+    expect(conversationStores.size).toBe(1);
+    expect(conversationStores.get(convId)).toBe(store1);
+  });
+
+  it('sessions without conversationId get independent stores', async () => {
+    const conversationStores = new Map<string, ConversationStore>();
+    const deps: SessionDeps = { ...makeDeps(), conversationStores };
+
+    const ac1 = new AbortController();
+    const h1 = startSession(
+      makeSessionCtx({ sessionId: 'i1', signal: ac1.signal, abortController: ac1 }),
+      deps,
+    );
+    ac1.abort();
+    await collectEvents(h1.events);
+
+    expect(conversationStores.size).toBe(0);
   });
 });

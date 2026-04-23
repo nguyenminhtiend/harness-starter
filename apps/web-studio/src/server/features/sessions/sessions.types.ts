@@ -7,6 +7,7 @@ export interface SessionContext {
   question: string;
   settings: Record<string, unknown>;
   resumeSessionId?: string;
+  conversationId?: string;
   signal: AbortSignal;
   abortController: AbortController;
   providerKeys: ProviderKeys;

@@ -1,4 +1,4 @@
-import type { Checkpointer } from '@harness/agent';
+import type { Checkpointer, ConversationStore } from '@harness/agent';
 import type { ApprovalDecision, ApprovalStore, HitlSessionStore } from '@harness/hitl';
 import type { ProviderKeys } from '@harness/llm-adapter';
 import type { UIEvent } from '@harness/session-events';
@@ -30,6 +30,13 @@ const CreateSessionBody = z.object({
     .optional()
     .describe(
       'Reserved for future checkpoint resume. When implemented, this will load graph state from the referenced session. Currently accepted but ignored.',
+    ),
+  conversationId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      'Shared conversation ID for multi-turn chat. Sessions with the same ID share memory.',
     ),
 });
 
@@ -67,11 +74,14 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
   const activeSessions = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
   const inflight = new Set<string>();
 
+  const conversationStores = new Map<string, ConversationStore>();
+
   const sessionDeps: SessionDeps = {
     sessionStore,
     settingsStore,
     approvalStore,
     hitlSessionStore,
+    conversationStores,
   };
 
   routes.post('/', async (c) => {
@@ -80,7 +90,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
       return result.response;
     }
 
-    const { toolId, question, settings, resumeSessionId } = result.data;
+    const { toolId, question, settings, resumeSessionId, conversationId } = result.data;
     const sessionId = crypto.randomUUID();
     const ac = new AbortController();
 
@@ -92,6 +102,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
           question,
           settings,
           ...(resumeSessionId !== undefined ? { resumeSessionId } : {}),
+          ...(conversationId !== undefined ? { conversationId } : {}),
           signal: ac.signal,
           abortController: ac,
           providerKeys: getProviderKeys(),
