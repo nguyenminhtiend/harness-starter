@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@harness/agents": "workspace:*",
-    "@harness/tools-mastra": "workspace:*",
+    "@harness/tools": "workspace:*",
     "@mastra/core": "1.27.0",
     "zod": "^4.0.0"
   },

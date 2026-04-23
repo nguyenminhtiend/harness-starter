@@ -1,4 +1,4 @@
-import { calculatorTool, getTimeTool } from '@harness/tools-mastra';
+import { calculatorTool, getTimeTool } from '@harness/tools';
 import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import type { MastraMemory } from '@mastra/core/memory';

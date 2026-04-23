@@ -3,12 +3,12 @@ import type { ApprovalDecision, ApprovalStore, HitlSessionStore } from '@harness
 import type { ProviderKeys } from '@harness/llm-adapter';
 import type { UIEvent } from '@harness/session-events';
 import type { SessionStore } from '@harness/session-store';
+import { ResearchPlan } from '@harness/workflows';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { createRunBroadcast, type RunBroadcast } from '../../infra/broadcast.ts';
 import { parseJsonBody } from '../../infra/parse-body.ts';
-import { ResearchPlan } from '../deep-research/schemas/plan.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { type SessionDeps, startSession } from './sessions.runner.ts';
 

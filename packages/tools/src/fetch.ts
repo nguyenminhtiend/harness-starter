@@ -1,25 +1,15 @@
-import type { Tool, ToolContext } from '@harness/agent';
-import { tool } from '@harness/agent';
-import { assertNotAborted, ToolError } from '@harness/core';
+import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-
-/**
- * Known v1 limitation: this tool does not resolve hostnames to IPs before policy
- * checks, so DNS rebinding could theoretically bypass hostname allow/deny lists.
- * For untrusted agents, prefer deny-listing private IP ranges at the network layer.
- */
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_REDIRECTS = 5;
 
-const parameters = z.object({
+const inputSchema = z.object({
   url: z.string().url(),
-  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']).default('GET'),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']).optional(),
   headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
 });
-
-type FetchArgs = z.infer<typeof parameters>;
 
 export type FetchUrlPolicy = {
   allow?: (string | RegExp)[];
@@ -55,23 +45,20 @@ function isPrivateHost(hostname: string): boolean {
   return PRIVATE_IP_PATTERNS.some((p) => p.test(hostname));
 }
 
-/** Exported for unit tests of URL policy matching. */
 export function assertUrlAllowed(urlString: string, policy: FetchUrlPolicy): void {
   let parsed: URL;
   try {
     parsed = new URL(urlString);
   } catch {
-    throw new ToolError(`Invalid URL: ${urlString}`, { toolName: 'fetch' });
+    throw new Error(`Invalid URL: ${urlString}`);
   }
 
   if (!ALLOWED_SCHEMES.has(parsed.protocol)) {
-    throw new ToolError(`URL scheme not allowed: ${parsed.protocol}`, { toolName: 'fetch' });
+    throw new Error(`URL scheme not allowed: ${parsed.protocol}`);
   }
 
   if (isPrivateHost(parsed.hostname)) {
-    throw new ToolError(`URL targets a private/reserved address: ${parsed.hostname}`, {
-      toolName: 'fetch',
-    });
+    throw new Error(`URL targets a private/reserved address: ${parsed.hostname}`);
   }
 
   const { allow, deny } = policy;
@@ -79,14 +66,14 @@ export function assertUrlAllowed(urlString: string, policy: FetchUrlPolicy): voi
   if (allow != null && allow.length > 0) {
     const ok = allow.some((entry) => matchesEntry(urlString, parsed.hostname, entry));
     if (!ok) {
-      throw new ToolError(`URL not allowed by policy: ${urlString}`, { toolName: 'fetch' });
+      throw new Error(`URL not allowed by policy: ${urlString}`);
     }
   }
 
   if (deny != null) {
     for (const entry of deny) {
       if (matchesEntry(urlString, parsed.hostname, entry)) {
-        throw new ToolError(`URL denied by policy: ${urlString}`, { toolName: 'fetch' });
+        throw new Error(`URL denied by policy: ${urlString}`);
       }
     }
   }
@@ -147,9 +134,6 @@ function applyRedirectMethod(
   if (status === 307 || status === 308) {
     return { method: priorMethod, body: priorBody };
   }
-  if (status === 303) {
-    return { method: 'GET', body: undefined };
-  }
   return { method: 'GET', body: undefined };
 }
 
@@ -158,7 +142,6 @@ async function fetchWithRedirectPolicy(
   startMethod: string,
   startHeaders: Record<string, string> | undefined,
   startBody: string | undefined,
-  ctx: ToolContext,
   policy: FetchUrlPolicy,
   fetchImpl: typeof fetch,
 ): Promise<Response> {
@@ -172,7 +155,6 @@ async function fetchWithRedirectPolicy(
 
     const init: RequestInit = {
       method,
-      signal: ctx.signal,
       redirect: 'manual',
     };
     if (startHeaders !== undefined) {
@@ -186,7 +168,7 @@ async function fetchWithRedirectPolicy(
     const loc = res.headers.get('Location');
     if (res.status >= 300 && res.status < 400 && loc != null) {
       if (redirects >= MAX_REDIRECTS) {
-        throw new ToolError(`Too many redirects (max ${MAX_REDIRECTS})`, { toolName: 'fetch' });
+        throw new Error(`Too many redirects (max ${MAX_REDIRECTS})`);
       }
       const nextUrl = new URL(loc, res.url || currentUrl).href;
       assertUrlAllowed(nextUrl, policy);
@@ -202,22 +184,19 @@ async function fetchWithRedirectPolicy(
   }
 }
 
-export function fetchTool(opts?: FetchUrlPolicy): Tool<FetchArgs, string> {
+export function fetchTool(opts?: FetchUrlPolicy) {
   const policy: FetchUrlPolicy = opts ?? {};
 
-  return tool({
-    name: 'fetch',
+  return createTool({
+    id: 'fetch',
     description: 'HTTP fetch with URL policy, manual redirects (max 5), and 1MB body cap.',
-    parameters,
-    execute: async (args, ctx) => {
-      assertNotAborted(ctx.signal);
-
+    inputSchema,
+    execute: async (args) => {
       const res = await fetchWithRedirectPolicy(
         args.url,
-        args.method,
+        args.method ?? 'GET',
         args.headers,
         args.body,
-        ctx,
         policy,
         globalThis.fetch,
       );

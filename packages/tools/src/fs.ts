@@ -1,9 +1,7 @@
 import type { Dirent, Stats } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Tool, ToolContext } from '@harness/agent';
-import { tool } from '@harness/agent';
-import { assertNotAborted, ToolError } from '@harness/core';
+import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 const MAX_READ_BYTES = 1024 * 1024;
@@ -25,7 +23,7 @@ const listOp = z.object({
   path: z.string(),
 });
 
-function fsParams(mode: 'ro' | 'rw') {
+function fsSchema(mode: 'ro' | 'rw') {
   if (mode === 'rw') {
     return z.discriminatedUnion('operation', [readOp, writeOp, listOp]);
   }
@@ -38,7 +36,7 @@ function isInsideRoot(rootReal: string, resolvedPath: string): boolean {
 }
 
 function throwFs(message: string, cause?: unknown): never {
-  throw new ToolError(message, { toolName: 'fs', cause });
+  throw new Error(message, { cause });
 }
 
 async function workspaceRealpath(workspaceResolved: string): Promise<string> {
@@ -109,28 +107,22 @@ async function assertWritePathAllowed(
   return targetResolved;
 }
 
-export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
+export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }) {
   const mode = opts.mode ?? 'ro';
-  const parameters = fsParams(mode);
+  const inputSchema = fsSchema(mode);
 
-  return tool({
-    name: 'fs',
+  return createTool({
+    id: 'fs',
     description:
       mode === 'rw'
         ? 'Read, write, or list files under the workspace directory.'
         : 'Read or list files under the workspace directory (read-only).',
-    parameters,
-    async execute(
-      args: z.infer<typeof parameters>,
-      ctx: ToolContext,
-    ): Promise<string | { ok: true }> {
-      assertNotAborted(ctx.signal);
-
+    inputSchema,
+    execute: async (args) => {
       const workspaceResolved = path.resolve(opts.workspace);
       const workspaceReal = await workspaceRealpath(workspaceResolved);
 
       if (args.operation === 'read') {
-        assertNotAborted(ctx.signal);
         const realPath = await resolveExistingInWorkspace(
           workspaceResolved,
           workspaceReal,
@@ -148,9 +140,6 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
         if (st.size > MAX_READ_BYTES) {
           throwFs(`File exceeds maximum read size of ${MAX_READ_BYTES} bytes`);
         }
-        // Note: TOCTOU gap — file may grow between stat and read. The size
-        // check is best-effort; a concurrent writer could exceed MAX_READ_BYTES.
-        assertNotAborted(ctx.signal);
         try {
           return await readFile(realPath, 'utf8');
         } catch (e) {
@@ -159,7 +148,6 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
       }
 
       if (args.operation === 'list') {
-        assertNotAborted(ctx.signal);
         const realPath = await resolveExistingInWorkspace(
           workspaceResolved,
           workspaceReal,
@@ -174,7 +162,6 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
         if (!st.isDirectory()) {
           throwFs('Path is not a directory');
         }
-        assertNotAborted(ctx.signal);
         let dents: Dirent[];
         try {
           dents = await readdir(realPath, { withFileTypes: true });
@@ -183,44 +170,40 @@ export function fsTool(opts: { workspace: string; mode?: 'ro' | 'rw' }): Tool {
         }
         const truncated = dents.length > MAX_LIST_ENTRIES;
         const limited = truncated ? dents.slice(0, MAX_LIST_ENTRIES) : dents;
-        const entries: { name: string; type: 'file' | 'directory' | 'symlink' | 'other' }[] =
-          limited.map((d) => ({
-            name: d.name,
-            type: d.isDirectory()
-              ? 'directory'
-              : d.isFile()
-                ? 'file'
-                : d.isSymbolicLink()
-                  ? 'symlink'
-                  : 'other',
-          }));
+        const entries = limited.map((d) => ({
+          name: d.name,
+          type: d.isDirectory()
+            ? 'directory'
+            : d.isFile()
+              ? 'file'
+              : d.isSymbolicLink()
+                ? 'symlink'
+                : 'other',
+        }));
         return JSON.stringify({ entries, truncated, total: dents.length });
       }
 
       if (mode === 'rw' && args.operation === 'write') {
-        assertNotAborted(ctx.signal);
         const targetResolved = await assertWritePathAllowed(
           workspaceResolved,
           workspaceReal,
           args.path,
         );
         const parent = path.dirname(targetResolved);
-        assertNotAborted(ctx.signal);
         try {
           await mkdir(parent, { recursive: true });
         } catch (e) {
           throwFs('Failed to create parent directories', e);
         }
-        assertNotAborted(ctx.signal);
         try {
           await writeFile(targetResolved, args.content, 'utf8');
         } catch (e) {
           throwFs('Failed to write file', e);
         }
-        return { ok: true };
+        return JSON.stringify({ ok: true });
       }
 
       throwFs('Unsupported operation');
     },
-  }) as Tool;
+  });
 }

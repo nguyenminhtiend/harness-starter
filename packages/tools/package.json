@@ -11,8 +11,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@harness/agent": "workspace:*",
-    "@harness/core": "workspace:*",
+    "@mastra/core": "1.27.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

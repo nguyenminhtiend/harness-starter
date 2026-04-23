@@ -21,7 +21,6 @@
     "@harness/session-events": "workspace:*",
     "@harness/session-store": "workspace:*",
     "@harness/tools": "workspace:*",
-    "@harness/tools-mastra": "workspace:*",
     "@harness/workflows": "workspace:*",
     "@mastra/core": "1.27.0",
     "@mastra/libsql": "1.9.0",
@@ -33,10 +32,7 @@
     "react-markdown": "^10.0.0",
     "zod": "^4.0.0"
   },
-  "optionalDependencies": {
-    "@harness/mcp": "workspace:*",
-    "@harness/memory-sqlite": "workspace:*"
-  },
+  "optionalDependencies": {},
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.0.0",

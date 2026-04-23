@@ -1,12 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test';
-import { ToolError } from '@harness/core';
 import { assertUrlAllowed, fetchTool } from './fetch.ts';
-
-const ctx = (signal: AbortSignal) => ({
-  runId: 'r1',
-  conversationId: 'c1',
-  signal,
-});
 
 describe('assertUrlAllowed (URL matching)', () => {
   test('allowed hostname string matches → permitted', () => {
@@ -15,13 +8,15 @@ describe('assertUrlAllowed (URL matching)', () => {
     ).not.toThrow();
   });
 
-  test('denied hostname string → ToolError', () => {
-    expect(() => assertUrlAllowed('https://evil.com/', { deny: ['evil.com'] })).toThrow(ToolError);
+  test('denied hostname string → throws', () => {
+    expect(() => assertUrlAllowed('https://evil.com/', { deny: ['evil.com'] })).toThrow(
+      'denied by policy',
+    );
   });
 
-  test('URL not in allow list → ToolError', () => {
+  test('URL not in allow list → throws', () => {
     expect(() => assertUrlAllowed('https://other.com/', { allow: ['example.com'] })).toThrow(
-      ToolError,
+      'not allowed',
     );
   });
 
@@ -31,7 +26,7 @@ describe('assertUrlAllowed (URL matching)', () => {
         allow: ['example.com'],
         deny: ['example.com'],
       }),
-    ).toThrow(ToolError);
+    ).toThrow('denied by policy');
   });
 
   test('RegExp matches against full URL string', () => {
@@ -40,12 +35,21 @@ describe('assertUrlAllowed (URL matching)', () => {
     ).not.toThrow();
     expect(() =>
       assertUrlAllowed('https://a.com/other', { allow: [/^https:\/\/a\.com\/api\//] }),
-    ).toThrow(ToolError);
+    ).toThrow('not allowed');
   });
 
   test('no allow/deny → all URLs permitted', () => {
     expect(() => assertUrlAllowed('https://anywhere.test/foo', {})).not.toThrow();
     expect(() => assertUrlAllowed('https://elsewhere.test/', {})).not.toThrow();
+  });
+
+  test('private hosts are blocked', () => {
+    expect(() => assertUrlAllowed('https://localhost/x', {})).toThrow('private');
+    expect(() => assertUrlAllowed('https://127.0.0.1/x', {})).toThrow('private');
+  });
+
+  test('non-http schemes are blocked', () => {
+    expect(() => assertUrlAllowed('ftp://example.com/', {})).toThrow('scheme');
   });
 });
 
@@ -61,11 +65,8 @@ describe('fetchTool.execute', () => {
 
     try {
       const tool = fetchTool();
-      const out = await tool.execute(
-        { url: 'https://example.com/' },
-        ctx(new AbortController().signal),
-      );
-      const parsed = JSON.parse(out) as {
+      const out = await tool.execute({ url: 'https://example.com/' }, {});
+      const parsed = JSON.parse(out as string) as {
         status: number;
         headers: Record<string, string>;
         body: string;
@@ -77,24 +78,6 @@ describe('fetchTool.execute', () => {
       globalThis.fetch = originalFetch;
     }
   });
-
-  test('AbortSignal: already-aborted throws before fetching', async () => {
-    const originalFetch = globalThis.fetch;
-    const fetchMock = mock(async () => new Response('no'));
-    globalThis.fetch = fetchMock as typeof fetch;
-
-    try {
-      const ac = new AbortController();
-      ac.abort();
-      const tool = fetchTool();
-      await expect(tool.execute({ url: 'https://example.com/' }, ctx(ac.signal))).rejects.toThrow(
-        'aborted',
-      );
-      expect(fetchMock).not.toHaveBeenCalled();
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
 });
 
 describe('redirect handling', () => {
@@ -102,7 +85,7 @@ describe('redirect handling', () => {
     const originalFetch = globalThis.fetch;
     let call = 0;
     globalThis.fetch = mock(async (input) => {
-      const u = typeof input === 'string' ? input : input.url;
+      const u = typeof input === 'string' ? input : (input as Request).url;
       call++;
       if (call === 1) {
         expect(u).toBe('https://a.com/start');
@@ -117,11 +100,8 @@ describe('redirect handling', () => {
 
     try {
       const tool = fetchTool({ allow: ['a.com', 'b.com'] });
-      const out = await tool.execute(
-        { url: 'https://a.com/start' },
-        ctx(new AbortController().signal),
-      );
-      const parsed = JSON.parse(out) as { status: number; body: string };
+      const out = await tool.execute({ url: 'https://a.com/start' }, {});
+      const parsed = JSON.parse(out as string) as { status: number; body: string };
       expect(parsed.status).toBe(200);
       expect(parsed.body).toBe('final');
       expect(call).toBe(2);
@@ -130,7 +110,7 @@ describe('redirect handling', () => {
     }
   });
 
-  test('redirect to disallowed host → ToolError', async () => {
+  test('redirect to disallowed host → throws', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async () => {
       return new Response(null, {
@@ -141,18 +121,18 @@ describe('redirect handling', () => {
 
     try {
       const tool = fetchTool({ allow: ['safe.com'] });
-      await expect(
-        tool.execute({ url: 'https://safe.com/here' }, ctx(new AbortController().signal)),
-      ).rejects.toThrow(ToolError);
+      await expect(tool.execute({ url: 'https://safe.com/here' }, {})).rejects.toThrow(
+        'not allowed',
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 
-  test('redirect chain exceeding max depth → ToolError', async () => {
+  test('redirect chain exceeding max depth → throws', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async (input) => {
-      const u = typeof input === 'string' ? input : input.url;
+      const u = typeof input === 'string' ? input : (input as Request).url;
       return new Response(null, {
         status: 302,
         headers: { Location: `${u}?n=1` },
@@ -161,24 +141,11 @@ describe('redirect handling', () => {
 
     try {
       const tool = fetchTool({ allow: ['example.com'] });
-      await expect(
-        tool.execute({ url: 'https://example.com/loop' }, ctx(new AbortController().signal)),
-      ).rejects.toThrow(/Too many redirects/);
+      await expect(tool.execute({ url: 'https://example.com/loop' }, {})).rejects.toThrow(
+        /Too many redirects/,
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
-  });
-});
-
-describe('optional live fetch', () => {
-  test.skipIf(!process.env.HARNESS_FETCH_LIVE)('live GET (set HARNESS_FETCH_LIVE=1)', async () => {
-    const tool = fetchTool();
-    const out = await tool.execute(
-      { url: 'https://httpbin.org/get', method: 'GET' },
-      ctx(new AbortController().signal),
-    );
-    const parsed = JSON.parse(out) as { status: number; body: string };
-    expect(parsed.status).toBe(200);
-    expect(parsed.body.length).toBeGreaterThan(0);
   });
 });

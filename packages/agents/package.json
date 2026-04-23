@@ -12,7 +12,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@harness/tools-mastra": "workspace:*",
+    "@harness/tools": "workspace:*",
     "@mastra/core": "1.27.0",
     "@mastra/libsql": "1.9.0",
     "@mastra/memory": "1.17.0",

@@ -8,18 +8,17 @@
     "apps/*"
   ],
   "scripts": {
-    "chat": "bun run --filter @harness/example-cli-chat dev",
-    "research": "bun run --filter @harness/example-deep-research dev --",
     "web": "bun run --filter @harness/example-web-studio dev",
     "web:server": "bun run --filter @harness/example-web-studio dev:server",
     "web:ui": "bun run --filter @harness/example-web-studio dev:ui",
     "server": "bun run --filter @harness/example-http-server dev",
+    "mastra:dev": "bunx mastra dev --config mastra.config.ts",
+    "mastra:build": "bunx mastra build --config mastra.config.ts",
     "build": "bun run --filter '*' build",
     "test": "bun test",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "eval": "bun run --filter @harness/cli dev -- eval",
     "ci": "bun run lint && bun run typecheck && bun run build && bun test",
     "prepare": "lefthook install"
   },
