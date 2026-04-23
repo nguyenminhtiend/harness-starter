@@ -7,10 +7,12 @@ import { consoleSink } from '@harness/observability';
 import type { LlmMessage, UIEvent } from '@harness/session-events';
 import { agentEventToUIEvents } from '@harness/session-events';
 import type { SessionStore } from '@harness/session-store';
+import type { MastraMemory } from '@mastra/core/memory';
+import { type AccUsage, mastraChunkToUIEvents } from '../../infra/mastra-events.ts';
 import { resolveSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { tools as registry } from '../tools/tools.registry.ts';
-import type { ToolDef } from '../tools/types.ts';
+import { isMastraToolDef, type MastraToolDef, type ToolDef } from '../tools/types.ts';
 import type { SessionContext, SessionHandle } from './sessions.types.ts';
 
 export interface SessionDeps {
@@ -19,6 +21,7 @@ export interface SessionDeps {
   approvalStore: ApprovalStore;
   hitlSessionStore: HitlSessionStore;
   conversationStores?: Map<string, ConversationStore>;
+  mastraMemory?: MastraMemory;
 }
 
 function isPausedAtPlanApproval(saved: RunState | null): boolean {
@@ -61,16 +64,161 @@ function toResultString(result: unknown): string {
   }
 }
 
+function emitSessionError(
+  sessionStore: SessionStore,
+  sessionId: string,
+  err: unknown,
+  signal: AbortSignal,
+): { errorEvent: UIEvent; statusEvent: UIEvent } {
+  const isAbort = (err as Error).name === 'AbortError' || signal.aborted;
+  const status = isAbort ? 'cancelled' : 'failed';
+  const message = isAbort ? 'Session cancelled' : ((err as Error).message ?? 'Unknown error');
+
+  try {
+    sessionStore.updateSession(sessionId, {
+      status,
+      finishedAt: new Date().toISOString(),
+    });
+  } catch (_dbErr) {
+    // DB may be unavailable during cleanup
+  }
+
+  const errorEvent: UIEvent = {
+    type: 'error',
+    ts: Date.now(),
+    runId: sessionId,
+    message,
+    code: isAbort ? 'CANCELLED' : 'RUNTIME_ERROR',
+  };
+  try {
+    sessionStore.appendEvent(sessionId, errorEvent);
+  } catch (_dbErr) {
+    // DB may be unavailable during cleanup
+  }
+
+  return {
+    errorEvent,
+    statusEvent: { type: 'status', status, ts: Date.now(), runId: sessionId },
+  };
+}
+
 export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHandle {
-  const { sessionId, toolId, question, settings, signal, abortController, providerKeys } = ctx;
-  const { sessionStore, settingsStore, approvalStore, hitlSessionStore } = deps;
+  const { toolId } = ctx;
 
   const toolDef = registry[toolId] as ToolDef | undefined;
   if (!toolDef) {
     throw new Error(`Unknown tool: ${toolId}`);
   }
 
-  const mergedSettings = resolveSettings(toolId, settingsStore, settings);
+  if (isMastraToolDef(toolDef)) {
+    return startMastraSession(ctx, deps, toolDef);
+  }
+
+  return startHarnessSession(ctx, deps, toolDef);
+}
+
+function startMastraSession(
+  ctx: SessionContext,
+  deps: SessionDeps,
+  toolDef: MastraToolDef,
+): SessionHandle {
+  const { sessionId, question, settings, signal } = ctx;
+  const { sessionStore, settingsStore } = deps;
+
+  const mergedSettings = resolveSettings(ctx.toolId, settingsStore, settings);
+  const parsedSettings = toolDef.settingsSchema.parse(mergedSettings);
+
+  const agent = toolDef.createAgent(parsedSettings, {
+    ...(deps.mastraMemory ? { memory: deps.mastraMemory } : {}),
+  });
+
+  sessionStore.createSession({
+    id: sessionId,
+    toolId: ctx.toolId,
+    question,
+    status: 'running',
+    ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
+  });
+  sessionStore.appendEvent(sessionId, {
+    type: 'status',
+    status: 'running',
+    ts: Date.now(),
+    runId: sessionId,
+  });
+
+  const accUsage: AccUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+
+  async function* generate(): AsyncGenerator<UIEvent> {
+    try {
+      if (signal.aborted) {
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }
+
+      const threadId = ctx.conversationId ?? sessionId;
+      const memoryOpt = deps.mastraMemory
+        ? { memory: { thread: threadId, resource: 'web-studio' } }
+        : {};
+
+      const output = await agent.stream(question, {
+        ...memoryOpt,
+        abortSignal: signal,
+        maxSteps: (parsedSettings as { maxTurns?: number }).maxTurns ?? 5,
+      });
+
+      const reader = output.fullStream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          const chunk = value as { type: string; payload?: Record<string, unknown> };
+          const uiEvents = mastraChunkToUIEvents(chunk, sessionId, accUsage);
+          for (const ev of uiEvents) {
+            sessionStore.appendEvent(sessionId, ev);
+            yield ev;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      const totalTokens = accUsage.inputTokens + accUsage.outputTokens;
+      sessionStore.updateSession(sessionId, {
+        status: 'completed',
+        finishedAt: new Date().toISOString(),
+      });
+
+      const completeEvent: UIEvent = {
+        type: 'complete',
+        ts: Date.now(),
+        runId: sessionId,
+        totalTokens,
+        totalCostUsd: accUsage.costUsd,
+      };
+      sessionStore.appendEvent(sessionId, completeEvent);
+      yield completeEvent;
+
+      yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
+    } catch (err) {
+      const { errorEvent, statusEvent } = emitSessionError(sessionStore, sessionId, err, signal);
+      yield errorEvent;
+      yield statusEvent;
+    }
+  }
+
+  return { sessionId, events: generate() };
+}
+
+function startHarnessSession(
+  ctx: SessionContext,
+  deps: SessionDeps,
+  toolDef: ToolDef,
+): SessionHandle {
+  const { sessionId, question, settings, signal, abortController, providerKeys } = ctx;
+  const { sessionStore, settingsStore, approvalStore, hitlSessionStore } = deps;
+
+  const mergedSettings = resolveSettings(ctx.toolId, settingsStore, settings);
   const modelSpec = (mergedSettings.model as string) ?? 'google:gemini-2.5-flash';
   const provider = createProvider(providerKeys, modelSpec);
 
@@ -99,6 +247,10 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
     pendingBusEvents.push(ev);
   }
 
+  if (!('buildAgent' in toolDef)) {
+    throw new Error(`Tool ${ctx.toolId} is not a harness tool`);
+  }
+
   const agent = toolDef.buildAgent({
     settings: parsedSettings,
     provider,
@@ -111,7 +263,7 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
 
   sessionStore.createSession({
     id: sessionId,
-    toolId,
+    toolId: ctx.toolId,
     question,
     status: 'running',
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
@@ -123,9 +275,6 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
     runId: sessionId,
   });
 
-  // Bus is session-scoped (createEventBus per session), so accept all events
-  // regardless of runId. Sub-agents generate fresh runIds that wouldn't match
-  // sessionId but they still belong to this session.
   const unsubs: (() => void)[] = [];
 
   unsubs.push(
@@ -326,34 +475,9 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
 
       yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
     } catch (err) {
-      const isAbort = (err as Error).name === 'AbortError' || signal.aborted;
-      const status = isAbort ? 'cancelled' : 'failed';
-      const message = isAbort ? 'Session cancelled' : ((err as Error).message ?? 'Unknown error');
-
-      try {
-        sessionStore.updateSession(sessionId, {
-          status,
-          finishedAt: new Date().toISOString(),
-        });
-      } catch (_dbErr) {
-        // DB may be unavailable during cleanup (e.g. connection closed)
-      }
-
-      const errorEvent: UIEvent = {
-        type: 'error',
-        ts: Date.now(),
-        runId: sessionId,
-        message,
-        code: isAbort ? 'CANCELLED' : 'RUNTIME_ERROR',
-      };
-      try {
-        sessionStore.appendEvent(sessionId, errorEvent);
-      } catch (_dbErr) {
-        // DB may be unavailable during cleanup
-      }
+      const { errorEvent, statusEvent } = emitSessionError(sessionStore, sessionId, err, signal);
       yield errorEvent;
-
-      yield { type: 'status', status, ts: Date.now(), runId: sessionId };
+      yield statusEvent;
     } finally {
       unsubConsole();
       for (const u of unsubs) {
