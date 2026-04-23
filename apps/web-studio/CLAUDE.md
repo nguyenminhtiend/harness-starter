@@ -19,6 +19,12 @@ Entry: `src/server/index.ts` (Hono). UI: `src/ui/main.tsx` (React). Shared types
 - **Settings auto-form.** Uses `z.toJSONSchema()` (Zod v4) to auto-render forms. Flat fields only in v1.
 - **Design system from `sample-ui/`.** Tokens + primitives ported as typed TSX. Inline styles.
 
+## Tools
+
+**Deep Research** — 4-node graph agent with sub-agent budgets, HITL approval, and fact-checking. Complex; useful for testing the full graph/checkpoint pipeline.
+
+**Simple Chat** (`simple-chat`) — minimal `createAgent()` with two deterministic tools: `calculator` (safe math eval) and `get_time` (IANA timezone). Multi-turn via a shared `ConversationStore` keyed by `conversationId`. Renders in `ChatView.tsx` instead of the `SessionForm`/`StreamView` pair. Good for learning or debugging the core agent loop end-to-end without graph complexity.
+
 ## Safety rails
 
 - Server binds `127.0.0.1` only, never `0.0.0.0`.
