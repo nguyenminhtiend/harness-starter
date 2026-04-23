@@ -29,6 +29,7 @@
     "@commitlint/cli": "20.5.0",
     "@commitlint/config-conventional": "20.5.0",
     "@commitlint/types": "20.5.0",
+    "ai": "6.0.168",
     "lefthook": "2.1.6",
     "mastra": "1.6.2",
     "typescript": "^5.7.0"
