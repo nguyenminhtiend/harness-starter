@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionMeta, SessionStatus } from '../shared/events.ts';
 import { api } from './api.ts';
+import { ChatView } from './components/ChatView.tsx';
 import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
 import { PlanApprovalModal } from './components/PlanApprovalModal.tsx';
 import { Badge } from './components/primitives.tsx';
@@ -128,6 +129,7 @@ export function App() {
         stream={stream}
         reportMarkdown={reportMarkdown}
         activeTool={activeTool}
+        settings={settingsQuery.data}
         onRun={mutations.handleRun}
         onStop={mutations.handleStop}
         onRetry={mutations.handleRetry}
@@ -253,6 +255,7 @@ interface MainPaneProps {
   stream: { events: readonly import('../shared/events.ts').UIEvent[] };
   reportMarkdown: string | undefined;
   activeTool: string;
+  settings?: import('../shared/settings.ts').SettingsResponse | undefined;
   onRun: () => void;
   onStop: () => void;
   onRetry: () => void;
@@ -268,10 +271,13 @@ function MainPane({
   stream,
   reportMarkdown,
   activeTool,
+  settings,
   onRun,
   onStop,
   onRetry,
 }: MainPaneProps) {
+  const isChat = activeTool === 'simple-chat';
+  const toolSettings = settings?.tools[activeTool]?.values as Record<string, unknown> | undefined;
   return (
     <div
       style={{
@@ -306,6 +312,8 @@ function MainPane({
 
       {view === 'settings' ? (
         <SettingsPanel activeTool={activeTool} />
+      ) : isChat ? (
+        <ChatView activeTool={activeTool} settings={toolSettings} model={form.model || undefined} />
       ) : showStream ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <SessionForm

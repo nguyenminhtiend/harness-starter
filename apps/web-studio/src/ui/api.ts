@@ -37,6 +37,7 @@ export const api = {
     question: string;
     settings?: Record<string, unknown>;
     resumeSessionId?: string;
+    conversationId?: string;
   }) =>
     json<{ id: string }>('/sessions', {
       method: 'POST',
