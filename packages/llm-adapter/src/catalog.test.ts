@@ -21,30 +21,34 @@ describe('knownModels', () => {
 });
 
 describe('listAvailableModels', () => {
-  it('returns empty array when no keys are configured', () => {
+  it('returns only local ollama models when no keys are configured', () => {
     const keys: ProviderKeys = {};
-    expect(listAvailableModels(keys)).toEqual([]);
+    const models = listAvailableModels(keys);
+    expect(models.every((m) => m.provider === 'ollama')).toBe(true);
   });
 
-  it('returns only google models when only google key is set', () => {
+  it('returns google + ollama models when only google key is set', () => {
     const keys: ProviderKeys = { google: 'k' };
     const models = listAvailableModels(keys);
     expect(models.length).toBeGreaterThan(0);
-    expect(models.every((m) => m.provider === 'google')).toBe(true);
+    expect(models.every((m) => m.provider === 'google' || m.provider === 'ollama')).toBe(true);
+    expect(models.some((m) => m.provider === 'google')).toBe(true);
   });
 
-  it('returns only groq models when only groq key is set', () => {
+  it('returns groq + ollama models when only groq key is set', () => {
     const keys: ProviderKeys = { groq: 'k' };
     const models = listAvailableModels(keys);
     expect(models.length).toBeGreaterThan(0);
-    expect(models.every((m) => m.provider === 'groq')).toBe(true);
+    expect(models.every((m) => m.provider === 'groq' || m.provider === 'ollama')).toBe(true);
+    expect(models.some((m) => m.provider === 'groq')).toBe(true);
   });
 
-  it('returns only openrouter models when only openrouter key is set', () => {
+  it('returns openrouter + ollama models when only openrouter key is set', () => {
     const keys: ProviderKeys = { openrouter: 'k' };
     const models = listAvailableModels(keys);
     expect(models.length).toBeGreaterThan(0);
-    expect(models.every((m) => m.provider === 'openrouter')).toBe(true);
+    expect(models.every((m) => m.provider === 'openrouter' || m.provider === 'ollama')).toBe(true);
+    expect(models.some((m) => m.provider === 'openrouter')).toBe(true);
   });
 
   it('returns models from all configured providers', () => {

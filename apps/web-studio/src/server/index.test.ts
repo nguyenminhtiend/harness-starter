@@ -172,7 +172,9 @@ describe('web-studio server', () => {
     const res = await app.request('/api/models');
     expect(res.status).toBe(200);
     const body = (await res.json()) as { models: Array<{ id: string; provider: string }> };
-    const providers = [...new Set(body.models.map((m) => m.provider))];
-    expect(providers).toEqual(['groq']);
+    const providers = new Set(body.models.map((m) => m.provider));
+    expect(providers.has('groq')).toBe(true);
+    expect(providers.has('google')).toBe(false);
+    expect(providers.has('openrouter')).toBe(false);
   });
 });
