@@ -230,6 +230,63 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
     return c.json({ error: 'Session not found or already finished' }, 404);
   });
 
+  routes.get('/conversations/list', (c) => {
+    const toolId = c.req.query('toolId');
+    const conversations = sessionStore.listConversations(toolId);
+    return c.json({ conversations });
+  });
+
+  routes.get('/conversations/:conversationId/messages', (c) => {
+    const conversationId = c.req.param('conversationId');
+    const sessions = sessionStore.getSessionsByConversation(conversationId);
+    const messages: { role: 'user' | 'assistant'; content: string; sessionId: string }[] = [];
+
+    for (const session of sessions) {
+      messages.push({ role: 'user', content: session.question, sessionId: session.id });
+
+      const events = sessionStore.getEvents(session.id);
+      let assistantText = '';
+      for (const ev of events) {
+        if (ev.type === 'writer' && typeof ev.payload.delta === 'string') {
+          assistantText += ev.payload.delta;
+        }
+        if (ev.type === 'llm' && ev.payload.phase === 'response') {
+          const msgs = ev.payload.messages;
+          if (Array.isArray(msgs)) {
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              const m = msgs[i] as { role?: string; content?: string };
+              if (m?.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
+                assistantText = m.content;
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (assistantText.trim()) {
+        messages.push({ role: 'assistant', content: assistantText, sessionId: session.id });
+      }
+    }
+
+    return c.json({ conversationId, messages });
+  });
+
+  routes.delete('/conversations/:conversationId', (c) => {
+    const conversationId = c.req.param('conversationId');
+    const active = sessionStore.getSessionsByConversation(conversationId);
+    for (const s of active) {
+      const entry = activeSessions.get(s.id);
+      if (entry) {
+        entry.abort.abort();
+        entry.broadcast.done();
+        activeSessions.delete(s.id);
+      }
+    }
+    sessionStore.deleteConversation(conversationId);
+    conversationStores.delete(conversationId);
+    return c.json({ ok: true });
+  });
+
   routes.post('/:id/approve', async (c) => {
     const sessionId = c.req.param('id');
     const session = sessionStore.getSession(sessionId);

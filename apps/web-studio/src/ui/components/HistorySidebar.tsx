@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionMeta } from '../../shared/events.ts';
+import { api, type ConversationSummary } from '../api.ts';
 
 import { ToolPicker } from './ToolPicker.tsx';
 
@@ -64,6 +65,10 @@ export interface HistorySidebarProps {
   setFilterStatus: (s: HistoryStatusFilter) => void;
   activeTool: string;
   onSelectTool: (id: string) => void;
+  activeConversationId?: string | null | undefined;
+  onSelectConversation?: ((conv: ConversationSummary) => void) | undefined;
+  onDeleteConversation?: ((convId: string) => void) | undefined;
+  conversationVersion?: number | undefined;
 }
 
 export function HistorySidebar({
@@ -78,7 +83,275 @@ export function HistorySidebar({
   setFilterStatus,
   activeTool,
   onSelectTool,
+  activeConversationId,
+  onSelectConversation,
+  onDeleteConversation,
+  conversationVersion,
 }: HistorySidebarProps) {
+  const isChat = activeTool === 'simple-chat';
+
+  return (
+    <>
+      <ToolPicker activeTool={activeTool} onSelect={onSelectTool} />
+      <div style={{ height: 1, background: 'var(--border-subtle)', margin: '0 var(--s2)' }} />
+      {isChat ? (
+        <ConversationList
+          activeTool={activeTool}
+          activeConversationId={activeConversationId ?? null}
+          onSelectConversation={onSelectConversation}
+          onDeleteConversation={onDeleteConversation}
+          onNewSession={onNewSession}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          conversationVersion={conversationVersion}
+        />
+      ) : (
+        <SessionList
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelectSession={onSelectSession}
+          onDeleteSession={onDeleteSession}
+          onNewSession={onNewSession}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          filterStatus={filterStatus}
+          setFilterStatus={setFilterStatus}
+        />
+      )}
+    </>
+  );
+}
+
+interface ConversationListProps {
+  activeTool: string;
+  activeConversationId: string | null;
+  onSelectConversation?: ((conv: ConversationSummary) => void) | undefined;
+  onDeleteConversation?: ((convId: string) => void) | undefined;
+  onNewSession: () => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  conversationVersion?: number | undefined;
+}
+
+function ConversationList({
+  activeTool,
+  activeConversationId,
+  onSelectConversation,
+  onDeleteConversation,
+  onNewSession,
+  searchQuery,
+  setSearchQuery,
+  conversationVersion,
+}: ConversationListProps) {
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+
+  const loadConversations = useCallback(() => {
+    void api.listConversations(activeTool).then((res) => {
+      setConversations(res.conversations);
+    });
+  }, [activeTool]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  const prevVersion = useRef(conversationVersion);
+  useEffect(() => {
+    if (prevVersion.current !== conversationVersion) {
+      prevVersion.current = conversationVersion;
+      loadConversations();
+    }
+  }, [conversationVersion, loadConversations]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      return conversations;
+    }
+    return conversations.filter((c) => c.firstQuestion.toLowerCase().includes(q));
+  }, [conversations, searchQuery]);
+
+  return (
+    <>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ padding: 'var(--s3) var(--s2) var(--s2)', flexShrink: 0 }}>
+          <div
+            style={{
+              fontSize: 'var(--text-2xs)',
+              fontWeight: 'var(--weight-medium)',
+              color: 'var(--text-tertiary)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              padding: '0 var(--s2) var(--s2)',
+            }}
+          >
+            Conversations
+          </div>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search chats…"
+            aria-label="Search conversations"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '6px var(--s3)',
+              borderRadius: 'var(--r-sm)',
+              border: '1px solid var(--border-subtle)',
+              background: 'var(--bg-elevated)',
+              color: 'var(--text-primary)',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-sans)',
+            }}
+          />
+        </div>
+        <div style={{ flex: 1, padding: '0 var(--s2) var(--s3)', overflowY: 'auto' }}>
+          {filtered.length === 0 ? (
+            <div
+              style={{
+                padding: 'var(--s4)',
+                textAlign: 'center',
+                color: 'var(--text-disabled)',
+                fontSize: 'var(--text-xs)',
+              }}
+            >
+              No conversations yet
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {filtered.map((conv) => {
+                const active = conv.conversationId === activeConversationId;
+                return (
+                  <button
+                    type="button"
+                    key={conv.conversationId}
+                    onClick={() => onSelectConversation?.(conv)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: 'var(--s3)',
+                      borderRadius: 'var(--r-sm)',
+                      border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border-subtle)'}`,
+                      background: active ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
+                      cursor: 'pointer',
+                      transition: 'all var(--t-fast)',
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--text-primary)',
+                        lineHeight: 1.35,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {conv.firstQuestion}
+                    </p>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-disabled)' }}>
+                        {conv.messageCount} msg{conv.messageCount !== 1 ? 's' : ''}
+                        {' · '}
+                        {formatRelativeTime(conv.lastActivityAt)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteConversation?.(conv.conversationId);
+                        }}
+                        style={{
+                          fontSize: 'var(--text-2xs)',
+                          color: 'var(--text-disabled)',
+                          cursor: 'pointer',
+                          padding: '0 4px',
+                          borderRadius: 'var(--r-xs)',
+                          transition: 'color var(--t-fast)',
+                          lineHeight: 1,
+                          background: 'none',
+                          border: 'none',
+                          fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.color =
+                            'var(--status-error)';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.color =
+                            'var(--text-disabled)';
+                        }}
+                        aria-label="Delete conversation"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ padding: 'var(--s3) var(--s2)', borderTop: '1px solid var(--border-subtle)' }}>
+        <button
+          type="button"
+          onClick={onNewSession}
+          style={{
+            width: '100%',
+            padding: '6px var(--s3)',
+            borderRadius: 'var(--r-sm)',
+            background: 'var(--accent-subtle)',
+            border: '1px solid var(--accent-border)',
+            color: 'var(--accent)',
+            cursor: 'pointer',
+            fontSize: 'var(--text-sm)',
+            fontFamily: 'var(--font-sans)',
+            transition: 'all var(--t-fast)',
+          }}
+        >
+          New chat
+        </button>
+      </div>
+    </>
+  );
+}
+
+interface SessionListProps {
+  sessions: SessionMeta[];
+  activeSessionId: string | null;
+  onSelectSession: (session: SessionMeta) => void;
+  onDeleteSession: (sessionId: string) => void;
+  onNewSession: () => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  filterStatus: HistoryStatusFilter;
+  setFilterStatus: (s: HistoryStatusFilter) => void;
+}
+
+function SessionList({
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onDeleteSession,
+  onNewSession,
+  searchQuery,
+  setSearchQuery,
+  filterStatus,
+  setFilterStatus,
+}: SessionListProps) {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return sessions.filter((s) => {
@@ -98,8 +371,6 @@ export function HistorySidebar({
 
   return (
     <>
-      <ToolPicker activeTool={activeTool} onSelect={onSelectTool} />
-      <div style={{ height: 1, background: 'var(--border-subtle)', margin: '0 var(--s2)' }} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ padding: 'var(--s3) var(--s2) var(--s2)', flexShrink: 0 }}>
           <div
@@ -117,9 +388,7 @@ export function HistorySidebar({
           <input
             type="search"
             value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-            }}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search sessions…"
             aria-label="Search sessions"
             style={{
@@ -146,9 +415,7 @@ export function HistorySidebar({
               <button
                 type="button"
                 key={s}
-                onClick={() => {
-                  setFilterStatus(s);
-                }}
+                onClick={() => setFilterStatus(s)}
                 style={{
                   padding: '3px 8px',
                   borderRadius: 'var(--r-full)',
@@ -189,9 +456,7 @@ export function HistorySidebar({
                   <button
                     type="button"
                     key={session.id}
-                    onClick={() => {
-                      onSelectSession(session);
-                    }}
+                    onClick={() => onSelectSession(session)}
                     style={{
                       display: 'block',
                       width: '100%',
@@ -204,14 +469,7 @@ export function HistorySidebar({
                       transition: 'all var(--t-fast)',
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        marginBottom: 6,
-                      }}
-                    >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span
                         aria-hidden
                         style={{

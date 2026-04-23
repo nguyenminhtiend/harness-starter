@@ -25,6 +25,20 @@ export interface ModelEntry {
   provider: string;
 }
 
+export interface ConversationSummary {
+  conversationId: string;
+  toolId: string;
+  firstQuestion: string;
+  messageCount: number;
+  lastActivityAt: string;
+}
+
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  sessionId: string;
+}
+
 export const api = {
   health: () => json<{ status: string }>('/health'),
 
@@ -73,6 +87,19 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+
+  listConversations: (toolId?: string) => {
+    const qs = toolId ? `?toolId=${encodeURIComponent(toolId)}` : '';
+    return json<{ conversations: ConversationSummary[] }>(`/sessions/conversations/list${qs}`);
+  },
+
+  getConversationMessages: (conversationId: string) =>
+    json<{ conversationId: string; messages: ConversationMessage[] }>(
+      `/sessions/conversations/${conversationId}/messages`,
+    ),
+
+  deleteConversation: (conversationId: string) =>
+    json<{ ok: boolean }>(`/sessions/conversations/${conversationId}`, { method: 'DELETE' }),
 
   getSettings: () => json<SettingsResponse>('/settings'),
 

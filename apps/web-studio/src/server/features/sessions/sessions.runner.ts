@@ -109,7 +109,13 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
     pushUIEvent: enqueue,
   });
 
-  sessionStore.createSession({ id: sessionId, toolId, question, status: 'running' });
+  sessionStore.createSession({
+    id: sessionId,
+    toolId,
+    question,
+    status: 'running',
+    ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
+  });
   sessionStore.appendEvent(sessionId, {
     type: 'status',
     status: 'running',

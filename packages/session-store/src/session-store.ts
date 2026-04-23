@@ -8,6 +8,14 @@ import type {
   UpdateSessionInput,
 } from './types.ts';
 
+export interface ConversationSummary {
+  conversationId: string;
+  toolId: string;
+  firstQuestion: string;
+  messageCount: number;
+  lastActivityAt: string;
+}
+
 export interface SessionStore {
   createSession(input: CreateSessionInput): void;
   updateSession(id: string, patch: UpdateSessionInput): void;
@@ -16,12 +24,15 @@ export interface SessionStore {
   deleteSession(id: string): void;
   appendEvent<T extends EventInput>(sessionId: string, event: T): void;
   getEvents(sessionId: string): StoredEvent[];
+  listConversations(toolId?: string): ConversationSummary[];
+  getSessionsByConversation(conversationId: string): SessionRow[];
+  deleteConversation(conversationId: string): void;
 }
 
 export function createSessionStore(db: Database): SessionStore {
   const stmts = {
     create: db.prepare(
-      'INSERT INTO runs (id, toolId, question, status) VALUES ($id, $toolId, $question, $status)',
+      'INSERT INTO runs (id, toolId, question, status, conversationId) VALUES ($id, $toolId, $question, $status, $conversationId)',
     ),
     get: db.prepare('SELECT * FROM runs WHERE id = ?'),
     appendEvent: db.prepare(
@@ -53,6 +64,7 @@ export function createSessionStore(db: Database): SessionStore {
         $toolId: input.toolId,
         $question: input.question,
         $status: input.status,
+        $conversationId: input.conversationId ?? null,
       });
     },
 
@@ -133,6 +145,46 @@ export function createSessionStore(db: Database): SessionStore {
         type: r.type,
         payload: JSON.parse(r.payload) as Record<string, unknown>,
       }));
+    },
+
+    listConversations(toolId) {
+      const where = toolId
+        ? 'WHERE conversationId IS NOT NULL AND toolId = $toolId'
+        : 'WHERE conversationId IS NOT NULL';
+      const params: Record<string, string> = {};
+      if (toolId) {
+        params.$toolId = toolId;
+      }
+      const sql = `
+        SELECT
+          r.conversationId,
+          r.toolId,
+          (SELECT question FROM runs r2 WHERE r2.conversationId = r.conversationId ORDER BY r2.createdAt ASC LIMIT 1) AS firstQuestion,
+          COUNT(*) AS messageCount,
+          MAX(r.createdAt) AS lastActivityAt
+        FROM runs r
+        ${where.replace('conversationId', 'r.conversationId').replace('toolId', 'r.toolId')}
+        GROUP BY r.conversationId
+        ORDER BY lastActivityAt DESC
+      `;
+      return db.prepare(sql).all(params) as ConversationSummary[];
+    },
+
+    getSessionsByConversation(conversationId) {
+      return db
+        .prepare('SELECT * FROM runs WHERE conversationId = ? ORDER BY createdAt ASC')
+        .all(conversationId) as SessionRow[];
+    },
+
+    deleteConversation(conversationId) {
+      const sessions = db
+        .prepare('SELECT id FROM runs WHERE conversationId = ?')
+        .all(conversationId) as { id: string }[];
+      for (const s of sessions) {
+        db.prepare('DELETE FROM events WHERE runId = ?').run(s.id);
+        seqCounters.delete(s.id);
+      }
+      db.prepare('DELETE FROM runs WHERE conversationId = ?').run(conversationId);
     },
   };
 }

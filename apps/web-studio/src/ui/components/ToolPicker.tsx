@@ -5,6 +5,7 @@ interface ToolPickerProps {
 
 const TOOLS = [
   { id: 'deep-research', label: 'Deep Research', disabled: false },
+  { id: 'simple-chat', label: 'Simple Chat', disabled: false },
   { id: 'summarizer', label: 'Summarizer', disabled: true },
   { id: 'web-search', label: 'Web Search', disabled: true },
 ];

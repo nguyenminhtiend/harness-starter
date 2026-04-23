@@ -1,6 +1,6 @@
 import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { UIEvent } from '../../shared/events.ts';
-import { api, connectSSE } from '../api.ts';
+import { api, type ConversationMessage, connectSSE } from '../api.ts';
 import { Button, Spinner } from './primitives.tsx';
 
 interface ChatMessage {
@@ -21,14 +21,34 @@ interface ToolCallEntry {
 
 type ChatStatus = 'idle' | 'running' | 'error';
 
-interface ChatViewProps {
+export interface ChatViewProps {
   activeTool: string;
   settings?: Record<string, unknown> | undefined;
   model?: string | undefined;
+  conversationId: string | null;
+  onConversationCreated?: ((conversationId: string) => void) | undefined;
+  onNewChat?: (() => void) | undefined;
+  onComplete?: (() => void) | undefined;
 }
 
-export function ChatView({ activeTool, settings, model }: ChatViewProps) {
-  const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
+function serverMsgToChatMsg(m: ConversationMessage): ChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    role: m.role,
+    content: m.content,
+    toolCalls: [],
+  };
+}
+
+export function ChatView({
+  activeTool,
+  settings,
+  model,
+  conversationId,
+  onConversationCreated,
+  onNewChat,
+  onComplete,
+}: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<ChatStatus>('idle');
@@ -38,6 +58,29 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const inputSnapshot = useRef(input);
   inputSnapshot.current = input;
+  const loadedConvRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (conversationId && conversationId !== loadedConvRef.current) {
+      loadedConvRef.current = conversationId;
+      setStatus('idle');
+      setErrorMsg(undefined);
+      setInput('');
+      void api.getConversationMessages(conversationId).then((res) => {
+        setMessages(res.messages.map(serverMsgToChatMsg));
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+        });
+      });
+    } else if (!conversationId && loadedConvRef.current !== null) {
+      loadedConvRef.current = null;
+      setMessages([]);
+      setStatus('idle');
+      setErrorMsg(undefined);
+      setInput('');
+      inputRef.current?.focus();
+    }
+  }, [conversationId]);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -47,7 +90,19 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
 
   const handleEvent = useCallback(
     (ev: UIEvent) => {
-      if (ev.type === 'llm' && ev.phase === 'response') {
+      if (ev.type === 'writer' && ev.delta) {
+        const delta = ev.delta;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant') {
+            return [...prev.slice(0, -1), { ...last, content: last.content + delta }];
+          }
+          return [
+            ...prev,
+            { id: crypto.randomUUID(), role: 'assistant', content: delta, toolCalls: [] },
+          ];
+        });
+      } else if (ev.type === 'llm' && ev.phase === 'response') {
         const assistantContent = extractAssistantText(ev);
         if (assistantContent) {
           setMessages((prev) => {
@@ -93,19 +148,26 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
         });
       } else if (ev.type === 'complete') {
         setStatus('idle');
+        onComplete?.();
       } else if (ev.type === 'error') {
         setStatus('error');
         setErrorMsg(ev.message);
       }
       scrollToBottom();
     },
-    [scrollToBottom],
+    [scrollToBottom, onComplete],
   );
 
   const submit = useCallback(async () => {
     const trimmed = inputSnapshot.current.trim();
     if (!trimmed || status === 'running') {
       return;
+    }
+
+    const convId = conversationId ?? crypto.randomUUID();
+    if (!conversationId) {
+      loadedConvRef.current = convId;
+      onConversationCreated?.(convId);
     }
 
     setInput('');
@@ -121,7 +183,7 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
       const { id: sessionId } = await api.createSession({
         toolId: activeTool,
         question: trimmed,
-        conversationId,
+        conversationId: convId,
         settings: {
           ...(settings ?? {}),
           ...(model ? { model } : {}),
@@ -139,18 +201,16 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : 'Failed to start session');
     }
-  }, [status, activeTool, conversationId, settings, model, handleEvent, scrollToBottom]);
-
-  const handleNewChat = useCallback(() => {
-    closeRef.current?.();
-    closeRef.current = null;
-    setConversationId(crypto.randomUUID());
-    setMessages([]);
-    setStatus('idle');
-    setErrorMsg(undefined);
-    setInput('');
-    inputRef.current?.focus();
-  }, []);
+  }, [
+    status,
+    activeTool,
+    conversationId,
+    settings,
+    model,
+    handleEvent,
+    scrollToBottom,
+    onConversationCreated,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -194,9 +254,11 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
       </div>
 
       <div style={inputBarStyle}>
-        <Button variant="ghost" size="sm" onClick={handleNewChat} style={{ flexShrink: 0 }}>
-          New chat
-        </Button>
+        {onNewChat && (
+          <Button variant="ghost" size="sm" onClick={onNewChat} style={{ flexShrink: 0 }}>
+            New chat
+          </Button>
+        )}
         <textarea
           ref={inputRef}
           value={input}
@@ -205,6 +267,7 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
           placeholder="Send a message..."
           rows={1}
           style={textareaStyle}
+          data-testid="chat-input"
         />
         <Button
           size="sm"
@@ -269,7 +332,10 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMe
         gap: 'var(--s2)',
       }}
     >
-      <div style={isUser ? userBubbleStyle : assistantBubbleStyle}>
+      <div
+        style={isUser ? userBubbleStyle : assistantBubbleStyle}
+        data-testid={isUser ? 'user-message' : 'assistant-message'}
+      >
         {message.content && (
           <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{message.content}</div>
         )}

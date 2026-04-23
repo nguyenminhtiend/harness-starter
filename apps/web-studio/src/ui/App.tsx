@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionMeta, SessionStatus } from '../shared/events.ts';
-import { api } from './api.ts';
+import { api, type ConversationSummary } from './api.ts';
 import { ChatView } from './components/ChatView.tsx';
 import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
 import { PlanApprovalModal } from './components/PlanApprovalModal.tsx';
@@ -39,6 +39,8 @@ export function App() {
   }));
   const [historySearch, setHistorySearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState<HistoryStatusFilter>('all');
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [convVersion, setConvVersion] = useState(0);
   const { toasts, pushToast, removeToast } = useToasts();
   const { hitl, onHitlRequired, approve, reject } = useHitlModal(sessionId, pushToast);
 
@@ -76,6 +78,7 @@ export function App() {
 
   const handleNewSession = useCallback(() => {
     setSessionId(null);
+    setActiveConversationId(null);
     setForm((prev) => ({ query: '', model: prev.model }));
     setView('session');
   }, [setSessionId]);
@@ -89,6 +92,30 @@ export function App() {
     },
     [setSessionId],
   );
+
+  const handleSelectConversation = useCallback((conv: ConversationSummary) => {
+    setActiveConversationId(conv.conversationId);
+  }, []);
+
+  const handleDeleteConversation = useCallback(
+    (convId: string) => {
+      void api.deleteConversation(convId).then(() => {
+        if (activeConversationId === convId) {
+          setActiveConversationId(null);
+        }
+        setConvVersion((v) => v + 1);
+      });
+    },
+    [activeConversationId],
+  );
+
+  const handleConversationCreated = useCallback((convId: string) => {
+    setActiveConversationId(convId);
+  }, []);
+
+  const handleChatComplete = useCallback(() => {
+    setConvVersion((v) => v + 1);
+  }, []);
 
   const showStream = Boolean(
     sessionId && (stream.events.length > 0 || stream.status === 'running'),
@@ -118,6 +145,10 @@ export function App() {
         setHistoryFilter={setHistoryFilter}
         activeTool={activeTool}
         onSelectTool={setActiveTool}
+        activeConversationId={activeConversationId}
+        onSelectConversation={handleSelectConversation}
+        onDeleteConversation={handleDeleteConversation}
+        conversationVersion={convVersion}
       />
       <MainPane
         view={view}
@@ -133,6 +164,10 @@ export function App() {
         onRun={mutations.handleRun}
         onStop={mutations.handleStop}
         onRetry={mutations.handleRetry}
+        activeConversationId={activeConversationId}
+        onConversationCreated={handleConversationCreated}
+        onNewChat={handleNewSession}
+        onChatComplete={handleChatComplete}
       />
     </div>
   );
@@ -192,6 +227,10 @@ interface SidebarProps {
   setHistoryFilter: (f: HistoryStatusFilter) => void;
   activeTool: string;
   onSelectTool: (t: string) => void;
+  activeConversationId?: string | null | undefined;
+  onSelectConversation?: ((conv: ConversationSummary) => void) | undefined;
+  onDeleteConversation?: ((convId: string) => void) | undefined;
+  conversationVersion?: number | undefined;
 }
 
 function Sidebar(props: SidebarProps) {
@@ -240,6 +279,10 @@ function Sidebar(props: SidebarProps) {
         setFilterStatus={props.setHistoryFilter}
         activeTool={props.activeTool}
         onSelectTool={props.onSelectTool}
+        activeConversationId={props.activeConversationId}
+        onSelectConversation={props.onSelectConversation}
+        onDeleteConversation={props.onDeleteConversation}
+        conversationVersion={props.conversationVersion}
       />
     </div>
   );
@@ -259,6 +302,10 @@ interface MainPaneProps {
   onRun: () => void;
   onStop: () => void;
   onRetry: () => void;
+  activeConversationId?: string | null | undefined;
+  onConversationCreated?: ((convId: string) => void) | undefined;
+  onNewChat?: (() => void) | undefined;
+  onChatComplete?: (() => void) | undefined;
 }
 
 function MainPane({
@@ -275,6 +322,10 @@ function MainPane({
   onRun,
   onStop,
   onRetry,
+  activeConversationId,
+  onConversationCreated,
+  onNewChat,
+  onChatComplete,
 }: MainPaneProps) {
   const isChat = activeTool === 'simple-chat';
   const toolSettings = useMemo(
@@ -316,7 +367,15 @@ function MainPane({
       {view === 'settings' ? (
         <SettingsPanel activeTool={activeTool} />
       ) : isChat ? (
-        <ChatView activeTool={activeTool} settings={toolSettings} model={form.model || undefined} />
+        <ChatView
+          activeTool={activeTool}
+          settings={toolSettings}
+          model={form.model || undefined}
+          conversationId={activeConversationId ?? null}
+          onConversationCreated={onConversationCreated}
+          onNewChat={onNewChat}
+          onComplete={onChatComplete}
+        />
       ) : showStream ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <SessionForm

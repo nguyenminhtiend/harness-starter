@@ -1,13 +1,14 @@
 export const SESSION_STORE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS runs (
-    id          TEXT PRIMARY KEY,
-    toolId      TEXT NOT NULL,
-    question    TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'pending',
-    costUsd     REAL,
-    totalTokens INTEGER,
-    createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
-    finishedAt  TEXT
+    id              TEXT PRIMARY KEY,
+    toolId          TEXT NOT NULL,
+    question        TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    costUsd         REAL,
+    totalTokens     INTEGER,
+    conversationId  TEXT,
+    createdAt       TEXT NOT NULL DEFAULT (datetime('now')),
+    finishedAt      TEXT
   );
 
   CREATE TABLE IF NOT EXISTS events (
@@ -19,3 +20,5 @@ export const SESSION_STORE_SCHEMA = `
     PRIMARY KEY (runId, seq)
   );
 `;
+
+export const SESSION_STORE_MIGRATIONS = [`ALTER TABLE runs ADD COLUMN conversationId TEXT;`];

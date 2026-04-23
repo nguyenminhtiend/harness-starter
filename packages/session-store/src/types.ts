@@ -5,6 +5,7 @@ export interface SessionRow {
   toolId: string;
   question: string;
   status: SessionStatus;
+  conversationId?: string;
   createdAt: string;
   finishedAt?: string;
 }
@@ -14,6 +15,7 @@ export interface CreateSessionInput {
   toolId: string;
   question: string;
   status: SessionStatus;
+  conversationId?: string;
 }
 
 export interface UpdateSessionInput {
