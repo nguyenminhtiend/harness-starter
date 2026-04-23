@@ -1,5 +1,4 @@
-import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { UIEvent } from '../../shared/events.ts';
 import { api, connectSSE } from '../api.ts';
 import { Button, Spinner } from './primitives.tsx';
@@ -37,88 +36,74 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
   const closeRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputSnapshot = useRef(input);
+  inputSnapshot.current = input;
 
-  const messageCount = messages.length;
-  const lastStatus = status;
-  useEffect(() => {
-    void messageCount;
-    void lastStatus;
+  const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     });
-  }, [messageCount, lastStatus]);
-
-  const handleEvent = useCallback((ev: UIEvent) => {
-    if (ev.type === 'llm' && ev.phase === 'response') {
-      const assistantContent = extractAssistantText(ev);
-      if (assistantContent) {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant') {
-            return [...prev.slice(0, -1), { ...last, content: assistantContent }];
-          }
-          return [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              role: 'assistant',
-              content: assistantContent,
-              toolCalls: [],
-            },
-          ];
-        });
-      }
-    } else if (ev.type === 'tool') {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role !== 'assistant') {
-          const bubble: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: '',
-            toolCalls: [],
-          };
-          return [...prev, bubble];
-        }
-        return prev;
-      });
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role !== 'assistant') {
-          return prev;
-        }
-        const entry: ToolCallEntry = {
-          key: crypto.randomUUID(),
-          name: ev.toolName,
-          args: ev.args,
-          ...(ev.result !== undefined ? { result: String(ev.result) } : {}),
-          ...(ev.isError ? { isError: true } : {}),
-          ...(ev.durationMs !== undefined ? { durationMs: ev.durationMs } : {}),
-        };
-        const existing = last.toolCalls.find(
-          (tc) => tc.name === ev.toolName && tc.result === undefined && ev.result !== undefined,
-        );
-        if (existing) {
-          return [
-            ...prev.slice(0, -1),
-            {
-              ...last,
-              toolCalls: last.toolCalls.map((tc) => (tc === existing ? { ...tc, ...entry } : tc)),
-            },
-          ];
-        }
-        return [...prev.slice(0, -1), { ...last, toolCalls: [...last.toolCalls, entry] }];
-      });
-    } else if (ev.type === 'complete') {
-      setStatus('idle');
-    } else if (ev.type === 'error') {
-      setStatus('error');
-      setErrorMsg(ev.message);
-    }
   }, []);
 
+  const handleEvent = useCallback(
+    (ev: UIEvent) => {
+      if (ev.type === 'llm' && ev.phase === 'response') {
+        const assistantContent = extractAssistantText(ev);
+        if (assistantContent) {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant') {
+              return [...prev.slice(0, -1), { ...last, content: assistantContent }];
+            }
+            return [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: assistantContent,
+                toolCalls: [],
+              },
+            ];
+          });
+        }
+      } else if (ev.type === 'tool') {
+        setMessages((prev) => {
+          const entry: ToolCallEntry = {
+            key: crypto.randomUUID(),
+            name: ev.toolName,
+            args: ev.args,
+            ...(ev.result !== undefined ? { result: String(ev.result) } : {}),
+            ...(ev.isError ? { isError: true } : {}),
+            ...(ev.durationMs !== undefined ? { durationMs: ev.durationMs } : {}),
+          };
+          const last = prev[prev.length - 1];
+          if (last?.role !== 'assistant') {
+            return [
+              ...prev,
+              { id: crypto.randomUUID(), role: 'assistant', content: '', toolCalls: [entry] },
+            ];
+          }
+          const existing = last.toolCalls.find(
+            (tc) => tc.name === ev.toolName && tc.result === undefined && ev.result !== undefined,
+          );
+          const toolCalls = existing
+            ? last.toolCalls.map((tc) => (tc === existing ? { ...tc, ...entry } : tc))
+            : [...last.toolCalls, entry];
+          return [...prev.slice(0, -1), { ...last, toolCalls }];
+        });
+      } else if (ev.type === 'complete') {
+        setStatus('idle');
+      } else if (ev.type === 'error') {
+        setStatus('error');
+        setErrorMsg(ev.message);
+      }
+      scrollToBottom();
+    },
+    [scrollToBottom],
+  );
+
   const submit = useCallback(async () => {
-    const trimmed = input.trim();
+    const trimmed = inputSnapshot.current.trim();
     if (!trimmed || status === 'running') {
       return;
     }
@@ -130,6 +115,7 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
       ...prev,
       { id: crypto.randomUUID(), role: 'user', content: trimmed, toolCalls: [] },
     ]);
+    scrollToBottom();
 
     try {
       const { id: sessionId } = await api.createSession({
@@ -153,7 +139,7 @@ export function ChatView({ activeTool, settings, model }: ChatViewProps) {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : 'Failed to start session');
     }
-  }, [input, status, activeTool, conversationId, settings, model, handleEvent]);
+  }, [status, activeTool, conversationId, settings, model, handleEvent, scrollToBottom]);
 
   const handleNewChat = useCallback(() => {
     closeRef.current?.();
@@ -271,7 +257,7 @@ function EmptyState() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
   return (
     <div
@@ -297,7 +283,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       )}
     </div>
   );
-}
+});
 
 function ToolCallRow({ call }: { call: ToolCallEntry }) {
   const [open, setOpen] = useState(false);

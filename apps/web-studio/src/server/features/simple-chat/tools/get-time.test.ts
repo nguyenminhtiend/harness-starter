@@ -10,6 +10,10 @@ const ctx = {
 describe('getTimeTool', () => {
   test('returns UTC time by default', async () => {
     const result = await getTimeTool.execute({}, ctx);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
     expect(result.timezone).toBe('UTC');
     expect(result.iso).toBeDefined();
     expect(typeof result.unix).toBe('number');
@@ -18,6 +22,10 @@ describe('getTimeTool', () => {
 
   test('returns time for explicit timezone', async () => {
     const result = await getTimeTool.execute({ timezone: 'America/Los_Angeles' }, ctx);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
     expect(result.timezone).toBe('America/Los_Angeles');
     expect(result.iso).toBeDefined();
     expect(result.formatted).toContain('Pacific');
@@ -25,7 +33,10 @@ describe('getTimeTool', () => {
 
   test('returns structured error for invalid timezone', async () => {
     const result = await getTimeTool.execute({ timezone: 'Not/A/Real/Zone' }, ctx);
-    expect(result.error).toBeDefined();
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
     expect(result.error).toContain('Invalid timezone');
   });
 

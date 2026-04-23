@@ -1,32 +1,11 @@
 import { tool } from '@harness/agent';
 import { z } from 'zod';
 
-interface TimeResult {
-  iso: string;
-  unix: number;
-  timezone: string;
-  formatted: string;
-  error?: undefined;
-}
+type TimeResult =
+  | { ok: true; iso: string; unix: number; timezone: string; formatted: string }
+  | { ok: false; error: string };
 
-interface TimeError {
-  error: string;
-  iso?: undefined;
-  unix?: undefined;
-  timezone?: undefined;
-  formatted?: undefined;
-}
-
-function isValidTimezone(tz: string): boolean {
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export const getTimeTool = tool<{ timezone?: string | undefined }, TimeResult | TimeError>({
+export const getTimeTool = tool<{ timezone?: string | undefined }, TimeResult>({
   name: 'get_time',
   description: 'Get the current time in a given IANA timezone (defaults to UTC).',
   parameters: z.object({
@@ -38,8 +17,10 @@ export const getTimeTool = tool<{ timezone?: string | undefined }, TimeResult | 
   async execute({ timezone }) {
     const tz = timezone ?? 'UTC';
 
-    if (!isValidTimezone(tz)) {
-      return { error: `Invalid timezone: "${tz}"` };
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: tz });
+    } catch {
+      return { ok: false, error: `Invalid timezone: "${tz}"` };
     }
 
     const now = new Date();
@@ -56,6 +37,7 @@ export const getTimeTool = tool<{ timezone?: string | undefined }, TimeResult | 
     });
 
     return {
+      ok: true,
       iso: now.toISOString(),
       unix: Math.floor(now.getTime() / 1000),
       timezone: tz,

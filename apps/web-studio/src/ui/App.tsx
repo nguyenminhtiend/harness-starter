@@ -277,7 +277,10 @@ function MainPane({
   onRetry,
 }: MainPaneProps) {
   const isChat = activeTool === 'simple-chat';
-  const toolSettings = settings?.tools[activeTool]?.values as Record<string, unknown> | undefined;
+  const toolSettings = useMemo(
+    () => settings?.tools[activeTool]?.values as Record<string, unknown> | undefined,
+    [settings, activeTool],
+  );
   return (
     <div
       style={{

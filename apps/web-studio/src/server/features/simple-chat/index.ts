@@ -20,12 +20,13 @@ export const simpleChatToolDef: ToolDef<typeof settingsSchema> = {
     'Minimal multi-turn chat agent with calculator and time tools. Great for learning the agent loop.',
   settingsSchema,
   defaultSettings: settingsSchema.parse({}),
-  buildAgent({ provider, settings, store, bus, signal: _signal }) {
+  buildAgent({ provider, settings, store, checkpointer, bus }) {
     return createAgent({
       provider,
       systemPrompt: settings.systemPrompt,
       tools: [calculatorTool as Tool, getTimeTool as Tool],
       memory: store,
+      checkpointer,
       events: bus,
       maxTurns: settings.maxTurns,
     });
