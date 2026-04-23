@@ -8,6 +8,7 @@ build/
 !.env.example
 
 .harness/
+.mastra/
 .DS_Store
 *.log
 npm-debug.log*

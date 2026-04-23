@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["commitlint.config.ts"]
+  "include": ["commitlint.config.ts", "mastra.config.ts"]
 }
