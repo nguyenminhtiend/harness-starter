@@ -2,6 +2,7 @@
 import type { Agent, Checkpointer, ConversationStore, GraphNode, Tool } from '@harness/agent';
 import { graph, inMemoryStore, interrupt } from '@harness/agent';
 import type { EventBus, Provider } from '@harness/core';
+import type { UIEvent } from '@harness/session-events';
 import { checkFacts } from './agents/fact-checker.ts';
 import { createPlannerNode } from './agents/planner.ts';
 import { createResearcherTool } from './agents/researcher.ts';
@@ -55,6 +56,7 @@ export interface ResearchGraphOpts {
   store?: ConversationStore;
   budgets?: BudgetSplit;
   events?: EventBus;
+  pushUIEvent?: (ev: UIEvent) => void;
   plannerPrompt?: string | undefined;
   writerPrompt?: string | undefined;
   factCheckerPrompt?: string | undefined;
@@ -70,6 +72,7 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
     store,
     budgets,
     events,
+    pushUIEvent,
     plannerPrompt,
     writerPrompt,
     factCheckerPrompt,
@@ -79,6 +82,8 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
   const planNode = createPlannerNode(provider, {
     depth,
     systemPrompt: plannerPrompt,
+    ...(events ? { events } : {}),
+    ...(pushUIEvent ? { pushUIEvent } : {}),
   });
 
   const approveNode: GraphNode = {
@@ -148,6 +153,9 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
 
       const report = await generateReport(provider, `${findingsText}${issuesHint}`, ctx.signal, {
         systemPrompt: writerPrompt,
+        ...(events ? { events } : {}),
+        ...(pushUIEvent ? { pushUIEvent } : {}),
+        runId: ctx.runId,
       });
 
       const reportText = reportToMarkdown(report);
@@ -177,6 +185,9 @@ export function createResearchGraph(opts: ResearchGraphOpts): Agent {
 
       const parsed = await checkFacts(provider, prompt, ctx.signal, {
         systemPrompt: factCheckerPrompt,
+        ...(events ? { events } : {}),
+        ...(pushUIEvent ? { pushUIEvent } : {}),
+        runId: ctx.runId,
       });
 
       return {

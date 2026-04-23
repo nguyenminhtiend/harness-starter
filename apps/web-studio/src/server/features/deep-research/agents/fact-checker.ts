@@ -1,4 +1,5 @@
-import type { Provider } from '@harness/core';
+import type { EventBus, Provider } from '@harness/core';
+import type { UIEvent } from '@harness/session-events';
 import { messageTextContent, parseModelJson } from '../lib/parse-json.ts';
 import type { FactCheckResult } from '../schemas/fact-check.ts';
 import { FactCheckResult as FactCheckResultSchema } from '../schemas/fact-check.ts';
@@ -14,6 +15,9 @@ Be strict: if any citation cannot be verified, set pass to false.`;
 
 export interface FactCheckerOpts {
   systemPrompt?: string | undefined;
+  events?: EventBus;
+  pushUIEvent?: (ev: UIEvent) => void;
+  runId?: string;
 }
 
 export async function checkFacts(
@@ -22,17 +26,48 @@ export async function checkFacts(
   signal: AbortSignal,
   opts?: FactCheckerOpts,
 ): Promise<FactCheckResult> {
+  const runId = opts?.runId ?? 'unknown';
+  const messages = [
+    { role: 'system' as const, content: opts?.systemPrompt ?? FACT_CHECKER_PROMPT },
+    { role: 'user' as const, content: prompt },
+  ];
+
+  opts?.pushUIEvent?.({
+    type: 'llm',
+    ts: Date.now(),
+    runId,
+    phase: 'request',
+    providerId: provider.id,
+    messages,
+  });
+  opts?.events?.emit('provider.call', {
+    runId,
+    providerId: provider.id,
+    request: { messages },
+  });
+
   const result = await provider.generate(
-    {
-      messages: [
-        { role: 'system', content: opts?.systemPrompt ?? FACT_CHECKER_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      responseFormat: FactCheckResultSchema,
-    },
+    { messages, responseFormat: FactCheckResultSchema },
     signal,
   );
 
   const text = messageTextContent(result.message.content);
+
+  opts?.pushUIEvent?.({
+    type: 'llm',
+    ts: Date.now(),
+    runId,
+    phase: 'response',
+    providerId: provider.id,
+    text,
+  });
+
+  if (result.usage) {
+    opts?.events?.emit('provider.usage', {
+      runId,
+      tokens: result.usage,
+    });
+  }
+
   return parseModelJson(text, FactCheckResultSchema);
 }

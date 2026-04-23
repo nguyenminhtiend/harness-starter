@@ -1,4 +1,5 @@
-import type { Provider } from '@harness/core';
+import type { EventBus, Provider } from '@harness/core';
+import type { UIEvent } from '@harness/session-events';
 import { messageTextContent, parseModelJson } from '../lib/parse-json.ts';
 import type { Report } from '../schemas/report.ts';
 import { Report as ReportSchema } from '../schemas/report.ts';
@@ -14,6 +15,9 @@ Guidelines:
 
 export interface WriterOpts {
   systemPrompt?: string | undefined;
+  events?: EventBus;
+  pushUIEvent?: (ev: UIEvent) => void;
+  runId?: string;
 }
 
 export async function generateReport(
@@ -22,20 +26,48 @@ export async function generateReport(
   signal: AbortSignal,
   opts?: WriterOpts,
 ): Promise<Report> {
-  const result = await provider.generate(
+  const runId = opts?.runId ?? 'unknown';
+  const messages = [
+    { role: 'system' as const, content: opts?.systemPrompt ?? WRITER_PROMPT },
     {
-      messages: [
-        { role: 'system', content: opts?.systemPrompt ?? WRITER_PROMPT },
-        {
-          role: 'user',
-          content: `Write a research report from these findings:\n\n${findingsText}`,
-        },
-      ],
-      responseFormat: ReportSchema,
+      role: 'user' as const,
+      content: `Write a research report from these findings:\n\n${findingsText}`,
     },
-    signal,
-  );
+  ];
+
+  opts?.pushUIEvent?.({
+    type: 'llm',
+    ts: Date.now(),
+    runId,
+    phase: 'request',
+    providerId: provider.id,
+    messages,
+  });
+  opts?.events?.emit('provider.call', {
+    runId,
+    providerId: provider.id,
+    request: { messages },
+  });
+
+  const result = await provider.generate({ messages, responseFormat: ReportSchema }, signal);
 
   const text = messageTextContent(result.message.content);
+
+  opts?.pushUIEvent?.({
+    type: 'llm',
+    ts: Date.now(),
+    runId,
+    phase: 'response',
+    providerId: provider.id,
+    text,
+  });
+
+  if (result.usage) {
+    opts?.events?.emit('provider.usage', {
+      runId,
+      tokens: result.usage,
+    });
+  }
+
   return parseModelJson(text, ReportSchema);
 }

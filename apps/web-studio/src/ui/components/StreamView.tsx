@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { SessionStatus, UIEvent } from '../../shared/events.ts';
+import type { LlmMessage, SessionStatus, UIEvent } from '../../shared/events.ts';
 import { Button } from './primitives.tsx';
 import { InlineReport } from './ReportView.tsx';
 
@@ -16,7 +16,32 @@ const PHASE_META: Record<string, { label: string; color: string }> = {
   status: { label: 'Status', color: 'var(--text-tertiary)' },
   'hitl-required': { label: 'Approval', color: 'var(--accent)' },
   'hitl-resolved': { label: 'Approval', color: 'var(--text-secondary)' },
+  node: { label: 'Node', color: 'var(--phase-researcher)' },
+  llm: { label: 'LLM', color: 'var(--phase-writer)' },
+  'llm-request': { label: 'LLM ← input', color: 'var(--phase-planner)' },
+  'llm-response': { label: 'LLM → output', color: 'var(--phase-writer)' },
+  'llm-thinking': { label: 'Thinking', color: 'var(--text-tertiary)' },
+  'llm-tool-call': { label: 'Tool call', color: 'var(--accent)' },
+  'tool-start': { label: 'Tool →', color: 'var(--accent)' },
+  'tool-result': { label: 'Tool ←', color: 'var(--accent)' },
+  'tool-error': { label: 'Tool ✕', color: 'var(--status-error)' },
 };
+
+function metaKey(ev: UIEvent): string {
+  if (ev.type === 'llm') {
+    return `llm-${ev.phase}`;
+  }
+  if (ev.type === 'tool') {
+    if (ev.isError) {
+      return 'tool-error';
+    }
+    if (ev.result !== undefined) {
+      return 'tool-result';
+    }
+    return 'tool-start';
+  }
+  return ev.type;
+}
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) {
@@ -26,36 +51,80 @@ function truncate(s: string, max: number): string {
 }
 
 function formatArgs(args: unknown): string {
-  if (!args || typeof args !== 'object') {
-    return String(args ?? '');
-  }
-  const entries = Object.entries(args as Record<string, unknown>);
-  if (entries.length === 0) {
+  if (args === null || args === undefined) {
     return '';
   }
-  return entries
-    .map(([k, v]) => {
-      const val = typeof v === 'string' ? v : JSON.stringify(v);
-      return `  ${k}: ${val}`;
-    })
-    .join('\n');
+  if (typeof args === 'string') {
+    return args;
+  }
+  try {
+    return JSON.stringify(args, null, 2);
+  } catch {
+    return String(args);
+  }
 }
 
-function eventContent(ev: UIEvent): string {
+function formatMessageContent(content: unknown): string {
+  if (content === null || content === undefined) {
+    return '';
+  }
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (part && typeof part === 'object') {
+          const p = part as { type?: string; text?: string };
+          if (p.type === 'text' && typeof p.text === 'string') {
+            return p.text;
+          }
+          try {
+            return JSON.stringify(part);
+          } catch {
+            return String(part);
+          }
+        }
+        return String(part);
+      })
+      .join('\n');
+  }
+  try {
+    return JSON.stringify(content, null, 2);
+  } catch {
+    return String(content);
+  }
+}
+
+function formatMessages(messages: LlmMessage[] | undefined): string {
+  if (!messages || messages.length === 0) {
+    return '(no messages)';
+  }
+  return messages
+    .map((m) => {
+      const body = formatMessageContent(m.content);
+      return `── ${m.role} ──\n${body}`;
+    })
+    .join('\n\n');
+}
+
+function isVerbose(ev: UIEvent): boolean {
+  return ev.type === 'agent' || ev.type === 'metric' || ev.type === 'status';
+}
+
+function shortPreview(ev: UIEvent): string {
   switch (ev.type) {
     case 'writer':
       return ev.delta ?? 'Writing…';
     case 'tool': {
       if (ev.isError) {
-        return ev.result ?? 'Tool error';
+        return `${ev.toolName || 'tool'} — ${truncate(ev.result ?? 'error', 200)}`;
       }
       if (ev.result !== undefined) {
         const dur = ev.durationMs !== undefined ? `${ev.durationMs}ms · ` : '';
-        return `${dur}${truncate(ev.result, 300)}`;
+        return `${ev.toolName || 'tool'} · ${dur}${truncate(ev.result, 200)}`;
       }
-      const name = ev.toolName || 'tool';
-      const args = ev.args ? formatArgs(ev.args) : '';
-      return args ? `${name}\n${args}` : name;
+      return ev.toolName || 'tool';
     }
     case 'agent':
       return ev.message ?? ev.phase;
@@ -78,13 +147,70 @@ function eventContent(ev: UIEvent): string {
       return `Plan ${ev.decision}d`;
     case 'status':
       return `Status → ${ev.status}`;
+    case 'node':
+      return ev.from ? `${ev.from} → ${ev.node}` : ev.node;
+    case 'llm': {
+      if (ev.phase === 'request') {
+        const count = ev.messages?.length ?? 0;
+        const provider = ev.providerId ? `${ev.providerId} · ` : '';
+        return `${provider}${count} message${count === 1 ? '' : 's'}`;
+      }
+      if (ev.phase === 'response') {
+        return truncate(ev.text ?? '', 200);
+      }
+      if (ev.phase === 'thinking') {
+        return truncate(ev.text ?? '', 200);
+      }
+      if (ev.phase === 'tool-call') {
+        return ev.toolName ?? 'tool';
+      }
+      return ev.phase;
+    }
     default:
       return '';
   }
 }
 
-function isVerbose(ev: UIEvent): boolean {
-  return ev.type === 'agent' || ev.type === 'metric' || ev.type === 'status';
+function expandableBody(ev: UIEvent): string | null {
+  switch (ev.type) {
+    case 'tool': {
+      const sections: string[] = [];
+      if (ev.args !== undefined) {
+        sections.push(`args:\n${formatArgs(ev.args)}`);
+      }
+      if (ev.result !== undefined) {
+        const label = ev.isError ? 'error' : 'result';
+        sections.push(`${label}:\n${ev.result}`);
+      }
+      if (sections.length === 0) {
+        return null;
+      }
+      return sections.join('\n\n');
+    }
+    case 'llm': {
+      if (ev.phase === 'request') {
+        return formatMessages(ev.messages);
+      }
+      if (ev.phase === 'tool-call') {
+        return formatArgs(ev.args);
+      }
+      if (ev.phase === 'response' || ev.phase === 'thinking') {
+        return ev.text ?? null;
+      }
+      return null;
+    }
+    case 'hitl-required':
+      return formatArgs(ev.plan);
+    case 'error':
+      return ev.code ? `code: ${ev.code}\n${ev.message}` : null;
+    default:
+      return null;
+  }
+}
+
+function hasLongBody(ev: UIEvent): boolean {
+  const body = expandableBody(ev);
+  return body !== null && body.length > 0;
 }
 
 interface TimelineEventProps {
@@ -93,9 +219,17 @@ interface TimelineEventProps {
 }
 
 const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEventProps) {
-  const meta = PHASE_META[event.type] ?? { label: event.type, color: 'var(--text-tertiary)' };
-  const content = eventContent(event);
+  const key = metaKey(event);
+  const meta = PHASE_META[key] ??
+    PHASE_META[event.type] ?? {
+      label: event.type,
+      color: 'var(--text-tertiary)',
+    };
+  const preview = shortPreview(event);
+  const body = expandableBody(event);
   const isV = isVerbose(event);
+  const defaultOpen = event.type === 'llm' && event.phase === 'tool-call';
+  const [open, setOpen] = useState(defaultOpen);
 
   return (
     <div
@@ -152,6 +286,25 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
           >
             {meta.label}
           </span>
+          {hasLongBody(event) && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-tertiary)',
+                borderRadius: 'var(--r-sm)',
+                padding: '0 6px',
+                height: 18,
+                cursor: 'pointer',
+                fontSize: 'var(--text-2xs)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {open ? '− collapse' : '+ expand'}
+            </button>
+          )}
           <span
             style={{
               fontSize: 'var(--text-2xs)',
@@ -176,12 +329,15 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             fontFamily:
-              event.type === 'tool' || event.type === 'metric'
+              event.type === 'tool' ||
+              event.type === 'metric' ||
+              event.type === 'llm' ||
+              event.type === 'node'
                 ? 'var(--font-mono)'
                 : 'var(--font-sans)',
           }}
         >
-          {content}
+          {preview}
           {event.type === 'writer' && event.delta && (
             <span
               style={{
@@ -197,6 +353,26 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
             />
           )}
         </p>
+        {open && body && (
+          <pre
+            style={{
+              marginTop: 'var(--s2)',
+              padding: 'var(--s2) var(--s3)',
+              background: 'var(--bg-overlay)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--r-sm)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-2xs)',
+              color: 'var(--text-secondary)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxHeight: 360,
+              overflowY: 'auto',
+            }}
+          >
+            {body}
+          </pre>
+        )}
       </div>
     </div>
   );
@@ -376,7 +552,11 @@ export function StreamView({ events, status, onRetry, report }: StreamViewProps)
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {visibleEvents.map((ev, i) => (
-              <TimelineEvent key={`${ev.ts}-${ev.type}-${ev.runId}`} event={ev} index={i} />
+              <TimelineEvent
+                key={`${ev.ts}-${ev.type}-${'phase' in ev ? ev.phase : ''}-${'toolName' in ev ? ev.toolName : ''}-${ev.runId}`}
+                event={ev}
+                index={i}
+              />
             ))}
             {(status === 'failed' || status === 'cancelled') && onRetry && (
               <div style={{ padding: 'var(--s5)', textAlign: 'center' }}>

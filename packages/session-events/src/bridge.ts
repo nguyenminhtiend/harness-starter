@@ -1,6 +1,29 @@
 import type { AgentEvent } from '@harness/agent';
 import type { EventBus } from '@harness/core';
-import type { UIEvent } from './events.ts';
+import type { LlmMessage, UIEvent } from './events.ts';
+
+function toResultString(result: unknown): string {
+  if (typeof result === 'string') {
+    return result;
+  }
+  try {
+    return JSON.stringify(result, null, 2);
+  } catch {
+    return String(result);
+  }
+}
+
+function coerceMessages(raw: unknown): LlmMessage[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object')
+    .map((m) => ({
+      role: typeof m.role === 'string' ? m.role : 'unknown',
+      content: m.content,
+    }));
+}
 
 export function agentEventToUIEvents(
   e: AgentEvent,
@@ -18,14 +41,15 @@ export function agentEventToUIEvents(
       break;
     case 'tool-start':
       toolNames.set(e.id, e.name);
-      events.push({ ...base, type: 'tool', toolName: e.name, args: e.args });
+      events.push({ ...base, type: 'tool', toolName: e.name, callId: e.id, args: e.args });
       break;
     case 'tool-result':
       events.push({
         ...base,
         type: 'tool',
         toolName: toolNames.get(e.id) ?? 'unknown',
-        result: String(e.result),
+        callId: e.id,
+        result: toResultString(e.result),
         durationMs: e.durationMs,
       });
       toolNames.delete(e.id);
@@ -35,10 +59,21 @@ export function agentEventToUIEvents(
         ...base,
         type: 'tool',
         toolName: toolNames.get(e.id) ?? 'unknown',
+        callId: e.id,
         isError: true,
         result: e.error.message,
       });
       toolNames.delete(e.id);
+      break;
+    case 'tool-call':
+      events.push({
+        ...base,
+        type: 'llm',
+        phase: 'tool-call',
+        toolName: e.name,
+        callId: e.id,
+        args: e.args,
+      });
       break;
     case 'usage': {
       const inp = e.tokens.inputTokens ?? 0;
@@ -57,8 +92,11 @@ export function agentEventToUIEvents(
     case 'text-delta':
       events.push({ ...base, type: 'writer', delta: e.delta });
       break;
+    case 'thinking-delta':
+      events.push({ ...base, type: 'llm', phase: 'thinking', text: e.delta });
+      break;
     case 'handoff':
-      events.push({ ...base, type: 'agent', phase: e.to, message: `${e.from} → ${e.to}` });
+      events.push({ ...base, type: 'node', phase: 'start', node: e.to, from: e.from });
       break;
     case 'checkpoint':
       break;
@@ -90,9 +128,26 @@ export function bridgeBusToUIEvents(
   const ts = () => Date.now();
 
   unsubs.push(
+    bus.on('provider.call', (p) => {
+      if (p.runId !== runId) {
+        return;
+      }
+      const req = p.request as { messages?: unknown } | undefined;
+      push({
+        ts: ts(),
+        runId,
+        type: 'llm',
+        phase: 'request',
+        providerId: p.providerId,
+        messages: coerceMessages(req?.messages),
+      });
+    }),
+  );
+
+  unsubs.push(
     bus.on('handoff', (p) => {
       if (p.runId === runId) {
-        push({ ts: ts(), runId, type: 'agent', phase: p.to, message: `${p.from} → ${p.to}` });
+        push({ ts: ts(), runId, type: 'node', phase: 'start', node: p.to, from: p.from });
       }
     }),
   );
@@ -112,8 +167,8 @@ export function bridgeBusToUIEvents(
           ts: ts(),
           runId,
           type: 'tool',
-          toolName: '',
-          result: String(p.result),
+          toolName: p.toolName,
+          result: toResultString(p.result),
           durationMs: p.durationMs,
         });
       }

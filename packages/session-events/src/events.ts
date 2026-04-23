@@ -16,6 +16,7 @@ export interface StatusEvent extends UIEventBase {
 export interface ToolEvent extends UIEventBase {
   type: 'tool';
   toolName: string;
+  callId?: string;
   args?: unknown;
   result?: string;
   durationMs?: number;
@@ -64,6 +65,38 @@ export interface WriterEvent extends UIEventBase {
   delta?: string;
 }
 
+export interface LlmMessage {
+  role: string;
+  content: unknown;
+}
+
+/**
+ * LLM-level visibility: request/response/thinking/tool-call.
+ * - `request`: messages sent to the provider for a turn
+ * - `response`: aggregated assistant text for a turn
+ * - `thinking`: reasoning/chain-of-thought delta
+ * - `tool-call`: tool call issued by the model (distinct from tool execution in ToolEvent)
+ */
+export interface LlmEvent extends UIEventBase {
+  type: 'llm';
+  phase: 'request' | 'response' | 'thinking' | 'tool-call';
+  providerId?: string;
+  turn?: number;
+  messages?: LlmMessage[];
+  text?: string;
+  toolName?: string;
+  callId?: string;
+  args?: unknown;
+}
+
+/** Graph node lifecycle: mirrors `handoff` but with explicit start/end semantics. */
+export interface NodeEvent extends UIEventBase {
+  type: 'node';
+  phase: 'start' | 'end';
+  node: string;
+  from?: string;
+}
+
 export type UIEvent =
   | StatusEvent
   | ToolEvent
@@ -73,4 +106,6 @@ export type UIEvent =
   | ErrorEvent
   | HitlRequiredEvent
   | HitlResolvedEvent
-  | WriterEvent;
+  | WriterEvent
+  | LlmEvent
+  | NodeEvent;

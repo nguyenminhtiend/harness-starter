@@ -48,6 +48,7 @@ export const deepResearchToolDef: ToolDef<typeof settingsSchema> = {
         store: args.store,
         budgets,
         events: args.bus,
+        ...(args.pushUIEvent ? { pushUIEvent: args.pushUIEvent } : {}),
         plannerPrompt: nonEmpty(s.plannerPrompt),
         writerPrompt: nonEmpty(s.writerPrompt),
         factCheckerPrompt: nonEmpty(s.factCheckerPrompt),

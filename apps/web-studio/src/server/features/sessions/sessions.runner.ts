@@ -4,7 +4,7 @@ import { createEventBus } from '@harness/core';
 import type { ApprovalStore, HitlSessionStore } from '@harness/hitl';
 import { createProvider } from '@harness/llm-adapter';
 import { consoleSink } from '@harness/observability';
-import type { UIEvent } from '@harness/session-events';
+import type { LlmMessage, UIEvent } from '@harness/session-events';
 import { agentEventToUIEvents } from '@harness/session-events';
 import type { SessionStore } from '@harness/session-store';
 import { resolveSettings } from '../settings/settings.reader.ts';
@@ -37,6 +37,29 @@ function planFromCheckpoint(saved: RunState | null): unknown {
   return gs?.data?.plan;
 }
 
+function coerceMessages(raw: unknown): LlmMessage[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object')
+    .map((m) => ({
+      role: typeof m.role === 'string' ? m.role : 'unknown',
+      content: m.content,
+    }));
+}
+
+function toResultString(result: unknown): string {
+  if (typeof result === 'string') {
+    return result;
+  }
+  try {
+    return JSON.stringify(result, null, 2);
+  } catch {
+    return String(result);
+  }
+}
+
 export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHandle {
   const { sessionId, toolId, question, settings, signal, abortController, providerKeys } = ctx;
   const { sessionStore, settingsStore, approvalStore, hitlSessionStore } = deps;
@@ -55,6 +78,14 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
 
   const parsedSettings = toolDef.settingsSchema.parse(mergedSettings);
 
+  const accUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  const toolNames = new Map<string, string>();
+  const pendingBusEvents: UIEvent[] = [];
+
+  function enqueue(ev: UIEvent): void {
+    pendingBusEvents.push(ev);
+  }
+
   const agent = toolDef.buildAgent({
     settings: parsedSettings,
     provider,
@@ -62,6 +93,7 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
     checkpointer,
     bus,
     signal,
+    pushUIEvent: enqueue,
   });
 
   sessionStore.createSession({ id: sessionId, toolId, question, status: 'running' });
@@ -72,13 +104,107 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
     runId: sessionId,
   });
 
-  const accUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
-  const toolNames = new Map<string, string>();
+  // Bus is session-scoped (createEventBus per session), so accept all events
+  // regardless of runId. Sub-agents generate fresh runIds that wouldn't match
+  // sessionId but they still belong to this session.
+  const unsubs: (() => void)[] = [];
+
+  unsubs.push(
+    bus.on('provider.call', (p) => {
+      const req = p.request as { messages?: unknown } | undefined;
+      enqueue({
+        ts: Date.now(),
+        runId: sessionId,
+        type: 'llm',
+        phase: 'request',
+        providerId: p.providerId,
+        messages: coerceMessages(req?.messages),
+      });
+    }),
+  );
+
+  unsubs.push(
+    bus.on('provider.usage', (p) => {
+      accUsage.inputTokens += p.tokens.inputTokens ?? 0;
+      accUsage.outputTokens += p.tokens.outputTokens ?? 0;
+      if (p.costUSD) {
+        accUsage.costUsd += p.costUSD;
+      }
+      enqueue({
+        ts: Date.now(),
+        runId: sessionId,
+        type: 'metric',
+        inputTokens: accUsage.inputTokens,
+        outputTokens: accUsage.outputTokens,
+        costUsd: accUsage.costUsd,
+      });
+    }),
+  );
+
+  unsubs.push(
+    bus.on('tool.start', (p) => {
+      enqueue({
+        ts: Date.now(),
+        runId: sessionId,
+        type: 'tool',
+        toolName: p.toolName,
+        args: p.args,
+      });
+    }),
+  );
+
+  unsubs.push(
+    bus.on('tool.finish', (p) => {
+      enqueue({
+        ts: Date.now(),
+        runId: sessionId,
+        type: 'tool',
+        toolName: p.toolName,
+        result: toResultString(p.result),
+        durationMs: p.durationMs,
+      });
+    }),
+  );
+
+  unsubs.push(
+    bus.on('tool.error', (p) => {
+      enqueue({
+        ts: Date.now(),
+        runId: sessionId,
+        type: 'tool',
+        toolName: p.toolName,
+        isError: true,
+        result: p.error.message,
+      });
+    }),
+  );
+
+  unsubs.push(
+    bus.on('turn.start', (p) => {
+      enqueue({
+        ts: Date.now(),
+        runId: sessionId,
+        type: 'agent',
+        phase: `turn-${p.turn}`,
+      });
+    }),
+  );
 
   async function* generate(): AsyncGenerator<UIEvent> {
     const unsubConsole = consoleSink(bus, { level: 'normal' });
 
     hitlSessionStore.register(sessionId, { checkpointer, abortController });
+
+    function* drainBus(): Generator<UIEvent> {
+      while (pendingBusEvents.length > 0) {
+        const ev = pendingBusEvents.shift();
+        if (!ev) {
+          break;
+        }
+        sessionStore.appendEvent(sessionId, ev);
+        yield ev;
+      }
+    }
 
     try {
       if (signal.aborted) {
@@ -92,12 +218,14 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
         );
 
         for await (const event of stream) {
+          yield* drainBus();
           const uiEvents = agentEventToUIEvents(event, sessionId, accUsage, toolNames);
           for (const uiEv of uiEvents) {
             sessionStore.appendEvent(sessionId, uiEv);
             yield uiEv;
           }
         }
+        yield* drainBus();
 
         const saved = await checkpointer.load(sessionId);
         if (!isPausedAtPlanApproval(saved)) {
@@ -209,6 +337,9 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
       yield { type: 'status', status, ts: Date.now(), runId: sessionId };
     } finally {
       unsubConsole();
+      for (const u of unsubs) {
+        u();
+      }
       hitlSessionStore.unregister(sessionId);
     }
   }
