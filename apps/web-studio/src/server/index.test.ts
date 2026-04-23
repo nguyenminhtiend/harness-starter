@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createApprovalStore, createHitlSessionStore } from '@harness/hitl';
-import { createSessionStore, type SessionStore } from '@harness/session-store';
 import { createSettingsStore, type SettingsStore } from './features/settings/settings.store.ts';
 import { createApp } from './index.ts';
+import { createApprovalStore } from './infra/approval.ts';
 import { createDatabase } from './infra/db.ts';
+import { createSessionStore, type SessionStore } from './infra/session-store.ts';
 
 let db: Database;
 let sessionStore: SessionStore;
@@ -32,7 +32,6 @@ function makeApp() {
     settingsStore,
     getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key', groq: 'test-key' }),
     approvalStore: createApprovalStore(),
-    hitlSessionStore: createHitlSessionStore(),
   });
 }
 
@@ -167,7 +166,6 @@ describe('web-studio server', () => {
       settingsStore,
       getProviderKeys: () => ({ groq: 'test-key' }),
       approvalStore: createApprovalStore(),
-      hitlSessionStore: createHitlSessionStore(),
     });
     const res = await app.request('/api/models');
     expect(res.status).toBe(200);

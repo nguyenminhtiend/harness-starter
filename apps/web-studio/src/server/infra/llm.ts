@@ -1,4 +1,17 @@
-import type { ModelEntry, ProviderKeys } from './types.ts';
+export type ProviderId = 'google' | 'openrouter' | 'groq' | 'ollama';
+
+export interface ProviderKeys {
+  google?: string;
+  openrouter?: string;
+  groq?: string;
+  ollamaBaseUrl?: string;
+}
+
+export interface ModelEntry {
+  id: string;
+  label: string;
+  provider: ProviderId;
+}
 
 export const knownModels: readonly ModelEntry[] = [
   { id: 'google:gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'google' },
@@ -42,4 +55,25 @@ export function listAvailableModels(keys: ProviderKeys): ModelEntry[] {
     }
     return Boolean(keys[m.provider]);
   });
+}
+
+export function loadProviderKeysFromEnv(): ProviderKeys {
+  const keys: ProviderKeys = {};
+  const google = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const openrouter = process.env.OPENROUTER_API_KEY;
+  const groq = process.env.GROQ_API_KEY;
+  if (google) {
+    keys.google = google;
+  }
+  if (openrouter) {
+    keys.openrouter = openrouter;
+  }
+  if (groq) {
+    keys.groq = groq;
+  }
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL;
+  if (ollamaBaseUrl) {
+    keys.ollamaBaseUrl = ollamaBaseUrl;
+  }
+  return keys;
 }

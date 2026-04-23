@@ -2,11 +2,12 @@
 "harness-starter": minor
 ---
 
-Migrate web-studio from custom harness agent/graph to Mastra framework.
+Complete Mastra framework migration — all legacy harness packages removed.
 
 - **New packages:** `@harness/tools` (Mastra createTool), `@harness/agents` (Mastra Agent), `@harness/workflows` (Mastra createWorkflow with HITL suspend/resume).
-- **Deep research** now runs as a Mastra workflow with plan → approve (suspend) → research → write+fact-check steps.
-- **Simple chat** now uses a Mastra Agent with memory.
-- **Deleted:** `apps/cli-chat`, `packages/tui`, `packages/eval`, `packages/cli`, old `packages/tools` (harness version).
-- **Renamed:** `packages/tools-mastra` → `packages/tools`.
+- **Deep research** runs as a Mastra workflow with plan → approve (suspend) → research → write+fact-check steps.
+- **Simple chat** uses a Mastra Agent with memory.
+- **Deleted legacy packages:** `@harness/agent`, `@harness/core`, `@harness/hitl`, `@harness/llm-adapter`, `@harness/mcp`, `@harness/memory-sqlite`, `@harness/observability`, `@harness/session-events`, `@harness/session-store`, `@harness/eval`, `@harness/cli`, `@harness/tui`.
+- **Deleted apps:** `apps/cli-chat`.
+- **Inlined into web-studio:** session store, approval store, LLM model catalog, UI event types.
 - **Mastra Studio** available via `bun run mastra:dev`.

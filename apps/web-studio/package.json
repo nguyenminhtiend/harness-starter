@@ -12,14 +12,7 @@
     "start": "bun run src/server/index.ts"
   },
   "dependencies": {
-    "@harness/agent": "workspace:*",
     "@harness/agents": "workspace:*",
-    "@harness/core": "workspace:*",
-    "@harness/hitl": "workspace:*",
-    "@harness/llm-adapter": "workspace:*",
-    "@harness/observability": "workspace:*",
-    "@harness/session-events": "workspace:*",
-    "@harness/session-store": "workspace:*",
     "@harness/tools": "workspace:*",
     "@harness/workflows": "workspace:*",
     "@mastra/core": "1.27.0",

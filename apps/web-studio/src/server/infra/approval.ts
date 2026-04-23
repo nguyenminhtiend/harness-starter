@@ -1,4 +1,7 @@
-import type { ApprovalDecision } from './types.ts';
+export interface ApprovalDecision {
+  decision: 'approve' | 'reject';
+  editedPlan?: unknown;
+}
 
 export interface ApprovalStore {
   hasPending(runId: string): boolean;

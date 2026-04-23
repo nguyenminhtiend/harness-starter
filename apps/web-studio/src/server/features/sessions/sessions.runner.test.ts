@@ -3,11 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { ConversationStore } from '@harness/agent';
-import { createApprovalStore, createHitlSessionStore } from '@harness/hitl';
-import { parseModelSpec } from '@harness/llm-adapter';
-import type { UIEvent } from '@harness/session-events';
-import { createSessionStore, type SessionStore } from '@harness/session-store';
+import { createApprovalStore } from '../../../server/infra/approval.ts';
+import type { SessionStore } from '../../../server/infra/session-store.ts';
+import { createSessionStore } from '../../../server/infra/session-store.ts';
+import type { UIEvent } from '../../../shared/events.ts';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
 import type { SessionDeps } from './sessions.runner.ts';
@@ -26,8 +25,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  // Flush pending microtasks so in-flight generator catch/finally blocks
-  // complete their DB writes before the connection closes.
   await new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
@@ -61,34 +58,13 @@ function makeSessionCtx(overrides: {
   };
 }
 
-function makeDeps() {
+function makeDeps(): SessionDeps {
   return {
     sessionStore,
     settingsStore,
     approvalStore: createApprovalStore(),
-    hitlSessionStore: createHitlSessionStore(),
   };
 }
-
-describe('parseModelSpec', () => {
-  it('defaults to openrouter when no prefix', () => {
-    expect(parseModelSpec('gpt-4')).toEqual({ provider: 'openrouter', model: 'gpt-4' });
-  });
-
-  it('parses google prefix', () => {
-    expect(parseModelSpec('google:gemini-2.5-flash')).toEqual({
-      provider: 'google',
-      model: 'gemini-2.5-flash',
-    });
-  });
-
-  it('parses groq prefix', () => {
-    expect(parseModelSpec('groq:llama-3.3-70b-versatile')).toEqual({
-      provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
-    });
-  });
-});
 
 describe('startSession', () => {
   it('throws for unknown tool', () => {
@@ -198,20 +174,5 @@ describe('startSession', () => {
     );
     expect(hasError).toBe(true);
     expect(hasCancelled).toBe(true);
-  });
-
-  it('sessions without conversationId get independent stores', async () => {
-    const conversationStores = new Map<string, ConversationStore>();
-    const deps: SessionDeps = { ...makeDeps(), conversationStores };
-
-    const ac1 = new AbortController();
-    const h1 = startSession(
-      makeSessionCtx({ sessionId: 'i1', signal: ac1.signal, abortController: ac1 }),
-      deps,
-    );
-    ac1.abort();
-    await collectEvents(h1.events);
-
-    expect(conversationStores.size).toBe(0);
   });
 });

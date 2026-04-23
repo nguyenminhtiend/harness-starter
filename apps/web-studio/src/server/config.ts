@@ -1,6 +1,6 @@
-import { loadProviderKeysFromEnv, type ProviderKeys } from '@harness/llm-adapter';
+import { loadProviderKeysFromEnv, type ProviderKeys } from './infra/llm.ts';
 
-export type { ProviderKeys } from '@harness/llm-adapter';
+export type { ProviderKeys } from './infra/llm.ts';
 
 export interface EnvConfig {
   HOST: string;

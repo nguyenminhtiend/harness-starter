@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repo.
 
 TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems. Layered modular monorepo on Bun workspaces, powered by Mastra framework.
 
-**Tech stack:** TypeScript 5.7 strict · Bun workspaces · Mastra v1 (agents, workflows, memory) · Vercel AI SDK v5 · Zod v4 · Biome · Lefthook · Commitlint · Changesets · Hono · `bun:sqlite` · LibSQL.
+**Tech stack:** TypeScript 5.7 strict · Bun workspaces · Mastra v1 (agents, workflows, memory) · Vercel AI SDK v5 · Zod v4 · Biome · Lefthook · Commitlint · Changesets · Hono · LibSQL.
 
 ## Shape invariants (non-negotiable)
 
@@ -14,9 +14,8 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 2. **Structured output** uses Zod v4 schemas passed to Mastra agents/steps.
 3. **Workflow-first for multi-step.** Multi-step pipelines are Mastra `createWorkflow` with typed steps, not custom graph implementations. HITL uses `suspend()`/`resume()`.
 4. **`AbortSignal` flows top-down** where supported by Mastra.
-5. **Clone-and-own invariant:** deleting any of `packages/tools/`, `packages/agents/`, `packages/workflows/`, `packages/mcp/`, `packages/memory-sqlite/`, `packages/llm-adapter/`, `packages/session-store/`, `packages/session-events/`, `packages/hitl/`, or any `apps/*` must leave the rest building and testing cleanly.
-6. **Runtime boundary:** `@harness/core` uses only Web-standard APIs. Node/Bun-only functionality lives in sibling packages.
-7. **Mastra Studio as dev UI.** `mastra dev` provides agent/workflow inspection, traces, and evals. `apps/web-studio` is the production web UI.
+5. **Clone-and-own invariant:** deleting any of `packages/tools/`, `packages/agents/`, `packages/workflows/`, or any `apps/*` must leave the rest building and testing cleanly.
+6. **Mastra Studio as dev UI.** `mastra dev` provides agent/workflow inspection, traces, and evals. `apps/web-studio` is the production web UI.
 
 ## Non-goals — do not build these
 
@@ -30,19 +29,15 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 ## Architecture — dependency DAG
 
 ```
-Mastra layer (new):
+packages/
   tools ──> agents ──> workflows
 
-Harness layer (legacy, used by apps/server + apps/web):
-  core ─┬─> agent ─┬─> mcp
-        │          ├─> memory-sqlite
-        │          └─> hitl
-        ├─> llm-adapter
-        └─> observability
+apps/
+  web-studio (Hono + React; imports from packages/*)
+  server     (placeholder)
+  web        (placeholder)
 
-Shared:
-  session-store (standalone)
-  session-events ─> agent, core, session-store
+mastra.config.ts (root Mastra config: registers agents + workflows for Studio)
 ```
 
 Packages live in `packages/*`, example applications in `apps/*`. See each package's `package.json` for current dependencies.
@@ -73,13 +68,11 @@ bun run mastra:dev   # Mastra Studio on :4111
 bun run mastra:build # Mastra production build
 ```
 
-`bun run server` is wired in `package.json` but `apps/http-server` does not yet exist.
-
 ## Testing
 
 - Unit tests colocated: `foo.ts` + `foo.test.ts`.
 - **TDD enforced for `packages/*`**. Pragmatic / tests-after for `apps/*`.
-- **No mocks of `Provider`.** Use `mockModel()` from `@harness/agents/testing` — scripted `MockLanguageModelV3` replay. For harness-layer tests, use `fakeProvider()` from `@harness/core/testing`.
+- **No mocks of `Provider`.** Use `mockModel()` from `@harness/agents/testing` — scripted `MockLanguageModelV3` replay.
 - Live-provider tests gated behind `HARNESS_LIVE=1`.
 
 ## CI
@@ -99,7 +92,7 @@ All enforced in `biome.json`. Memorise these:
 - **Block statements always.** Braces required for `if`/`else`/`for`/`while` — even single-line bodies. `if (x) return y;` → `if (x) { return y; }`.
 - **No `any`.** Use `unknown` and narrow.
 - **No unused variables.** Prefix intentionally-unused callback params with `_`.
-- **No `console.*` in `packages/*`.** Use event bus or `@harness/observability`. (`console` is allowed in `apps/*` and test files.)
+- **No `console.*` in `packages/*`.** Use Mastra's logger or built-in telemetry. (`console` is allowed in `apps/*` and test files.)
 - **Formatting:** 2-space indent, single quotes, trailing commas, semicolons, LF, 100-char width, arrow parens always.
 
 ## Repository conventions

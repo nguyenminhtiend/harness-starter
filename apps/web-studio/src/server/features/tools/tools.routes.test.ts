@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createApprovalStore, createHitlSessionStore } from '@harness/hitl';
-import { createSessionStore } from '@harness/session-store';
 import { createApp } from '../../index.ts';
+import { createApprovalStore } from '../../infra/approval.ts';
 import { createDatabase } from '../../infra/db.ts';
+import { createSessionStore } from '../../infra/session-store.ts';
 import { createSettingsStore } from '../settings/settings.store.ts';
 
 let db: Database;
@@ -29,7 +29,6 @@ describe('GET /api/tools', () => {
       settingsStore: createSettingsStore(db),
       getProviderKeys: () => ({ google: 'k', openrouter: 'k' }),
       approvalStore: createApprovalStore(),
-      hitlSessionStore: createHitlSessionStore(),
     });
     const res = await app.request('/api/tools');
     expect(res.status).toBe(200);

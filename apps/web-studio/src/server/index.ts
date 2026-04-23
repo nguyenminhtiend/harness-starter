@@ -1,16 +1,16 @@
-import type { ApprovalStore, HitlSessionStore } from '@harness/hitl';
-import { createApprovalStore, createHitlSessionStore } from '@harness/hitl';
-import type { ProviderKeys } from '@harness/llm-adapter';
-import { listAvailableModels } from '@harness/llm-adapter';
-import type { SessionStore } from '@harness/session-store';
-import { createSessionStore } from '@harness/session-store';
 import { Hono } from 'hono';
 import { loadConfig } from './config.ts';
 import { createSessionsRoutes } from './features/sessions/sessions.routes.ts';
 import { createSettingsRoutes } from './features/settings/settings.routes.ts';
 import { createSettingsStore, type SettingsStore } from './features/settings/settings.store.ts';
 import { createToolsRoutes } from './features/tools/tools.routes.ts';
+import type { ApprovalStore } from './infra/approval.ts';
+import { createApprovalStore } from './infra/approval.ts';
 import { createDatabase } from './infra/db.ts';
+import type { ProviderKeys } from './infra/llm.ts';
+import { listAvailableModels } from './infra/llm.ts';
+import type { SessionStore } from './infra/session-store.ts';
+import { createSessionStore } from './infra/session-store.ts';
 import { bodyLimit } from './middleware/body-limit.ts';
 import { localCors } from './middleware/cors.ts';
 
@@ -18,7 +18,6 @@ export interface AppDeps {
   sessionStore: SessionStore;
   settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
-  hitlSessionStore: HitlSessionStore;
   getProviderKeys: () => ProviderKeys;
 }
 
@@ -42,7 +41,6 @@ export function createApp(deps: AppDeps) {
       sessionStore: deps.sessionStore,
       settingsStore: deps.settingsStore,
       approvalStore: deps.approvalStore,
-      hitlSessionStore: deps.hitlSessionStore,
       getProviderKeys: deps.getProviderKeys,
     }),
   );
@@ -64,7 +62,6 @@ if (import.meta.main) {
     settingsStore: createSettingsStore(db),
     getProviderKeys: () => config.providerKeys,
     approvalStore: createApprovalStore(),
-    hitlSessionStore: createHitlSessionStore(),
   });
 
   console.log(`[server] listening on http://${config.HOST}:${config.PORT}`);

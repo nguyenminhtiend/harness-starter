@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { SESSION_STORE_MIGRATIONS, SESSION_STORE_SCHEMA } from '@harness/session-store';
+import { SESSION_STORE_MIGRATIONS, SESSION_STORE_SCHEMA } from './session-store.ts';
 
 const SETTINGS_SCHEMA = `
   CREATE TABLE IF NOT EXISTS settings (

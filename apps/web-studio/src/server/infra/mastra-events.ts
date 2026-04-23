@@ -1,4 +1,4 @@
-import type { UIEvent } from '@harness/session-events';
+import type { UIEvent } from '../../shared/events.ts';
 
 export interface AccUsage {
   inputTokens: number;
@@ -22,10 +22,6 @@ function toResultString(result: unknown): string {
   }
 }
 
-/**
- * Translate a single Mastra fullStream chunk into zero or more UIEvents.
- * Keeps the same SSE contract the web-studio UI already expects.
- */
 export function mastraChunkToUIEvents(chunk: ChunkLike, runId: string, acc: AccUsage): UIEvent[] {
   const ts = Date.now();
   const base = { ts, runId };

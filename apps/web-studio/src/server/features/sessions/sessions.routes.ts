@@ -1,14 +1,12 @@
-import type { Checkpointer, ConversationStore } from '@harness/agent';
-import type { ApprovalDecision, ApprovalStore, HitlSessionStore } from '@harness/hitl';
-import type { ProviderKeys } from '@harness/llm-adapter';
-import type { UIEvent } from '@harness/session-events';
-import type { SessionStore } from '@harness/session-store';
-import { ResearchPlan } from '@harness/workflows';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
+import type { UIEvent } from '../../../shared/events.ts';
+import type { ApprovalDecision, ApprovalStore } from '../../infra/approval.ts';
 import { createRunBroadcast, type RunBroadcast } from '../../infra/broadcast.ts';
+import type { ProviderKeys } from '../../infra/llm.ts';
 import { parseJsonBody } from '../../infra/parse-body.ts';
+import type { SessionStore } from '../../infra/session-store.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { type SessionDeps, startSession } from './sessions.runner.ts';
 
@@ -16,7 +14,6 @@ export interface SessionsRouteDeps {
   sessionStore: SessionStore;
   settingsStore: SettingsStore;
   approvalStore: ApprovalStore;
-  hitlSessionStore: HitlSessionStore;
   getProviderKeys: () => ProviderKeys;
 }
 
@@ -45,43 +42,17 @@ const ApproveBody = z.object({
   editedPlan: z.unknown().optional(),
 });
 
-async function applyApproveToCheckpoint(
-  checkpointer: Checkpointer,
-  sessionId: string,
-  editedPlan: unknown | undefined,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const saved = await checkpointer.load(sessionId);
-  if (!saved?.graphState) {
-    return { ok: false, error: 'No checkpoint for session' };
-  }
-  const gs = saved.graphState as { data: Record<string, unknown> };
-  gs.data.approved = true;
-  if (editedPlan !== undefined) {
-    const parsed = ResearchPlan.safeParse(editedPlan);
-    if (!parsed.success) {
-      return { ok: false, error: 'editedPlan is not a valid research plan' };
-    }
-    gs.data.plan = parsed.data;
-  }
-  await checkpointer.save(sessionId, saved);
-  return { ok: true };
-}
-
 export function createSessionsRoutes(deps: SessionsRouteDeps) {
-  const { sessionStore, settingsStore, approvalStore, hitlSessionStore, getProviderKeys } = deps;
+  const { sessionStore, settingsStore, approvalStore, getProviderKeys } = deps;
   const routes = new Hono();
 
   const activeSessions = new Map<string, { broadcast: RunBroadcast; abort: AbortController }>();
   const inflight = new Set<string>();
 
-  const conversationStores = new Map<string, ConversationStore>();
-
   const sessionDeps: SessionDeps = {
     sessionStore,
     settingsStore,
     approvalStore,
-    hitlSessionStore,
-    conversationStores,
   };
 
   routes.post('/', async (c) => {
@@ -283,7 +254,6 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
       }
     }
     sessionStore.deleteConversation(conversationId);
-    conversationStores.delete(conversationId);
     return c.json({ ok: true });
   });
 
@@ -309,21 +279,6 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
 
     inflight.add(sessionId);
     try {
-      if (parsed.data.decision === 'approve') {
-        const hitlSession = hitlSessionStore.get(sessionId);
-        if (!hitlSession) {
-          return c.json({ error: 'No active session' }, 404);
-        }
-        const applied = await applyApproveToCheckpoint(
-          hitlSession.checkpointer,
-          sessionId,
-          parsed.data.editedPlan,
-        );
-        if (!applied.ok) {
-          return c.json({ error: applied.error }, 400);
-        }
-      }
-
       const resolvedEvent: UIEvent = {
         type: 'hitl-resolved',
         ts: Date.now(),
@@ -336,9 +291,9 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
       sessionStore.appendEvent(sessionId, resolvedEvent);
 
       if (parsed.data.decision === 'reject') {
-        const hitlSession = hitlSessionStore.get(sessionId);
-        if (hitlSession) {
-          hitlSession.abortController.abort();
+        const active = activeSessions.get(sessionId);
+        if (active) {
+          active.abort.abort();
         }
       }
 

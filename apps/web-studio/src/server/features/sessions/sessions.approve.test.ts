@@ -3,16 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { inMemoryCheckpointer } from '@harness/agent';
-import {
-  type ApprovalStore,
-  createApprovalStore,
-  createHitlSessionStore,
-  type HitlSessionStore,
-} from '@harness/hitl';
-import { createSessionStore, type SessionStore } from '@harness/session-store';
 import { createApp } from '../../index.ts';
+import { type ApprovalStore, createApprovalStore } from '../../infra/approval.ts';
 import { createDatabase } from '../../infra/db.ts';
+import { createSessionStore, type SessionStore } from '../../infra/session-store.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
 
 let db: Database;
@@ -20,7 +14,6 @@ let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let tmpDir: string;
 let approvalStore: ApprovalStore;
-let hitlSessionStore: HitlSessionStore;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-approve-'));
@@ -28,7 +21,6 @@ beforeEach(() => {
   sessionStore = createSessionStore(db);
   settingsStore = createSettingsStore(db);
   approvalStore = createApprovalStore();
-  hitlSessionStore = createHitlSessionStore();
 });
 
 afterEach(async () => {
@@ -45,7 +37,6 @@ function makeApp() {
     settingsStore,
     getProviderKeys: () => ({ google: 'test-key', openrouter: 'test-key' }),
     approvalStore,
-    hitlSessionStore,
   });
 }
 
@@ -120,28 +111,6 @@ describe('POST /api/sessions/:id/approve', () => {
       status: 'running',
     });
 
-    const checkpointer = inMemoryCheckpointer();
-    await checkpointer.save(sessionId, {
-      runId: sessionId,
-      conversationId: 'conv-1',
-      turn: 0,
-      messages: [],
-      graphState: {
-        currentNode: 'approve',
-        completed: false,
-        data: {
-          userMessage: 'What is X?',
-          plan: {
-            question: 'What is X?',
-            subquestions: [{ id: 'q1', question: 'Details?', searchQueries: ['x'] }],
-          },
-        },
-      },
-    });
-
-    const ac = new AbortController();
-    hitlSessionStore.register(sessionId, { checkpointer, abortController: ac });
-
     const approvalPromise = approvalStore.waitFor(sessionId);
 
     const res = await app.request(`/api/sessions/${sessionId}/approve`, {
@@ -160,11 +129,9 @@ describe('POST /api/sessions/:id/approve', () => {
     const resolved = stored.filter((e) => e.type === 'hitl-resolved');
     expect(resolved.length).toBe(1);
     expect(resolved[0]?.payload.decision).toBe('approve');
-
-    hitlSessionStore.unregister(sessionId);
   });
 
-  it('resolves reject decision, aborts session, and returns 200', async () => {
+  it('resolves reject decision and returns 200', async () => {
     const app = makeApp();
     const sessionId = 'session-hitl-reject';
     sessionStore.createSession({
@@ -173,28 +140,6 @@ describe('POST /api/sessions/:id/approve', () => {
       question: 'What?',
       status: 'running',
     });
-
-    const checkpointer = inMemoryCheckpointer();
-    await checkpointer.save(sessionId, {
-      runId: sessionId,
-      conversationId: 'conv-rej',
-      turn: 0,
-      messages: [],
-      graphState: {
-        currentNode: 'approve',
-        completed: false,
-        data: {
-          userMessage: 'What?',
-          plan: {
-            question: 'What?',
-            subquestions: [{ id: 'q1', question: 'Details?', searchQueries: ['x'] }],
-          },
-        },
-      },
-    });
-
-    const ac = new AbortController();
-    hitlSessionStore.register(sessionId, { checkpointer, abortController: ac });
 
     const approvalPromise = approvalStore.waitFor(sessionId);
 
@@ -209,55 +154,5 @@ describe('POST /api/sessions/:id/approve', () => {
 
     const decision = await approvalPromise;
     expect(decision).toEqual({ decision: 'reject' });
-    expect(ac.signal.aborted).toBe(true);
-
-    hitlSessionStore.unregister(sessionId);
-  });
-
-  it('returns 400 when editedPlan is invalid', async () => {
-    const app = makeApp();
-    const sessionId = 'session-hitl-bad-plan';
-    sessionStore.createSession({
-      id: sessionId,
-      toolId: 'deep-research',
-      question: 'q',
-      status: 'running',
-    });
-
-    const checkpointer = inMemoryCheckpointer();
-    await checkpointer.save(sessionId, {
-      runId: sessionId,
-      conversationId: 'conv-2',
-      turn: 0,
-      messages: [],
-      graphState: {
-        currentNode: 'approve',
-        completed: false,
-        data: {
-          userMessage: 'q',
-          plan: {
-            question: 'q',
-            subquestions: [{ id: 'q1', question: 's', searchQueries: [] }],
-          },
-        },
-      },
-    });
-
-    hitlSessionStore.register(sessionId, {
-      checkpointer,
-      abortController: new AbortController(),
-    });
-
-    void approvalStore.waitFor(sessionId);
-
-    const res = await app.request(`/api/sessions/${sessionId}/approve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision: 'approve', editedPlan: { invalid: true } }),
-    });
-
-    expect(res.status).toBe(400);
-
-    hitlSessionStore.unregister(sessionId);
   });
 });

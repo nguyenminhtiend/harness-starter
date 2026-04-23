@@ -1,12 +1,47 @@
 import type { Database } from 'bun:sqlite';
-import type {
-  CreateSessionInput,
-  EventInput,
-  ListSessionsFilter,
-  SessionRow,
-  StoredEvent,
-  UpdateSessionInput,
-} from './types.ts';
+
+export type SessionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface SessionRow {
+  id: string;
+  toolId: string;
+  question: string;
+  status: SessionStatus;
+  conversationId?: string;
+  createdAt: string;
+  finishedAt?: string;
+}
+
+export interface CreateSessionInput {
+  id: string;
+  toolId: string;
+  question: string;
+  status: SessionStatus;
+  conversationId?: string;
+}
+
+export interface UpdateSessionInput {
+  status?: SessionStatus;
+  finishedAt?: string;
+}
+
+export interface ListSessionsFilter {
+  status?: SessionStatus;
+  q?: string;
+  limit?: number;
+}
+
+export interface StoredEvent {
+  seq: number;
+  ts: number;
+  type: string;
+  payload: Record<string, unknown>;
+}
+
+export interface EventInput {
+  type: string;
+  ts: number;
+}
 
 export interface ConversationSummary {
   conversationId: string;
@@ -28,6 +63,31 @@ export interface SessionStore {
   getSessionsByConversation(conversationId: string): SessionRow[];
   deleteConversation(conversationId: string): void;
 }
+
+export const SESSION_STORE_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS runs (
+    id              TEXT PRIMARY KEY,
+    toolId          TEXT NOT NULL,
+    question        TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    costUsd         REAL,
+    totalTokens     INTEGER,
+    conversationId  TEXT,
+    createdAt       TEXT NOT NULL DEFAULT (datetime('now')),
+    finishedAt      TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS events (
+    runId   TEXT NOT NULL,
+    seq     INTEGER NOT NULL,
+    ts      REAL NOT NULL,
+    type    TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (runId, seq)
+  );
+`;
+
+export const SESSION_STORE_MIGRATIONS = [`ALTER TABLE runs ADD COLUMN conversationId TEXT;`];
 
 export function createSessionStore(db: Database): SessionStore {
   const stmts = {

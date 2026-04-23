@@ -1,5 +1,5 @@
-import type { ProviderKeys } from '@harness/llm-adapter';
-import type { UIEvent } from '@harness/session-events';
+import type { UIEvent } from '../../../shared/events.ts';
+import type { ProviderKeys } from '../../infra/llm.ts';
 
 export interface SessionContext {
   sessionId: string;
