@@ -1,0 +1,83 @@
+import { Agent } from '@mastra/core/agent';
+import type { MastraModelConfig } from '@mastra/core/llm';
+import { createStep } from '@mastra/core/workflows';
+import { z } from 'zod';
+import { ResearchPlan } from './schemas.ts';
+
+const DEPTH_TO_COUNT: Record<string, number> = {
+  shallow: 3,
+  medium: 5,
+  deep: 8,
+};
+
+const PLANNER_INSTRUCTIONS = `You are a research planning assistant. Given a question, decompose it into focused subquestions for deep research.
+
+Each subquestion must be specific, non-overlapping, and directly researchable via web search. Respond with JSON matching the plan schema.`;
+
+function extractJson(text: string): string {
+  const fence = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
+  if (fence?.[1]) {
+    return fence[1].trim();
+  }
+  return text.trim();
+}
+
+export interface GeneratePlanOptions {
+  model: MastraModelConfig;
+  question: string;
+  depth?: string;
+  systemPrompt?: string;
+}
+
+export async function generatePlan(opts: GeneratePlanOptions): Promise<ResearchPlan> {
+  const depth = opts.depth ?? 'medium';
+  const targetCount = DEPTH_TO_COUNT[depth] ?? 5;
+  const agent = new Agent({
+    id: 'deep-research-planner',
+    name: 'Deep Research Planner',
+    instructions: opts.systemPrompt ?? PLANNER_INSTRUCTIONS,
+    model: opts.model,
+  });
+
+  const result = await agent.generate(
+    `<user_question>${opts.question}</user_question>\n\nGenerate exactly ${targetCount} subquestions.`,
+  );
+  const raw = typeof result.text === 'string' ? result.text : '';
+  const parsed = JSON.parse(extractJson(raw));
+  return ResearchPlan.parse(parsed);
+}
+
+export interface CreatePlanStepOptions {
+  model: MastraModelConfig;
+  depth?: string;
+  systemPrompt?: string;
+}
+
+const planInputSchema = z.object({
+  question: z.string(),
+  depth: z.enum(['shallow', 'medium', 'deep']).optional(),
+});
+
+const planOutputSchema = z.object({
+  question: z.string(),
+  plan: ResearchPlan,
+});
+
+export function createPlanStep(opts: CreatePlanStepOptions) {
+  return createStep({
+    id: 'plan',
+    description: 'Decompose the user question into researchable subquestions.',
+    inputSchema: planInputSchema,
+    outputSchema: planOutputSchema,
+    execute: async ({ inputData }) => {
+      const depth = inputData.depth ?? opts.depth;
+      const plan = await generatePlan({
+        model: opts.model,
+        question: inputData.question,
+        ...(depth ? { depth } : {}),
+        ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+      });
+      return { question: inputData.question, plan };
+    },
+  });
+}

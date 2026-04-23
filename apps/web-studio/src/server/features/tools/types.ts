@@ -39,8 +39,30 @@ export interface MastraToolDef<S extends ZodType = ZodType> extends ToolDefBase<
   createAgent(settings: Infer<S>, ctx?: MastraAgentContext): MastraAgent;
 }
 
-export type ToolDef<S extends ZodType = ZodType> = HarnessToolDef<S> | MastraToolDef<S>;
+export interface WorkflowConfig {
+  model: string;
+  depth?: string | undefined;
+  concurrency?: number | undefined;
+  maxFactCheckRetries?: number | undefined;
+  plannerPrompt?: string | undefined;
+  writerPrompt?: string | undefined;
+  factCheckerPrompt?: string | undefined;
+}
+
+export interface MastraWorkflowToolDef<S extends ZodType = ZodType> extends ToolDefBase<S> {
+  runtime: 'mastra-workflow';
+  createWorkflowConfig(settings: Infer<S>): WorkflowConfig;
+}
+
+export type ToolDef<S extends ZodType = ZodType> =
+  | HarnessToolDef<S>
+  | MastraToolDef<S>
+  | MastraWorkflowToolDef<S>;
 
 export function isMastraToolDef(def: ToolDef): def is MastraToolDef {
   return def.runtime === 'mastra';
+}
+
+export function isMastraWorkflowToolDef(def: ToolDef): def is MastraWorkflowToolDef {
+  return def.runtime === 'mastra-workflow';
 }

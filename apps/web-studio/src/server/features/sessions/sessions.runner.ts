@@ -7,12 +7,21 @@ import { consoleSink } from '@harness/observability';
 import type { LlmMessage, UIEvent } from '@harness/session-events';
 import { agentEventToUIEvents } from '@harness/session-events';
 import type { SessionStore } from '@harness/session-store';
+import { createDeepResearchWorkflow } from '@harness/workflows';
+import { Mastra } from '@mastra/core';
 import type { MastraMemory } from '@mastra/core/memory';
+import { LibSQLStore } from '@mastra/libsql';
 import { type AccUsage, mastraChunkToUIEvents } from '../../infra/mastra-events.ts';
 import { resolveSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
 import { tools as registry } from '../tools/tools.registry.ts';
-import { isMastraToolDef, type MastraToolDef, type ToolDef } from '../tools/types.ts';
+import {
+  isMastraToolDef,
+  isMastraWorkflowToolDef,
+  type MastraToolDef,
+  type MastraWorkflowToolDef,
+  type ToolDef,
+} from '../tools/types.ts';
 import type { SessionContext, SessionHandle } from './sessions.types.ts';
 
 export interface SessionDeps {
@@ -110,6 +119,10 @@ export function startSession(ctx: SessionContext, deps: SessionDeps): SessionHan
     throw new Error(`Unknown tool: ${toolId}`);
   }
 
+  if (isMastraWorkflowToolDef(toolDef)) {
+    return startMastraWorkflowSession(ctx, deps, toolDef);
+  }
+
   if (isMastraToolDef(toolDef)) {
     return startMastraSession(ctx, deps, toolDef);
   }
@@ -200,6 +213,162 @@ function startMastraSession(
       yield completeEvent;
 
       yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
+    } catch (err) {
+      const { errorEvent, statusEvent } = emitSessionError(sessionStore, sessionId, err, signal);
+      yield errorEvent;
+      yield statusEvent;
+    }
+  }
+
+  return { sessionId, events: generate() };
+}
+
+function startMastraWorkflowSession(
+  ctx: SessionContext,
+  deps: SessionDeps,
+  toolDef: MastraWorkflowToolDef,
+): SessionHandle {
+  const { sessionId, question, settings, signal } = ctx;
+  const { sessionStore, settingsStore, approvalStore } = deps;
+
+  const mergedSettings = resolveSettings(ctx.toolId, settingsStore, settings);
+  const parsedSettings = toolDef.settingsSchema.parse(mergedSettings);
+  const wfConfig = toolDef.createWorkflowConfig(parsedSettings);
+
+  sessionStore.createSession({
+    id: sessionId,
+    toolId: ctx.toolId,
+    question,
+    status: 'running',
+  });
+  sessionStore.appendEvent(sessionId, {
+    type: 'status',
+    status: 'running',
+    ts: Date.now(),
+    runId: sessionId,
+  });
+
+  async function* generate(): AsyncGenerator<UIEvent> {
+    try {
+      if (signal.aborted) {
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }
+
+      const workflow = createDeepResearchWorkflow(wfConfig);
+      const mastra = new Mastra({
+        workflows: { deepResearch: workflow },
+        storage: new LibSQLStore({
+          id: `wf-${sessionId}`,
+          url: 'file::memory:?cache=shared',
+        }),
+      });
+      const wf = mastra.getWorkflow('deepResearch');
+      const run = await wf.createRun();
+
+      yield { type: 'node', ts: Date.now(), runId: sessionId, node: 'plan', phase: 'start' };
+
+      const initial = await run.start({ inputData: { question } });
+
+      if (initial.status === 'suspended') {
+        const planStep = initial.steps?.plan;
+        const planOutput =
+          planStep?.status === 'success'
+            ? (planStep.output as { plan?: unknown } | undefined)
+            : undefined;
+        const plan = planOutput?.plan;
+
+        const hitlRequired: UIEvent = {
+          type: 'hitl-required',
+          ts: Date.now(),
+          runId: sessionId,
+          plan,
+        };
+        sessionStore.appendEvent(sessionId, hitlRequired);
+        yield hitlRequired;
+
+        const approvalPromise = approvalStore.waitFor(sessionId);
+        const decision = await approvalPromise;
+
+        const resolvedUi: UIEvent = {
+          type: 'hitl-resolved',
+          ts: Date.now(),
+          runId: sessionId,
+          decision: decision.decision,
+          ...(decision.editedPlan !== undefined ? { editedPlan: decision.editedPlan } : {}),
+        };
+        sessionStore.appendEvent(sessionId, resolvedUi);
+        yield resolvedUi;
+
+        if (decision.decision === 'reject') {
+          sessionStore.updateSession(sessionId, {
+            status: 'cancelled',
+            finishedAt: new Date().toISOString(),
+          });
+          const rejectEvent: UIEvent = {
+            type: 'error',
+            ts: Date.now(),
+            runId: sessionId,
+            message: 'Plan approval rejected',
+            code: 'HITL_REJECTED',
+          };
+          sessionStore.appendEvent(sessionId, rejectEvent);
+          yield rejectEvent;
+          yield { type: 'status', status: 'cancelled', ts: Date.now(), runId: sessionId };
+          return;
+        }
+
+        if (signal.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        }
+
+        yield { type: 'node', ts: Date.now(), runId: sessionId, node: 'research', phase: 'start' };
+
+        const resumed = await run.resume({
+          step: 'approve',
+          resumeData: { approved: true },
+        });
+
+        if (resumed.status === 'success') {
+          const report = resumed.result?.reportText;
+          sessionStore.updateSession(sessionId, {
+            status: 'completed',
+            finishedAt: new Date().toISOString(),
+          });
+
+          const completeEvent: UIEvent = {
+            type: 'complete',
+            ts: Date.now(),
+            runId: sessionId,
+            totalTokens: 0,
+            totalCostUsd: 0,
+            ...(typeof report === 'string' ? { report } : {}),
+          };
+          sessionStore.appendEvent(sessionId, completeEvent);
+          yield completeEvent;
+          yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
+        } else {
+          throw new Error(`Workflow ended with status: ${resumed.status}`);
+        }
+      } else if (initial.status === 'success') {
+        const report = initial.result?.reportText;
+        sessionStore.updateSession(sessionId, {
+          status: 'completed',
+          finishedAt: new Date().toISOString(),
+        });
+        const completeEvent: UIEvent = {
+          type: 'complete',
+          ts: Date.now(),
+          runId: sessionId,
+          totalTokens: 0,
+          totalCostUsd: 0,
+          ...(typeof report === 'string' ? { report } : {}),
+        };
+        sessionStore.appendEvent(sessionId, completeEvent);
+        yield completeEvent;
+        yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
+      } else {
+        throw new Error(`Workflow ended with status: ${initial.status}`);
+      }
     } catch (err) {
       const { errorEvent, statusEvent } = emitSessionError(sessionStore, sessionId, err, signal);
       yield errorEvent;

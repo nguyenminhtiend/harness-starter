@@ -177,10 +177,9 @@ describe('startSession', () => {
     expect(storedEvents.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('sessions with same conversationId share a ConversationStore', async () => {
+  it('mastra-workflow sessions handle conversationId without error', async () => {
     const convId = crypto.randomUUID();
-    const conversationStores = new Map<string, ConversationStore>();
-    const deps: SessionDeps = { ...makeDeps(), conversationStores };
+    const deps = makeDeps();
 
     const ac1 = new AbortController();
     const h1 = startSession(
@@ -191,25 +190,14 @@ describe('startSession', () => {
       deps,
     );
     ac1.abort();
-    await collectEvents(h1.events);
+    const events = await collectEvents(h1.events);
 
-    expect(conversationStores.size).toBe(1);
-    expect(conversationStores.has(convId)).toBe(true);
-    const store1 = conversationStores.get(convId);
-
-    const ac2 = new AbortController();
-    const h2 = startSession(
-      {
-        ...makeSessionCtx({ sessionId: 'c2', signal: ac2.signal, abortController: ac2 }),
-        conversationId: convId,
-      },
-      deps,
+    const hasError = events.some((e) => e.type === 'error');
+    const hasCancelled = events.some(
+      (e) => e.type === 'error' && (e as { code?: string }).code === 'CANCELLED',
     );
-    ac2.abort();
-    await collectEvents(h2.events);
-
-    expect(conversationStores.size).toBe(1);
-    expect(conversationStores.get(convId)).toBe(store1);
+    expect(hasError).toBe(true);
+    expect(hasCancelled).toBe(true);
   });
 
   it('sessions without conversationId get independent stores', async () => {

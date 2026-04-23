@@ -1,17 +1,21 @@
 import { createSimpleChatAgent } from '@harness/agents';
+import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
 
+const model = process.env.MASTRA_MODEL ?? 'openai/gpt-4o';
+
 const storage = new LibSQLStore({
+  id: 'mastra-storage',
   url: process.env.MASTRA_DB_URL ?? 'file:./.mastra/mastra.db',
 });
 
-const simpleChatAgent = createSimpleChatAgent({
-  model: 'openai/gpt-4o',
-});
+const simpleChatAgent = createSimpleChatAgent({ model });
+
+const deepResearchWorkflow = createDeepResearchWorkflow({ model });
 
 export const mastra = new Mastra({
   agents: { simpleChatAgent },
-  workflows: {},
+  workflows: { deepResearchWorkflow },
   storage,
 });

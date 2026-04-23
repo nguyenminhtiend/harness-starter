@@ -53,6 +53,8 @@
         "@harness/session-store": "workspace:*",
         "@harness/tools": "workspace:*",
         "@harness/tools-mastra": "workspace:*",
+        "@harness/workflows": "workspace:*",
+        "@mastra/core": "1.27.0",
         "@mastra/libsql": "1.9.0",
         "@mastra/memory": "1.17.0",
         "@tanstack/react-query": "^5.0.0",
@@ -276,6 +278,22 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
+    "packages/workflows": {
+      "name": "@harness/workflows",
+      "version": "0.0.0",
+      "dependencies": {
+        "@harness/agents": "workspace:*",
+        "@harness/tools-mastra": "workspace:*",
+        "@mastra/core": "1.27.0",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@mastra/libsql": "1.9.0",
+        "@types/bun": "latest",
+        "ai": "6.0.168",
         "typescript": "^5.7.0",
       },
     },
@@ -570,6 +588,8 @@
     "@harness/tools-mastra": ["@harness/tools-mastra@workspace:packages/tools-mastra"],
 
     "@harness/tui": ["@harness/tui@workspace:packages/tui"],
+
+    "@harness/workflows": ["@harness/workflows@workspace:packages/workflows"],
 
     "@hono/node-server": ["@hono/node-server@1.19.14", "", { "peerDependencies": { "hono": "^4" } }, "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw=="],
 

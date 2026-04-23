@@ -1,21 +1,17 @@
 import { describe, expect, it } from 'bun:test';
-import { inMemoryCheckpointer, inMemoryStore } from '@harness/agent';
-import { createEventBus } from '@harness/core';
-import { fakeProvider } from '@harness/core/testing';
 import { tools } from '../tools/tools.registry.ts';
-import type { ToolDef } from '../tools/types.ts';
 import { deepResearchToolDef } from './index.ts';
 
 describe('deep-research ToolDef', () => {
-  it('conforms to ToolDef (shape + parseable defaults)', () => {
-    const def: ToolDef = deepResearchToolDef;
-    expect(typeof def.id).toBe('string');
-    expect(def.id.length).toBeGreaterThan(0);
-    expect(typeof def.title).toBe('string');
-    expect(typeof def.description).toBe('string');
-    expect(typeof def.buildAgent).toBe('function');
-    const parsed = def.settingsSchema.parse(def.defaultSettings);
-    expect(parsed).toEqual(def.defaultSettings);
+  it('conforms to MastraWorkflowToolDef shape', () => {
+    expect(typeof deepResearchToolDef.id).toBe('string');
+    expect(deepResearchToolDef.id).toBe('deep-research');
+    expect(deepResearchToolDef.runtime).toBe('mastra-workflow');
+    expect(typeof deepResearchToolDef.title).toBe('string');
+    expect(typeof deepResearchToolDef.description).toBe('string');
+    expect(typeof deepResearchToolDef.createWorkflowConfig).toBe('function');
+    const parsed = deepResearchToolDef.settingsSchema.parse(deepResearchToolDef.defaultSettings);
+    expect(parsed).toEqual(deepResearchToolDef.defaultSettings);
   });
 
   it('is registered in the tool registry', () => {
@@ -31,21 +27,13 @@ describe('deep-research ToolDef', () => {
     expect(defaults.maxTokens).toBe(200_000);
     expect(defaults.concurrency).toBe(3);
     expect(defaults.ephemeral).toBe(false);
-    expect(defaults.hitl).toBe(false);
+    expect(defaults.hitl).toBe(true);
   });
 
-  it('buildAgent returns an object with stream and run methods', () => {
-    const provider = fakeProvider([]);
-    const agent = deepResearchToolDef.buildAgent({
-      settings: deepResearchToolDef.defaultSettings,
-      provider,
-      store: inMemoryStore(),
-      checkpointer: inMemoryCheckpointer(),
-      bus: createEventBus(),
-      signal: new AbortController().signal,
-    });
-
-    expect(typeof agent.stream).toBe('function');
-    expect(typeof agent.run).toBe('function');
+  it('createWorkflowConfig returns expected shape', () => {
+    const config = deepResearchToolDef.createWorkflowConfig(deepResearchToolDef.defaultSettings);
+    expect(config.model).toBe('openrouter/free');
+    expect(config.depth).toBe('medium');
+    expect(config.concurrency).toBe(3);
   });
 });
