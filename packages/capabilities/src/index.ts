@@ -1,3 +1,4 @@
+export { createCapabilityRegistry } from './registry.ts';
 export { simpleChatCapability } from './simple-chat/capability.ts';
 export type { SimpleChatInput } from './simple-chat/input.ts';
 export {
