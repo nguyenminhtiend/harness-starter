@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { Tracer } from '@harness/core';
-import { createNoOpTracer } from './noop-tracer.ts';
+import type { Tracer } from './tracer.ts';
+import { createNoOpTracer } from './tracer.ts';
 
 describe('NoOpTracer', () => {
   it('satisfies the Tracer interface', () => {

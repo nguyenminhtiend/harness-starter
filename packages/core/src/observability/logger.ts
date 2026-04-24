@@ -1,5 +1,7 @@
-import type { Logger } from '@harness/core';
 import pino from 'pino';
+import type { Logger } from '../domain/capability.ts';
+
+export type { Logger } from '../domain/capability.ts';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 

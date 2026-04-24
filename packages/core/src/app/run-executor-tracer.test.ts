@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { CapabilityDefinition } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
 import type { StreamEventPayload } from '../domain/session-event.ts';
-import type { Span, Tracer } from '../ports/tracer.ts';
+import type { Span, Tracer } from '../observability/tracer.ts';
 import {
   createFakeClock,
   createFakeEventBus,

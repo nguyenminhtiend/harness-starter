@@ -7,8 +7,8 @@ import type {
 } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
+import type { Tracer } from '../observability/tracer.ts';
 import type { Clock } from '../ports/clock.ts';
-import type { Tracer } from '../ports/tracer.ts';
 import type { ApprovalQueue } from '../storage/inmem-approval-queue.ts';
 import type { EventBus } from '../storage/inmem-event-bus.ts';
 import type { EventLog } from '../storage/inmem-event-log.ts';

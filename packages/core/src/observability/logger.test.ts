@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { Logger } from '@harness/core';
-import { createPinoLogger } from './pino-logger.ts';
+import type { Logger } from './logger.ts';
+import { createPinoLogger } from './logger.ts';
 
 describe('PinoLogger', () => {
   it('satisfies the Logger interface', () => {

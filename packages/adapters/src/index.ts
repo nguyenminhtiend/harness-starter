@@ -6,11 +6,12 @@ export {
   createInMemoryEventLog,
   createInMemoryRunStore,
   createInMemorySettingsStore,
+  createNoOpTracer,
+  createPinoLogger,
 } from '@harness/core';
 export type { ConversationMemoryConfig } from './conversation-memory.ts';
 export { createConversationMemoryProvider } from './conversation-memory.ts';
 export { createCryptoIdGen, createSystemClock } from './identity/index.ts';
-export { createNoOpTracer, createPinoLogger } from './observability/index.ts';
 export {
   createLanguageModel,
   createProviderResolver,
