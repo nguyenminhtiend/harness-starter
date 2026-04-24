@@ -11,7 +11,7 @@ const Subquestion = z.object({
 type Subquestion = z.infer<typeof Subquestion>;
 
 const ResearchPlanSchema = z.object({
-  question: z.string().min(1),
+  summary: z.string().min(1),
   subquestions: z.array(Subquestion).min(1),
 });
 
@@ -70,7 +70,7 @@ export function PlanApprovalModal({ open, plan, onApprove, onReject }: PlanAppro
       return;
     }
     const edited = {
-      question: base.data.question,
+      summary: base.data.summary,
       subquestions: draftSubquestions.map((s) => ({
         id: s.id,
         question: s.question,
@@ -96,7 +96,7 @@ export function PlanApprovalModal({ open, plan, onApprove, onReject }: PlanAppro
     });
   };
 
-  const questionLabel = parsedPlan.success ? parsedPlan.data.question : 'Plan (unstructured)';
+  const questionLabel = parsedPlan.success ? parsedPlan.data.summary : 'Plan (unstructured)';
 
   return (
     <Modal

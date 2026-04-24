@@ -8,6 +8,7 @@ const server = Bun.serve({
   port: config.port,
   hostname: config.host,
   fetch: app.fetch,
+  idleTimeout: 255,
 });
 
 console.log(`API server listening on http://${server.hostname}:${server.port}`);

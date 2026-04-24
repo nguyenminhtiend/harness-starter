@@ -12,7 +12,18 @@ const DEPTH_TO_COUNT: Record<string, number> = {
 
 const PLANNER_INSTRUCTIONS = `You are a research planning assistant. Given a question, decompose it into focused subquestions for deep research.
 
-Each subquestion must be specific, non-overlapping, and directly researchable via web search. Respond with JSON matching the plan schema.`;
+Each subquestion must be specific, non-overlapping, and directly researchable via web search.
+
+Respond with ONLY valid JSON (no markdown fences) matching this exact schema:
+{
+  "summary": "Brief overview of the research plan",
+  "subquestions": [
+    { "id": "sq1", "question": "First specific subquestion?" },
+    { "id": "sq2", "question": "Second specific subquestion?" }
+  ]
+}
+
+IMPORTANT: Each item in "subquestions" MUST be an object with "id" and "question" fields, NOT a plain string.`;
 
 function extractJson(text: string): string {
   const fence = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
@@ -44,6 +55,11 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<ResearchP
   );
   const raw = typeof result.text === 'string' ? result.text : '';
   const parsed = JSON.parse(extractJson(raw));
+  if (Array.isArray(parsed.subquestions)) {
+    parsed.subquestions = parsed.subquestions.map((sq: unknown, i: number) =>
+      typeof sq === 'string' ? { id: `sq${i + 1}`, question: sq } : sq,
+    );
+  }
   return ResearchPlan.parse(parsed);
 }
 

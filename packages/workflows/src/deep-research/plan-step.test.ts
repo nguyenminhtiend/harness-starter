@@ -41,6 +41,31 @@ describe('generatePlan', () => {
     expect(plan.subquestions).toHaveLength(1);
   });
 
+  test('normalizes plain-string subquestions into objects', async () => {
+    const planJson = JSON.stringify({
+      summary: 'Bun research plan',
+      subquestions: [
+        'Why is Bun gaining popularity?',
+        'How does Bun compare to Node.js?',
+        'What are the key features of Bun?',
+      ],
+    });
+    const model = mockModel([{ type: 'text', text: planJson }]);
+
+    const plan = await generatePlan({
+      model,
+      question: 'Why is Bun popular?',
+      depth: 'shallow',
+    });
+
+    expect(plan.subquestions).toHaveLength(3);
+    expect(plan.subquestions[0]).toEqual({ id: 'sq1', question: 'Why is Bun gaining popularity?' });
+    expect(plan.subquestions[2]).toEqual({
+      id: 'sq3',
+      question: 'What are the key features of Bun?',
+    });
+  });
+
   test('uses depth to hint at subquestion count', async () => {
     const planJson = JSON.stringify({
       summary: 'deep scan',

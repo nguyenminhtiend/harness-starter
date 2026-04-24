@@ -68,8 +68,12 @@ export async function checkFacts(opts: CheckFactsOptions): Promise<FactCheckResu
 
   const result = await agent.generate(prompt);
   const text = typeof result.text === 'string' ? result.text : '';
-  const parsed = JSON.parse(extractJson(text));
-  return FactCheckResult.parse(parsed);
+  try {
+    const parsed = JSON.parse(extractJson(text));
+    return FactCheckResult.parse(parsed);
+  } catch {
+    return { pass: false, issues: ['Failed to parse fact-check response — treating as failed.'] };
+  }
 }
 
 export interface CreateFactCheckStepOptions {

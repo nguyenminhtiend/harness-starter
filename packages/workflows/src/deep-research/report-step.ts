@@ -81,8 +81,12 @@ export async function generateReport(opts: GenerateReportOptions): Promise<strin
   );
 
   const text = typeof result.text === 'string' ? result.text : '';
-  const parsed = Report.parse(JSON.parse(extractJson(text)));
-  return reportToMarkdown(parsed);
+  try {
+    const parsed = Report.parse(JSON.parse(extractJson(text)));
+    return reportToMarkdown(parsed);
+  } catch {
+    return text || 'Report generation failed — no output produced.';
+  }
 }
 
 export interface CreateReportStepOptions {

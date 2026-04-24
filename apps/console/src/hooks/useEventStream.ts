@@ -21,6 +21,9 @@ function statusFromEvent(event: SessionEvent): RunStatus | undefined {
   if (event.type === 'approval.requested') {
     return 'suspended';
   }
+  if (event.type === 'approval.resolved') {
+    return 'running';
+  }
   if (event.type === 'run.completed') {
     return 'completed';
   }
