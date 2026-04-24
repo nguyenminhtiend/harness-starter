@@ -4,6 +4,7 @@ import { bodyLimit } from './middleware/body-limit.ts';
 import { localCors } from './middleware/cors.ts';
 import { errorHandler } from './middleware/error-handler.ts';
 import { requestId } from './middleware/request-id.ts';
+import { buildOpenApiSpec, getScalarHtml } from './openapi.ts';
 import { approvalsRoutes } from './routes/approvals.routes.ts';
 import { capabilitiesRoutes } from './routes/capabilities.routes.ts';
 import { conversationsRoutes } from './routes/conversations.routes.ts';
@@ -24,6 +25,10 @@ export function createHttpApp(deps: HttpAppDeps, config?: HttpAppConfig): Hono {
   app.use('*', requestId());
   app.use('*', bodyLimit());
   app.onError(errorHandler());
+
+  const spec = buildOpenApiSpec();
+  app.get('/openapi.json', (c) => c.json(spec));
+  app.get('/docs', (c) => c.html(getScalarHtml()));
 
   app.route('/health', healthRoutes());
   app.route('/capabilities', capabilitiesRoutes(deps));
