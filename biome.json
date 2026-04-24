@@ -105,38 +105,13 @@
               "level": "error",
               "options": {
                 "paths": {
-                  "@harness/adapters": "core must not import adapters (DAG violation)",
                   "@harness/http": "core must not import http (DAG violation)",
                   "@harness/capabilities": "core must not import capabilities (DAG violation)"
                 },
                 "patterns": [
                   {
-                    "group": ["@harness/adapters/*", "@harness/http/*", "@harness/capabilities/*"],
-                    "message": "core must not import adapters/http/capabilities (DAG violation)"
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/adapters/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": {
-              "level": "error",
-              "options": {
-                "paths": {
-                  "@harness/http": "adapters must not import http (DAG violation)",
-                  "@harness/capabilities": "adapters must not import capabilities (DAG violation)"
-                },
-                "patterns": [
-                  {
                     "group": ["@harness/http/*", "@harness/capabilities/*"],
-                    "message": "adapters must not import http/capabilities (DAG violation)"
+                    "message": "core must not import http/capabilities (DAG violation)"
                   }
                 ]
               }
@@ -178,19 +153,17 @@
               "options": {
                 "paths": {
                   "@harness/capabilities": "http must not import capabilities (DAG violation)",
-                  "@harness/adapters": "http must not import adapters (DAG violation)",
-                  "@mastra/core": "http must not import runtime SDK directly (use core/capabilities)"
+                  "@mastra/core": "http must not import runtime SDK directly (use core)"
                 },
                 "patterns": [
                   {
                     "group": [
                       "@harness/capabilities/*",
-                      "@harness/adapters/*",
                       "@mastra/core/*",
                       "@mastra/libsql",
                       "@mastra/libsql/*"
                     ],
-                    "message": "http must not import capabilities/adapters/runtime SDK (DAG violation)"
+                    "message": "http must not import capabilities/runtime SDK (DAG violation)"
                   }
                 ]
               }
@@ -209,7 +182,6 @@
               "options": {
                 "paths": {
                   "@harness/core": "console may only import from @harness/http (DAG violation)",
-                  "@harness/adapters": "console may only import from @harness/http (DAG violation)",
                   "@harness/capabilities": "console may only import from @harness/http (DAG violation)",
                   "@harness/agents": "console may only import from @harness/http (DAG violation)",
                   "@harness/workflows": "console may only import from @harness/http (DAG violation)",
@@ -221,7 +193,6 @@
                   {
                     "group": [
                       "@harness/core/*",
-                      "@harness/adapters/*",
                       "@harness/capabilities/*",
                       "@harness/agents/*",
                       "@harness/workflows/*",
