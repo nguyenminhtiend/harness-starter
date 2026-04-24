@@ -1,6 +1,6 @@
 import type { CapabilityDefinition } from '../domain/capability.ts';
 import { NotFoundError } from '../domain/errors.ts';
-import type { CapabilityRegistry } from '../ports/capability-registry.ts';
+import type { CapabilityRegistry } from './registry.ts';
 
 export interface GetCapabilityDeps {
   readonly capabilityRegistry: CapabilityRegistry;
