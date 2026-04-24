@@ -178,12 +178,19 @@
               "options": {
                 "paths": {
                   "@harness/capabilities": "http must not import capabilities (DAG violation)",
-                  "@harness/adapters": "http must not import adapters (DAG violation)"
+                  "@harness/adapters": "http must not import adapters (DAG violation)",
+                  "@mastra/core": "http must not import runtime SDK directly (use core/capabilities)"
                 },
                 "patterns": [
                   {
-                    "group": ["@harness/capabilities/*", "@harness/adapters/*"],
-                    "message": "http must not import capabilities/adapters (DAG violation)"
+                    "group": [
+                      "@harness/capabilities/*",
+                      "@harness/adapters/*",
+                      "@mastra/core/*",
+                      "@mastra/libsql",
+                      "@mastra/libsql/*"
+                    ],
+                    "message": "http must not import capabilities/adapters/runtime SDK (DAG violation)"
                   }
                 ]
               }
@@ -206,7 +213,9 @@
                   "@harness/capabilities": "console may only import from @harness/http (DAG violation)",
                   "@harness/agents": "console may only import from @harness/http (DAG violation)",
                   "@harness/workflows": "console may only import from @harness/http (DAG violation)",
-                  "@harness/tools": "console may only import from @harness/http (DAG violation)"
+                  "@harness/tools": "console may only import from @harness/http (DAG violation)",
+                  "@mastra/core": "console may only import from @harness/http (DAG violation)",
+                  "@mastra/libsql": "console may only import from @harness/http (DAG violation)"
                 },
                 "patterns": [
                   {
@@ -216,7 +225,10 @@
                       "@harness/capabilities/*",
                       "@harness/agents/*",
                       "@harness/workflows/*",
-                      "@harness/tools/*"
+                      "@harness/tools/*",
+                      "@mastra/core/*",
+                      "@mastra/libsql",
+                      "@mastra/libsql/*"
                     ],
                     "message": "console may only import from @harness/http (DAG violation)"
                   }
