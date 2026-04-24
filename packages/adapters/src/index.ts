@@ -1,3 +1,5 @@
+export type { ConversationMemoryConfig } from './conversation-memory.ts';
+export { createConversationMemoryProvider } from './conversation-memory.ts';
 export { createCryptoIdGen, createSystemClock } from './identity/index.ts';
 export {
   createInMemoryApprovalQueue,
@@ -8,21 +10,6 @@ export {
   createInMemoryRunStore,
   createInMemorySettingsStore,
 } from './inmem/index.ts';
-export type {
-  FromMastraAgentConfig,
-  FromMastraWorkflowConfig,
-  MastraMemoryProviderConfig,
-  MastraSingletonConfig,
-  MastraStreamChunk,
-} from './mastra/index.ts';
-export {
-  createMastraMemoryProvider,
-  fromMastraAgent,
-  fromMastraWorkflow,
-  getMastraInstance,
-  mapMastraChunk,
-  resetMastraInstance,
-} from './mastra/index.ts';
 export { createNoOpTracer, createPinoLogger } from './observability/index.ts';
 export {
   createLanguageModel,
@@ -30,3 +17,5 @@ export {
   knownModels,
   loadProviderKeysFromEnv,
 } from './providers/index.ts';
+export type { RuntimeSingletonConfig } from './runtime-singleton.ts';
+export { getRuntimeInstance, resetRuntimeInstance } from './runtime-singleton.ts';
