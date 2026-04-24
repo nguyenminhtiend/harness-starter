@@ -101,8 +101,8 @@ bun test path/to/file.test.ts  # single test
 bun run web          # api + console in parallel
 bun run api          # @harness/example-api (Hono backend on :3000)
 bun run console      # @harness/example-console (Vite dev server on :5173)
-bun run mastra:dev   # Mastra Studio on :4111
-bun run mastra:build # Mastra production build
+bun run studio:dev   # Mastra Studio on :4111
+bun run studio:build # Mastra production build
 ```
 
 ## API endpoints
