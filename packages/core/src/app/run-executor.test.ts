@@ -400,4 +400,142 @@ describe('RunExecutor', () => {
     const after = await runStore.get('run-7');
     expect(after?.status).toBe('completed');
   });
+
+  it('passes settings to runner.build and memory to agent.stream', async () => {
+    let receivedSettings: unknown;
+    let receivedMemory: unknown;
+    const capability: CapabilityDefinition = {
+      id: 'test-cap',
+      title: 'Test',
+      description: 'Test',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      outputSchema: { parse: (v: unknown) => v } as never,
+      settingsSchema: { parse: (v: unknown) => v } as never,
+      runner: {
+        kind: 'agent',
+        build: (settings) => {
+          receivedSettings = settings;
+          return {
+            stream: async (_p: string, opts: Record<string, unknown>) => {
+              receivedMemory = opts.memory;
+              return {
+                fullStream: new ReadableStream({
+                  start(c) {
+                    c.close();
+                  },
+                }),
+              };
+            },
+          } as never;
+        },
+        extractPrompt: () => 'test',
+      },
+    };
+
+    const { executor } = setup();
+    const run = new Run('run-8', 'test-cap', '2026-04-24T00:00:00.000Z');
+    await executor.execute(run, capability, {}, new AbortController().signal, {
+      settings: { model: 'gpt-4o' },
+      memory: { conversationId: 'conv-1' },
+    });
+
+    expect(receivedSettings).toEqual({ model: 'gpt-4o' });
+    expect(receivedMemory).toEqual({ thread: 'conv-1', resource: 'harness' });
+    expect(run.status).toBe('completed');
+  });
+
+  it('passes maxSteps from runner config to agent.stream', async () => {
+    let receivedMaxSteps: unknown;
+    const capability: CapabilityDefinition = {
+      id: 'test-cap',
+      title: 'Test',
+      description: 'Test',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      outputSchema: { parse: (v: unknown) => v } as never,
+      settingsSchema: { parse: (v: unknown) => v } as never,
+      runner: {
+        kind: 'agent',
+        build: () =>
+          ({
+            stream: async (_p: string, opts: Record<string, unknown>) => {
+              receivedMaxSteps = opts.maxSteps;
+              return {
+                fullStream: new ReadableStream({
+                  start(c) {
+                    c.close();
+                  },
+                }),
+              };
+            },
+          }) as never,
+        extractPrompt: () => 'test',
+        maxSteps: 10,
+      },
+    };
+
+    const { executor } = setup();
+    const run = new Run('run-9', 'test-cap', '2026-04-24T00:00:00.000Z');
+    await executor.execute(run, capability, {}, new AbortController().signal);
+
+    expect(receivedMaxSteps).toBe(10);
+  });
+
+  it('fails when workflow returns unexpected status', async () => {
+    const capability: CapabilityDefinition = {
+      id: 'wf-fail',
+      title: 'Fail WF',
+      description: 'Failing workflow',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      outputSchema: { parse: (v: unknown) => v } as never,
+      settingsSchema: { parse: (v: unknown) => v } as never,
+      runner: {
+        kind: 'workflow',
+        build: () =>
+          ({
+            createRun: async () => ({
+              start: async () => ({ status: 'failed', error: 'boom' }),
+            }),
+          }) as never,
+        extractInput: () => ({}),
+      },
+    };
+
+    const { eventLog, executor } = setup();
+    const run = new Run('run-10', 'wf-fail', '2026-04-24T00:00:00.000Z');
+    await executor.execute(run, capability, {}, new AbortController().signal);
+
+    expect(run.status).toBe('failed');
+    const events = await eventLog.read('run-10');
+    expect(events.map((e) => e.type)).toContain('run.failed');
+  });
+
+  it('yields artifact for workflow that succeeds without suspension', async () => {
+    const capability: CapabilityDefinition = {
+      id: 'wf-direct',
+      title: 'Direct WF',
+      description: 'Workflow succeeds immediately',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      outputSchema: { parse: (v: unknown) => v } as never,
+      settingsSchema: { parse: (v: unknown) => v } as never,
+      runner: {
+        kind: 'workflow',
+        build: () =>
+          ({
+            createRun: async () => ({
+              start: async () => ({ status: 'success', result: { answer: 42 } }),
+            }),
+          }) as never,
+        extractInput: () => ({}),
+      },
+    };
+
+    const { eventLog, executor } = setup();
+    const run = new Run('run-11', 'wf-direct', '2026-04-24T00:00:00.000Z');
+    await executor.execute(run, capability, {}, new AbortController().signal);
+
+    expect(run.status).toBe('completed');
+    const events = await eventLog.read('run-11');
+    const types = events.map((e) => e.type);
+    expect(types).toEqual(['run.started', 'artifact', 'run.completed']);
+  });
 });
