@@ -24,22 +24,22 @@
       "env": {}
     },
     {
-      "name": "Debug web-studio server",
+      "name": "Debug API server",
       "type": "bun",
       "request": "launch",
-      "program": "${workspaceFolder}/apps/web-studio/src/server/index.ts",
-      "cwd": "${workspaceFolder}/apps/web-studio",
+      "program": "${workspaceFolder}/apps/api/src/index.ts",
+      "cwd": "${workspaceFolder}/apps/api",
       "stopOnEntry": false,
       "watchMode": false,
       "internalConsoleOptions": "neverOpen",
       "env": {}
     },
     {
-      "name": "Debug web-studio server (stop on entry)",
+      "name": "Debug API server (stop on entry)",
       "type": "bun",
       "request": "launch",
-      "program": "${workspaceFolder}/apps/web-studio/src/server/index.ts",
-      "cwd": "${workspaceFolder}/apps/web-studio",
+      "program": "${workspaceFolder}/apps/api/src/index.ts",
+      "cwd": "${workspaceFolder}/apps/api",
       "stopOnEntry": true,
       "watchMode": false,
       "internalConsoleOptions": "neverOpen",

@@ -12,7 +12,7 @@ TypeScript-first, clone-and-own starter for building agentic AI systems. Powered
 ```sh
 gh repo clone <this-repo> harness-starter
 cd harness-starter
-cp apps/web-studio/.env.example apps/web-studio/.env  # set API keys
+cp apps/api/.env.example apps/api/.env  # set API keys
 bun install
 bun run ci           # lint + typecheck + build + test
 ```
@@ -20,7 +20,7 @@ bun run ci           # lint + typecheck + build + test
 ## Running
 
 ```sh
-bun run web          # web-studio (Vite UI + Hono API on :3000)
+bun run web          # API (:3000) + Console UI (:5173) in parallel
 bun run mastra:dev   # Mastra Studio on :4111 (agents, workflows, traces)
 ```
 
@@ -34,7 +34,7 @@ bun run mastra:dev   # Mastra Studio on :4111 (agents, workflows, traces)
 | `bun run typecheck` | `tsc --noEmit` across all workspace packages   |
 | `bun run build`     | Build across all workspace packages            |
 | `bun test`          | Unit tests via `bun test` (excludes `*.eval.ts`) |
-| `bun run web`       | Run `apps/web-studio` (Vite UI + Hono API)     |
+| `bun run web`       | Run API + Console (Hono + Vite) in parallel    |
 | `bun run mastra:dev`| Mastra Studio for agent/workflow inspection     |
 | `bun run mastra:build` | Mastra production build                     |
 
@@ -43,13 +43,16 @@ bun run mastra:dev   # Mastra Studio on :4111 (agents, workflows, traces)
 ```
 harness-starter/
 ├── packages/
-│   ├── agents/       # Mastra Agent definitions (simpleChatAgent)
-│   ├── tools/        # Mastra Tool definitions (calculator, get-time, fs, fetch)
-│   └── workflows/    # Mastra Workflow definitions (deepResearchWorkflow)
+│   ├── core/         # Domain model, ports, use cases
+│   ├── http/         # Hono routes, middleware, public DTOs
+│   ├── adapters/     # Port implementations (in-memory, Mastra, Pino)
+│   ├── capabilities/ # Capability definitions
+│   ├── agents/       # Mastra Agent definitions
+│   ├── tools/        # Mastra Tool definitions
+│   └── workflows/    # Mastra Workflow definitions
 ├── apps/
-│   ├── web-studio/   # Production web UI (Hono + React + Vite)
-│   ├── server/       # HTTP server (placeholder)
-│   └── web/          # Web client (placeholder)
+│   ├── api/          # Hono API server (composition root)
+│   └── console/      # React SPA (Vite dev server, proxies to API)
 ├── mastra.config.ts  # Root Mastra config (agents, workflows, storage)
 ├── docs/             # Specs and migration plans
 └── .github/          # CI workflow

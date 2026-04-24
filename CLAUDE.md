@@ -15,7 +15,7 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 3. **Workflow-first for multi-step.** Multi-step pipelines are Mastra `createWorkflow` with typed steps, not custom graph implementations. HITL uses `suspend()`/`resume()`.
 4. **`AbortSignal` flows top-down** where supported by Mastra.
 5. **Clone-and-own invariant:** deleting any of `packages/tools/`, `packages/agents/`, `packages/workflows/`, or any `apps/*` must leave the rest building and testing cleanly.
-6. **Mastra Studio as dev UI.** `mastra dev` provides agent/workflow inspection, traces, and evals. `apps/web-studio` is the production web UI.
+6. **Mastra Studio as dev UI.** `mastra dev` provides agent/workflow inspection, traces, and evals. `apps/console` is the production web UI.
 
 ## Non-goals — do not build these
 
@@ -33,9 +33,8 @@ packages/
   tools ──> agents ──> workflows
 
 apps/
-  web-studio (Hono + React; imports from packages/*)
-  server     (placeholder)
-  web        (placeholder)
+  console (React SPA; imports types from @harness/http/types)
+  api     (Hono composition root; wires packages/* together)
 
 mastra.config.ts (root Mastra config: registers agents + workflows for Studio)
 ```
@@ -61,9 +60,9 @@ bun run build        # across all workspaces (tsc --noEmit)
 bun test             # all unit tests
 bun test path/to/file.test.ts  # single test
 
-bun run web          # @harness/example-web-studio (full app)
-bun run web:server   # web-studio backend only
-bun run web:ui       # web-studio Vite dev server only
+bun run web          # api + console in parallel
+bun run api          # @harness/example-api (Hono backend)
+bun run console      # @harness/example-console (Vite dev server)
 bun run mastra:dev   # Mastra Studio on :4111
 bun run mastra:build # Mastra production build
 ```
