@@ -72,6 +72,8 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
       return events[events.length - 1]?.seq;
     }
 
+    let approvalTimer: ReturnType<typeof setTimeout> | null = null;
+
     function startStream(lastEventId?: number): void {
       if (disposed) {
         return;
@@ -84,7 +86,18 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
         (event) => {
           reconnectAttempts = 0;
           if (event.type === 'approval.requested') {
-            optionsRef.current?.onApprovalRequested?.(event);
+            if (approvalTimer) {
+              clearTimeout(approvalTimer);
+            }
+            const evt = event;
+            approvalTimer = setTimeout(() => {
+              approvalTimer = null;
+              optionsRef.current?.onApprovalRequested?.(evt);
+            }, 150);
+          }
+          if (event.type === 'approval.resolved' && approvalTimer) {
+            clearTimeout(approvalTimer);
+            approvalTimer = null;
           }
           eventsRef.current.push(event);
           const nextStatus = statusFromEvent(event);
@@ -156,6 +169,9 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
       disposed = true;
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
+      }
+      if (approvalTimer) {
+        clearTimeout(approvalTimer);
       }
       closeRef.current?.();
     };

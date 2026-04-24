@@ -7,6 +7,7 @@ import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySi
 import { PlanApprovalModal } from './components/PlanApprovalModal.tsx';
 import { Badge } from './components/primitives.tsx';
 import { deriveReportMarkdown } from './components/ReportView.tsx';
+import { ResearchView } from './components/ResearchView.tsx';
 import { SessionForm, type SessionFormState } from './components/SessionForm.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { StreamView } from './components/StreamView.tsx';
@@ -51,7 +52,7 @@ export function App() {
   const stream = useEventStream(runId, { onApprovalRequested });
   const status = stream.status;
 
-  const reportMarkdown = useMemo(() => deriveReportMarkdown(stream.events), [stream.events]);
+  const reportMarkdown = deriveReportMarkdown(stream.events);
 
   const mutations = useRunMutations({
     activeTool,
@@ -237,6 +238,18 @@ export function App() {
             onNewChat={handleNewSession}
             onComplete={handleChatComplete}
           />
+        ) : showStream && activeTool === 'deep-research' ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <SessionForm
+              form={form}
+              setForm={setForm}
+              onRun={mutations.handleRun}
+              onStop={mutations.handleStop}
+              status={status}
+              compact
+            />
+            <ResearchView events={stream.events} status={status} onRetry={mutations.handleRetry} />
+          </div>
         ) : showStream ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <SessionForm

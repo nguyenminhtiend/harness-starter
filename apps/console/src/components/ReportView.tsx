@@ -18,16 +18,27 @@ function reportFromOutput(output: unknown): string | undefined {
   if (typeof output === 'string' && output.trim().length > 0) {
     return output;
   }
-  if (output && typeof output === 'object' && 'report' in output) {
-    const r = (output as { report: unknown }).report;
-    if (typeof r === 'string' && r.trim().length > 0) {
-      return r;
+  if (output && typeof output === 'object') {
+    if ('reportText' in output) {
+      const rt = (output as { reportText: unknown }).reportText;
+      if (typeof rt === 'string' && rt.trim().length > 0) {
+        return rt;
+      }
+    }
+    if ('report' in output) {
+      const r = (output as { report: unknown }).report;
+      if (typeof r === 'string' && r.trim().length > 0) {
+        return r;
+      }
     }
   }
   return undefined;
 }
 
-/** Prefer the last `run.completed` report; otherwise concatenate `text.delta` events. */
+/**
+ * Extract the report markdown from session events.
+ * Priority: run.completed output → artifact 'result' → text.delta concatenation.
+ */
 export function deriveReportMarkdown(events: readonly SessionEvent[]): string | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
@@ -37,6 +48,19 @@ export function deriveReportMarkdown(events: readonly SessionEvent[]): string | 
         return r;
       }
       break;
+    }
+  }
+
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e?.type === 'artifact' && e.name === 'result') {
+      const r = reportFromOutput(e.data);
+      if (r) {
+        return r;
+      }
+      if (typeof e.data === 'string' && e.data.trim().length > 0) {
+        return e.data;
+      }
     }
   }
 
