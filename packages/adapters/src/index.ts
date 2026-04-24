@@ -25,3 +25,4 @@ export {
   resetMastraInstance,
 } from './mastra/index.ts';
 export { createNoOpTracer, createPinoLogger } from './observability/index.ts';
+export { createProviderResolver, knownModels, loadProviderKeysFromEnv } from './providers/index.ts';
