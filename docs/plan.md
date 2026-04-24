@@ -9,7 +9,7 @@
 
 ## Overview
 
-Rebuild the harness as a hexagonal, event-sourced agentic platform with HTTP APIs, using **in-memory stores** initially. Capabilities are `CapabilityDefinition` records with a `CapabilityRunner` that builds agents or workflows directly. Postgres is the target durable store but deferred to a follow-up phase — the port/adapter split means swapping InMemory → Postgres is mechanical.
+Rebuild the harness as an event-sourced agentic platform with HTTP APIs, using **in-memory stores** initially. Capabilities are `CapabilityDefinition` records with a `CapabilityRunner` that builds agents or workflows directly. Postgres is the target durable store but deferred to a follow-up phase — swapping InMemory → Postgres means adding another class implementing the same structural type and choosing at wire time.
 
 Simplifications adopted in this revision:
 - **In-memory storage first.** All stores (runs, events, conversations, settings, approvals) are in-memory. Data resets on restart — acceptable for dev. Postgres follow-up adds durability without domain changes.
@@ -38,54 +38,38 @@ The new system is built alongside `apps/web-studio` in new packages. At the cuto
 
 ## Architecture
 
-### Layers (hexagonal)
+### Layers (feature folders)
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│ Transports         HTTP (REST + SSE) · MCP (future) · WS (later)│
-├────────────────────────────────────────────────────────────────┤
-│ Application        StartRun · StreamRunEvents · ApproveRun ·    │
-│ (use cases)        CancelRun · ListCapabilities · Settings ·    │
-│                    Conversations                                │
-├────────────────────────────────────────────────────────────────┤
-│ Domain             Run (aggregate) · SessionEvent (tagged union)│
-│                    Capability<I,O> · Conversation · Approval    │
-├────────────────────────────────────────────────────────────────┤
-│ Ports (interfaces) RunStore · EventLog · EventBus · ApprovalStore│
-│                    MemoryProvider · ProviderResolver ·           │
-│                    Clock · IdGen · Logger · Tracer              │
-├────────────────────────────────────────────────────────────────┤
-│ Adapters           InMemory (all stores + bus + approval)       │
-│                    Mastra (capabilities) · Pino (logger)        │
-│                    Crypto (id) · System (clock)                 │
-└────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Transports       HTTP (REST + SSE via Hono)                  │
+├──────────────────────────────────────────────────────────────┤
+│ Features         runs/ · conversations/ · settings/ ·        │
+│ (use cases)      capabilities/                               │
+├──────────────────────────────────────────────────────────────┤
+│ Domain           Run (aggregate) · SessionEvent (Zod union)  │
+│                  CapabilityDefinition · Conversation · Approval│
+├──────────────────────────────────────────────────────────────┤
+│ Infrastructure   storage/ · providers/ · observability/ ·    │
+│                  time/ · memory/ · runtime/                   │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**Key property:** every arrow points inward. Domain and application have zero runtime dependencies except `zod`. All "real" code (Mastra, Hono, pino) is in adapters and is swappable.
+> **Architecture update (post-flatten):** The hexagonal ports/adapters layering was collapsed. `@harness/adapters` was deleted; all implementations live in `@harness/core`. Storage types are defined inline next to their default impl. The one real variation point (Postgres) is handled by adding another class implementing the same structural type.
 
 ### Package DAG
 
 ```
-packages/
-  tools/  agents/  workflows/         (Mastra primitives — unchanged)
-        ↑           ↑
-        └───────────┤
-                    │
-  adapters/  ←──  capabilities/  ──→  core/
-     ↑                                 ↑
-     └────────────────────┐            │
-                          │            │
-                        http/  ←───────┘
-                          ↑
-                        apps/api
-                        apps/console   (HTTP types only)
-                        mastra.config.ts
+tools ─┐
+agents ─┼─→ capabilities ─→ core ─→ http
+workflows ─┘                       ↑
+                         apps/api ─┘
+                         apps/console (http types only)
 
-core/          zero deps outside zod. Domain + ports + use cases.
-adapters/      implements ports. In-memory stores, Mastra, pino, OTel, etc.
-capabilities/  capability definitions. Uses adapters/mastra helpers; imports core for Capability interface.
+core/          Domain + feature folders + storage + providers + observability.
+capabilities/  CapabilityDefinition exports + buildStudioConfig.
 http/          Hono + middleware + routes + OpenAPI + typed DTOs.
-apps/api       composition root. Wires config → adapters → capabilities → http.
+apps/api       Composition root. Wires config → core factories → capabilities → http.
 apps/console   React SPA. Imports only @harness/http/types for DTO shapes.
 ```
 

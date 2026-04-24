@@ -1,6 +1,6 @@
 # Harness Starter
 
-TypeScript-first, clone-and-own starter for building agentic AI systems. Hexagonal architecture with event-sourced run execution, pluggable capabilities, and HTTP APIs. Powered by [Mastra](https://mastra.ai) framework primitives, layered modular monorepo on Bun workspaces.
+TypeScript-first, clone-and-own starter for building agentic AI systems. Event-sourced run execution, pluggable capabilities, and HTTP APIs. Powered by [Mastra](https://mastra.ai) framework primitives, feature-folder monorepo on Bun workspaces.
 
 ## Prerequisites
 
@@ -67,9 +67,8 @@ The API server runs on port 3000 with in-memory stores (data resets on restart).
 ```
 harness-starter/
 ├── packages/
-│   ├── core/         # Domain model, ports (interfaces), use cases — zero deps beyond zod
-│   ├── adapters/     # Port implementations (in-memory stores, Mastra bridge, pino, OTel)
-│   ├── capabilities/ # Capability definitions (simple-chat, deep-research) + buildMastraConfig
+│   ├── core/         # Domain, feature folders, storage, providers, observability
+│   ├── capabilities/ # Capability definitions (simple-chat, deep-research) + buildStudioConfig
 │   ├── http/         # Hono routes, middleware, OpenAPI spec, public DTO types
 │   ├── agents/       # Mastra Agent definitions
 │   ├── tools/        # Mastra Tool definitions
@@ -77,22 +76,19 @@ harness-starter/
 ├── apps/
 │   ├── api/          # Hono API server (composition root — wires packages together)
 │   └── console/      # React SPA (Vite + TanStack Query, proxies to API)
-├── mastra.config.ts  # Root Mastra config (uses buildMastraConfig from capabilities)
+├── mastra.config.ts  # Root Mastra config (uses buildStudioConfig from capabilities)
 ├── docs/             # Architecture plans
 └── .github/          # CI workflow
 ```
 
 ## Architecture
 
-The system follows a hexagonal (ports & adapters) architecture with event-sourced run execution:
+The system uses feature-folder organization with event-sourced run execution:
 
-- **Domain** (`@harness/core`) defines `Run` (state machine aggregate), `SessionEvent` (Zod discriminated union), and `Capability<I, O>` (pluggable interface). Zero framework coupling.
-- **Ports** are narrow interfaces for storage, event fanout, approvals, logging, etc.
-- **Adapters** (`@harness/adapters`) implement ports with in-memory stores (swap to Postgres later), Mastra bridge (`fromMastraAgent`/`fromMastraWorkflow`), pino logger, and OTel stubs.
+- **Core** (`@harness/core`) contains domain types (`Run`, `SessionEvent`, `CapabilityDefinition`), feature folders (`runs/`, `conversations/`, `settings/`, `capabilities/`), and infrastructure (`storage/`, `providers/`, `observability/`, `time/`, `memory/`).
 - **Capabilities** (`@harness/capabilities`) define concrete agent/workflow capabilities. Adding a capability here auto-registers it in both the HTTP API and Mastra Studio.
 - **HTTP** (`@harness/http`) exposes REST + SSE endpoints via Hono with typed DTOs.
-
-All arrows point inward. Domain and application layers have zero runtime dependencies except `zod`.
+- Storage types are defined inline next to their default implementation. Swap in-memory to Postgres by adding another class and choosing at wire time.
 
 ## Conventions
 

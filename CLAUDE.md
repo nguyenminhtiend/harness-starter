@@ -4,21 +4,22 @@ Guidance for Claude Code when working in this repo.
 
 ## What this starter is
 
-TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems. Hexagonal architecture with event-sourced run execution, pluggable capabilities, and HTTP APIs. Mastra primitives (agents, workflows, tools) are building blocks composed via `CapabilityDefinition` records.
+TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems. Feature-folder architecture with event-sourced run execution, pluggable capabilities, and HTTP APIs. Mastra primitives (agents, workflows, tools) are building blocks composed via `CapabilityDefinition` records.
 
 **Tech stack:** TypeScript 5.7 strict · Bun workspaces · Mastra v1 (agents, workflows, memory) · Vercel AI SDK v5 · Zod v4 · Hono · pino · @opentelemetry/api · Biome · Lefthook · Commitlint · Changesets · LibSQL.
 
 ## Shape invariants (non-negotiable)
 
-1. **Hexagonal architecture.** Domain and application layers depend only on `zod` and `@mastra/core` (type imports for `Agent`/`Workflow` in `CapabilityRunner`). All I/O lives in adapters behind port interfaces.
-2. **CapabilityDefinition.** Capabilities are `CapabilityDefinition`s composed of a `CapabilityRunner` (agent or workflow) plus metadata (schemas, title, description). There is no runtime-swap abstraction — `@mastra/core` types appear directly in `packages/core`.
-3. **Event-sourced runs.** The `Run` aggregate emits `SessionEvent`s. All state mutation goes through `Run`. No route or adapter calls store methods directly.
-4. **Mastra primitives.** Agents use `@mastra/core/agent`, tools use `@mastra/core/tools/createTool`, workflows use `@mastra/core/workflows/createWorkflow`.
-5. **Structured output** uses Zod v4 schemas passed to Mastra agents/steps.
-6. **Workflow-first for multi-step.** Multi-step pipelines are Mastra `createWorkflow` with typed steps, not custom graph implementations. HITL uses `suspend()`/`resume()`.
-7. **`AbortSignal` flows top-down** where supported by Mastra.
-8. **Clone-and-own invariant:** deleting any of `packages/tools/`, `packages/agents/`, `packages/workflows/`, `packages/capabilities/`, or any `apps/*` must leave the rest building and testing cleanly.
-9. **Mastra Studio as dev UI.** `mastra dev` provides agent/workflow inspection, traces, and evals. `apps/console` is the production web UI.
+1. **Event-sourced runs.** The `Run` aggregate emits `SessionEvent`s. All run-state mutation flows through `Run`. No route calls store methods directly.
+2. **Capability definitions are data.** A capability is a `CapabilityDefinition` (metadata + runner). No runtime-swap abstraction.
+3. **Storage implementations are classes.** Structural types at the top of the file, not a separate `ports/` directory. Swap in-memory → Postgres by adding another class and choosing at wire time.
+4. **Test seams live on `Clock` and `IdGen` (plus scripted `mockModel()`).** No general port-fake harness.
+5. **Mastra primitives.** Agents use `@mastra/core/agent`, tools use `@mastra/core/tools/createTool`, workflows use `@mastra/core/workflows/createWorkflow`.
+6. **Structured output** uses Zod v4 schemas passed to Mastra agents/steps.
+7. **Workflow-first for multi-step.** Multi-step pipelines are Mastra `createWorkflow` with typed steps, not custom graph implementations. HITL uses `suspend()`/`resume()`.
+8. **`AbortSignal` flows top-down** where supported by Mastra.
+9. **Clone-and-own invariant:** deleting any of `packages/tools/`, `packages/agents/`, `packages/workflows/`, `packages/capabilities/`, or any `apps/*` must leave the rest building and testing cleanly.
+10. **Mastra Studio as dev UI.** `mastra dev` provides agent/workflow inspection, traces, and evals. `apps/console` is the production web UI.
 
 ## Non-goals — do not build these
 
@@ -29,62 +30,44 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 - No Python bridge or cross-language interop.
 - No npm publishing.
 
-## Architecture — hexagonal layers
+## Architecture — feature folders
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ Transports       HTTP (REST + SSE via Hono)                  │
 ├──────────────────────────────────────────────────────────────┤
-│ Application      StartRun · RunExecutor · StreamRunEvents ·  │
-│ (use cases)      ApproveRun · CancelRun · ListCapabilities · │
-│                  Settings · Conversations                    │
+│ Features         runs/ · conversations/ · settings/ ·        │
+│ (use cases)      capabilities/                               │
 ├──────────────────────────────────────────────────────────────┤
 │ Domain           Run (aggregate) · SessionEvent (Zod union)  │
 │                  CapabilityDefinition · Conversation · Approval│
 ├──────────────────────────────────────────────────────────────┤
-│ Ports            RunStore · EventLog · EventBus ·            │
-│ (interfaces)     ApprovalStore · MemoryProvider ·            │
-│                  ProviderResolver · CapabilityRegistry ·     │
-│                  Clock · IdGen · Logger · Tracer             │
-├──────────────────────────────────────────────────────────────┤
-│ Adapters         InMemory stores · pino (logger) ·            │
-│                  crypto (id) · system (clock)                │
+│ Infrastructure   storage/ · providers/ · observability/ ·    │
+│                  time/ · memory/ · runtime/                   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ### Package DAG
 
 ```
-packages/
-  tools ──→ agents ──→ workflows       (Mastra primitives)
-          ↑             ↑
-          └─────────────┤
-                        │
-  adapters  ←── capabilities ──→ core
-     ↑                           ↑
-     └──────────────┐            │
-                    │            │
-                  http  ←────────┘
-                    ↑
-apps/
-  api           (composition root — wires everything)
-  console       (React SPA — imports only @harness/http/types)
-
-mastra.config.ts  (Mastra Studio config via buildStudioConfig)
+tools ─┐
+agents ─┼─→ capabilities ─→ core ─→ http
+workflows ─┘                       ↑
+                         apps/api ─┘
+                         apps/console (http types only)
 ```
 
-- **`packages/core/`** — Domain model, port interfaces, use cases. Deps: `zod`, `@mastra/core` (types only for `CapabilityRunner`).
-- **`packages/adapters/`** — Port implementations: in-memory stores, conversation memory, runtime singleton, pino, OTel stubs.
+- **`packages/core/`** — Domain model, feature folders (runs, conversations, settings, capabilities), storage, providers, observability, time, memory, runtime. Deps: `zod`, `@mastra/core`, `@mastra/libsql`, `pino`, `ollama-ai-provider-v2`.
 - **`packages/capabilities/`** — `CapabilityDefinition` exports (simple-chat, deep-research) + `buildStudioConfig`.
 - **`packages/http/`** — Hono routes, middleware, OpenAPI spec, public DTO types.
 - **`packages/tools/`** — Mastra `createTool` implementations (calculator, get-time, fs, fetch).
 - **`packages/agents/`** — Mastra `Agent` definitions (simpleChatAgent) + `mockModel` test helper.
 - **`packages/workflows/`** — Mastra `createWorkflow` compositions (deepResearchWorkflow).
-- **`apps/api/`** — Composition root: config → adapters → capabilities → HTTP server.
+- **`apps/api/`** — Composition root: config → core factories → capabilities → HTTP server.
 - **`apps/console/`** — React SPA (Vite + TanStack Query). Imports only `@harness/http/types`.
 - **`mastra.config.ts`** — Root Mastra Studio config using `buildStudioConfig()` from `@harness/capabilities`.
 
-Layering is enforced by Biome `noRestrictedImports` rules in `biome.json`.
+Module boundaries enforced by Biome `noRestrictedImports` rules in `biome.json`.
 
 ## Commands
 
@@ -133,7 +116,7 @@ bun run studio:build # Mastra production build
 - Unit tests colocated: `foo.ts` + `foo.test.ts`.
 - **TDD enforced for `packages/*`**. Pragmatic / tests-after for `apps/*`.
 - **No mocks of `Provider`.** Use `mockModel()` from `@harness/agents/testing` — scripted `MockLanguageModelV3` replay.
-- Port fakes in `@harness/core/testing` (`FakeEventLog`, `FakeEventBus`, `FakeRunStore`, etc.) for use case tests.
+- Tests use real in-memory stores from `@harness/core` (storage module). Only `FakeClock` and `FakeIdGen` in `@harness/core/testing` for timing-dependent tests.
 - Live-provider tests gated behind `HARNESS_LIVE=1`.
 
 ## CI
