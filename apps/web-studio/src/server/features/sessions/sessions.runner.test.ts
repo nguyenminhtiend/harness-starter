@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { createApprovalStore } from '../../../server/infra/approval.ts';
 import type { SessionStore } from '../../../server/infra/session-store.ts';
 import { createSessionStore } from '../../../server/infra/session-store.ts';
-import type { UIEvent } from '../../../shared/events.ts';
+import type { StreamChunk } from '../../../shared/events.ts';
 import { createDatabase } from '../../infra/db.ts';
 import { createSettingsStore, type SettingsStore } from '../settings/settings.store.ts';
 import type { SessionDeps } from './sessions.runner.ts';
@@ -32,12 +32,12 @@ afterEach(async () => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-async function collectEvents(iter: AsyncIterable<UIEvent>): Promise<UIEvent[]> {
-  const events: UIEvent[] = [];
-  for await (const ev of iter) {
-    events.push(ev);
+async function collectChunks(iter: AsyncIterable<StreamChunk>): Promise<StreamChunk[]> {
+  const chunks: StreamChunk[] = [];
+  for await (const c of iter) {
+    chunks.push(c);
   }
-  return events;
+  return chunks;
 }
 
 function makeSessionCtx(overrides: {
@@ -101,10 +101,10 @@ describe('startSession', () => {
     expect(session?.toolId).toBe('deep-research');
 
     ac.abort();
-    await collectEvents(handle.events);
+    await collectChunks(handle.events);
   });
 
-  it('emits error events on abort and marks session cancelled', async () => {
+  it('emits error chunks on abort and marks session cancelled', async () => {
     const ac = new AbortController();
     const handle = startSession(
       makeSessionCtx({
@@ -118,15 +118,15 @@ describe('startSession', () => {
 
     ac.abort();
 
-    const events = await collectEvents(handle.events);
-    const errorEvts = events.filter((e) => e.type === 'error');
-    const statusEvts = events.filter((e) => e.type === 'status');
+    const chunks = await collectChunks(handle.events);
+    const errors = chunks.filter((c) => c.type === 'error');
+    const statuses = chunks.filter((c) => c.type === 'status');
 
-    expect(errorEvts.length).toBeGreaterThanOrEqual(1);
-    expect(statusEvts.length).toBeGreaterThanOrEqual(1);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(statuses.length).toBeGreaterThanOrEqual(1);
 
-    const lastStatus = statusEvts[statusEvts.length - 1];
-    if (lastStatus?.type === 'status') {
+    const lastStatus = statuses[statuses.length - 1];
+    if (lastStatus) {
       expect(lastStatus.status).toBe('cancelled');
     }
 
@@ -147,7 +147,7 @@ describe('startSession', () => {
     );
 
     ac.abort();
-    await collectEvents(handle.events);
+    await collectChunks(handle.events);
 
     const storedEvents = sessionStore.getEvents('s3');
     expect(storedEvents.length).toBeGreaterThanOrEqual(1);
@@ -166,12 +166,10 @@ describe('startSession', () => {
       deps,
     );
     ac1.abort();
-    const events = await collectEvents(h1.events);
+    const chunks = await collectChunks(h1.events);
 
-    const hasError = events.some((e) => e.type === 'error');
-    const hasCancelled = events.some(
-      (e) => e.type === 'error' && (e as { code?: string }).code === 'CANCELLED',
-    );
+    const hasError = chunks.some((c) => c.type === 'error');
+    const hasCancelled = chunks.some((c) => c.type === 'error' && c.code === 'CANCELLED');
     expect(hasError).toBe(true);
     expect(hasCancelled).toBe(true);
   });

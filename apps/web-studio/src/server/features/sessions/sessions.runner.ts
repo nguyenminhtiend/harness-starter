@@ -2,9 +2,8 @@ import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import type { MastraMemory } from '@mastra/core/memory';
 import { LibSQLStore } from '@mastra/libsql';
-import type { UIEvent } from '../../../shared/events.ts';
+import type { StreamChunk } from '../../../shared/events.ts';
 import type { ApprovalStore } from '../../infra/approval.ts';
-import { type AccUsage, mastraChunkToUIEvents } from '../../infra/mastra-events.ts';
 import type { SessionStore } from '../../infra/session-store.ts';
 import { resolveSettings } from '../settings/settings.reader.ts';
 import type { SettingsStore } from '../settings/settings.store.ts';
@@ -25,12 +24,24 @@ export interface SessionDeps {
   mastraMemory?: MastraMemory;
 }
 
+function chunk(type: string, fields: Record<string, unknown> = {}): StreamChunk {
+  return { type, ts: Date.now(), ...fields };
+}
+
+function flattenMastraChunk(raw: unknown): StreamChunk {
+  const r = raw as { type: string; payload?: Record<string, unknown> };
+  if (r.payload && typeof r.payload === 'object') {
+    return { type: r.type, ts: Date.now(), ...r.payload };
+  }
+  return { type: r.type, ts: Date.now() };
+}
+
 function emitSessionError(
   sessionStore: SessionStore,
   sessionId: string,
   err: unknown,
   signal: AbortSignal,
-): { errorEvent: UIEvent; statusEvent: UIEvent } {
+): { errorChunk: StreamChunk; statusChunk: StreamChunk } {
   const isAbort = (err as Error).name === 'AbortError' || signal.aborted;
   const status = isAbort ? 'cancelled' : 'failed';
   const message = isAbort ? 'Session cancelled' : ((err as Error).message ?? 'Unknown error');
@@ -44,22 +55,19 @@ function emitSessionError(
     // DB may be unavailable during cleanup
   }
 
-  const errorEvent: UIEvent = {
-    type: 'error',
-    ts: Date.now(),
-    runId: sessionId,
+  const errorChunk = chunk('error', {
     message,
     code: isAbort ? 'CANCELLED' : 'RUNTIME_ERROR',
-  };
+  });
   try {
-    sessionStore.appendEvent(sessionId, errorEvent);
+    sessionStore.appendEvent(sessionId, errorChunk);
   } catch (_dbErr) {
     // DB may be unavailable during cleanup
   }
 
   return {
-    errorEvent,
-    statusEvent: { type: 'status', status, ts: Date.now(), runId: sessionId },
+    errorChunk,
+    statusChunk: chunk('status', { status }),
   };
 }
 
@@ -104,16 +112,12 @@ function startMastraSession(
     status: 'running',
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
   });
-  sessionStore.appendEvent(sessionId, {
-    type: 'status',
-    status: 'running',
-    ts: Date.now(),
-    runId: sessionId,
-  });
+  sessionStore.appendEvent(sessionId, chunk('status', { status: 'running' }));
 
-  const accUsage: AccUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  let totalIn = 0;
+  let totalOut = 0;
 
-  async function* generate(): AsyncGenerator<UIEvent> {
+  async function* generate(): AsyncGenerator<StreamChunk> {
     try {
       if (signal.aborted) {
         throw new DOMException('The operation was aborted.', 'AbortError');
@@ -137,38 +141,44 @@ function startMastraSession(
           if (done) {
             break;
           }
-          const chunk = value as { type: string; payload?: Record<string, unknown> };
-          const uiEvents = mastraChunkToUIEvents(chunk, sessionId, accUsage);
-          for (const ev of uiEvents) {
-            sessionStore.appendEvent(sessionId, ev);
-            yield ev;
+
+          const c = flattenMastraChunk(value);
+
+          if (c.type === 'step-finish') {
+            const usage = c.totalUsage as
+              | { inputTokens?: number; outputTokens?: number }
+              | undefined;
+            if (usage) {
+              totalIn = (usage.inputTokens as number) ?? totalIn;
+              totalOut = (usage.outputTokens as number) ?? totalOut;
+            }
           }
+
+          sessionStore.appendEvent(sessionId, c);
+          yield c;
         }
       } finally {
         reader.releaseLock();
       }
 
-      const totalTokens = accUsage.inputTokens + accUsage.outputTokens;
       sessionStore.updateSession(sessionId, {
         status: 'completed',
         finishedAt: new Date().toISOString(),
       });
 
-      const completeEvent: UIEvent = {
-        type: 'complete',
-        ts: Date.now(),
-        runId: sessionId,
-        totalTokens,
-        totalCostUsd: accUsage.costUsd,
-      };
-      sessionStore.appendEvent(sessionId, completeEvent);
-      yield completeEvent;
+      const doneChunk = chunk('done', {
+        totalTokens: totalIn + totalOut,
+        inputTokens: totalIn,
+        outputTokens: totalOut,
+      });
+      sessionStore.appendEvent(sessionId, doneChunk);
+      yield doneChunk;
 
-      yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
+      yield chunk('status', { status: 'completed' });
     } catch (err) {
-      const { errorEvent, statusEvent } = emitSessionError(sessionStore, sessionId, err, signal);
-      yield errorEvent;
-      yield statusEvent;
+      const { errorChunk, statusChunk } = emitSessionError(sessionStore, sessionId, err, signal);
+      yield errorChunk;
+      yield statusChunk;
     }
   }
 
@@ -193,14 +203,9 @@ function startMastraWorkflowSession(
     question,
     status: 'running',
   });
-  sessionStore.appendEvent(sessionId, {
-    type: 'status',
-    status: 'running',
-    ts: Date.now(),
-    runId: sessionId,
-  });
+  sessionStore.appendEvent(sessionId, chunk('status', { status: 'running' }));
 
-  async function* generate(): AsyncGenerator<UIEvent> {
+  async function* generate(): AsyncGenerator<StreamChunk> {
     try {
       if (signal.aborted) {
         throw new DOMException('The operation was aborted.', 'AbortError');
@@ -217,7 +222,7 @@ function startMastraWorkflowSession(
       const wf = mastra.getWorkflow('deepResearch');
       const run = await wf.createRun();
 
-      yield { type: 'node', ts: Date.now(), runId: sessionId, node: 'plan', phase: 'start' };
+      yield chunk('node', { node: 'plan', phase: 'start' });
 
       const initial = await run.start({ inputData: { question } });
 
@@ -229,43 +234,32 @@ function startMastraWorkflowSession(
             : undefined;
         const plan = planOutput?.plan;
 
-        const hitlRequired: UIEvent = {
-          type: 'hitl-required',
-          ts: Date.now(),
-          runId: sessionId,
-          plan,
-        };
-        sessionStore.appendEvent(sessionId, hitlRequired);
-        yield hitlRequired;
+        const hitlChunk = chunk('hitl-required', { plan });
+        sessionStore.appendEvent(sessionId, hitlChunk);
+        yield hitlChunk;
 
         const approvalPromise = approvalStore.waitFor(sessionId);
         const decision = await approvalPromise;
 
-        const resolvedUi: UIEvent = {
-          type: 'hitl-resolved',
-          ts: Date.now(),
-          runId: sessionId,
+        const resolvedChunk = chunk('hitl-resolved', {
           decision: decision.decision,
           ...(decision.editedPlan !== undefined ? { editedPlan: decision.editedPlan } : {}),
-        };
-        sessionStore.appendEvent(sessionId, resolvedUi);
-        yield resolvedUi;
+        });
+        sessionStore.appendEvent(sessionId, resolvedChunk);
+        yield resolvedChunk;
 
         if (decision.decision === 'reject') {
           sessionStore.updateSession(sessionId, {
             status: 'cancelled',
             finishedAt: new Date().toISOString(),
           });
-          const rejectEvent: UIEvent = {
-            type: 'error',
-            ts: Date.now(),
-            runId: sessionId,
+          const rejectChunk = chunk('error', {
             message: 'Plan approval rejected',
             code: 'HITL_REJECTED',
-          };
-          sessionStore.appendEvent(sessionId, rejectEvent);
-          yield rejectEvent;
-          yield { type: 'status', status: 'cancelled', ts: Date.now(), runId: sessionId };
+          });
+          sessionStore.appendEvent(sessionId, rejectChunk);
+          yield rejectChunk;
+          yield chunk('status', { status: 'cancelled' });
           return;
         }
 
@@ -273,7 +267,7 @@ function startMastraWorkflowSession(
           throw new DOMException('The operation was aborted.', 'AbortError');
         }
 
-        yield { type: 'node', ts: Date.now(), runId: sessionId, node: 'research', phase: 'start' };
+        yield chunk('node', { node: 'research', phase: 'start' });
 
         const resumed = await run.resume({
           step: 'approve',
@@ -287,17 +281,13 @@ function startMastraWorkflowSession(
             finishedAt: new Date().toISOString(),
           });
 
-          const completeEvent: UIEvent = {
-            type: 'complete',
-            ts: Date.now(),
-            runId: sessionId,
+          const doneChunk = chunk('done', {
             totalTokens: 0,
-            totalCostUsd: 0,
             ...(typeof report === 'string' ? { report } : {}),
-          };
-          sessionStore.appendEvent(sessionId, completeEvent);
-          yield completeEvent;
-          yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
+          });
+          sessionStore.appendEvent(sessionId, doneChunk);
+          yield doneChunk;
+          yield chunk('status', { status: 'completed' });
         } else {
           throw new Error(`Workflow ended with status: ${resumed.status}`);
         }
@@ -307,24 +297,20 @@ function startMastraWorkflowSession(
           status: 'completed',
           finishedAt: new Date().toISOString(),
         });
-        const completeEvent: UIEvent = {
-          type: 'complete',
-          ts: Date.now(),
-          runId: sessionId,
+        const doneChunk = chunk('done', {
           totalTokens: 0,
-          totalCostUsd: 0,
           ...(typeof report === 'string' ? { report } : {}),
-        };
-        sessionStore.appendEvent(sessionId, completeEvent);
-        yield completeEvent;
-        yield { type: 'status', status: 'completed', ts: Date.now(), runId: sessionId };
+        });
+        sessionStore.appendEvent(sessionId, doneChunk);
+        yield doneChunk;
+        yield chunk('status', { status: 'completed' });
       } else {
         throw new Error(`Workflow ended with status: ${initial.status}`);
       }
     } catch (err) {
-      const { errorEvent, statusEvent } = emitSessionError(sessionStore, sessionId, err, signal);
-      yield errorEvent;
-      yield statusEvent;
+      const { errorChunk, statusChunk } = emitSessionError(sessionStore, sessionId, err, signal);
+      yield errorChunk;
+      yield statusChunk;
     }
   }
 

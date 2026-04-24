@@ -1,5 +1,5 @@
 import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from 'react';
-import type { UIEvent } from '../../shared/events.ts';
+import type { StreamChunk } from '../../shared/events.ts';
 import { api, type ConversationMessage, connectSSE } from '../api.ts';
 import { Button, Spinner } from './primitives.tsx';
 
@@ -13,10 +13,10 @@ interface ChatMessage {
 interface ToolCallEntry {
   key: string;
   name: string;
+  callId: string;
   args: unknown;
   result?: string;
   isError?: boolean;
-  durationMs?: number;
 }
 
 type ChatStatus = 'idle' | 'running' | 'error';
@@ -88,10 +88,10 @@ export function ChatView({
     });
   }, []);
 
-  const handleEvent = useCallback(
-    (ev: UIEvent) => {
-      if (ev.type === 'writer' && ev.delta) {
-        const delta = ev.delta;
+  const handleChunk = useCallback(
+    (chunk: StreamChunk) => {
+      if (chunk.type === 'text-delta' && chunk.text) {
+        const delta = chunk.text as string;
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'assistant') {
@@ -102,34 +102,13 @@ export function ChatView({
             { id: crypto.randomUUID(), role: 'assistant', content: delta, toolCalls: [] },
           ];
         });
-      } else if (ev.type === 'llm' && ev.phase === 'response') {
-        const assistantContent = extractAssistantText(ev);
-        if (assistantContent) {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              return [...prev.slice(0, -1), { ...last, content: assistantContent }];
-            }
-            return [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: 'assistant',
-                content: assistantContent,
-                toolCalls: [],
-              },
-            ];
-          });
-        }
-      } else if (ev.type === 'tool') {
+      } else if (chunk.type === 'tool-call') {
         setMessages((prev) => {
           const entry: ToolCallEntry = {
             key: crypto.randomUUID(),
-            name: ev.toolName,
-            args: ev.args,
-            ...(ev.result !== undefined ? { result: String(ev.result) } : {}),
-            ...(ev.isError ? { isError: true } : {}),
-            ...(ev.durationMs !== undefined ? { durationMs: ev.durationMs } : {}),
+            name: (chunk.toolName as string) ?? 'tool',
+            callId: (chunk.toolCallId as string) ?? '',
+            args: chunk.args,
           };
           const last = prev[prev.length - 1];
           if (last?.role !== 'assistant') {
@@ -138,20 +117,41 @@ export function ChatView({
               { id: crypto.randomUUID(), role: 'assistant', content: '', toolCalls: [entry] },
             ];
           }
-          const existing = last.toolCalls.find(
-            (tc) => tc.name === ev.toolName && tc.result === undefined && ev.result !== undefined,
+          return [...prev.slice(0, -1), { ...last, toolCalls: [...last.toolCalls, entry] }];
+        });
+      } else if (chunk.type === 'tool-result') {
+        const resultStr =
+          typeof chunk.result === 'string' ? chunk.result : JSON.stringify(chunk.result);
+        const callId = chunk.toolCallId as string;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role !== 'assistant') {
+            return prev;
+          }
+          const toolCalls = last.toolCalls.map((tc) =>
+            tc.callId === callId ? { ...tc, result: resultStr } : tc,
           );
-          const toolCalls = existing
-            ? last.toolCalls.map((tc) => (tc === existing ? { ...tc, ...entry } : tc))
-            : [...last.toolCalls, entry];
           return [...prev.slice(0, -1), { ...last, toolCalls }];
         });
-      } else if (ev.type === 'complete') {
+      } else if (chunk.type === 'tool-error') {
+        const errStr = typeof chunk.error === 'string' ? chunk.error : JSON.stringify(chunk.error);
+        const callId = chunk.toolCallId as string;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role !== 'assistant') {
+            return prev;
+          }
+          const toolCalls = last.toolCalls.map((tc) =>
+            tc.callId === callId ? { ...tc, result: errStr, isError: true } : tc,
+          );
+          return [...prev.slice(0, -1), { ...last, toolCalls }];
+        });
+      } else if (chunk.type === 'done') {
         setStatus('idle');
         onComplete?.();
-      } else if (ev.type === 'error') {
+      } else if (chunk.type === 'error') {
         setStatus('error');
-        setErrorMsg(ev.message);
+        setErrorMsg(chunk.message as string);
       }
       scrollToBottom();
     },
@@ -193,7 +193,7 @@ export function ChatView({
       closeRef.current?.();
       closeRef.current = connectSSE(
         sessionId,
-        handleEvent,
+        handleChunk,
         () => setStatus((s) => (s === 'running' ? 'idle' : s)),
         () => setStatus('error'),
       );
@@ -207,7 +207,7 @@ export function ChatView({
     conversationId,
     settings,
     model,
-    handleEvent,
+    handleChunk,
     scrollToBottom,
     onConversationCreated,
   ]);
@@ -282,20 +282,6 @@ export function ChatView({
   );
 }
 
-function extractAssistantText(ev: UIEvent & { type: 'llm' }): string | undefined {
-  const msgs = ev.messages;
-  if (!Array.isArray(msgs)) {
-    return undefined;
-  }
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i];
-    if (m?.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
-      return m.content;
-    }
-  }
-  return undefined;
-}
-
 function EmptyState() {
   return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -359,11 +345,6 @@ function ToolCallRow({ call }: { call: ToolCallEntry }) {
         <span style={{ color: 'var(--accent)', fontWeight: 'var(--weight-medium)' }}>
           {call.name}
         </span>
-        {call.durationMs !== undefined && (
-          <span style={{ color: 'var(--text-disabled)', fontSize: 'var(--text-2xs)' }}>
-            {call.durationMs}ms
-          </span>
-        )}
         {call.isError && (
           <span style={{ color: 'var(--status-error)', fontSize: 'var(--text-2xs)' }}>error</span>
         )}

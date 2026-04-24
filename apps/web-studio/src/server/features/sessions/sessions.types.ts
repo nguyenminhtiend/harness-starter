@@ -1,4 +1,4 @@
-import type { UIEvent } from '../../../shared/events.ts';
+import type { StreamChunk } from '../../../shared/events.ts';
 import type { ProviderKeys } from '../../infra/llm.ts';
 
 export interface SessionContext {
@@ -15,5 +15,5 @@ export interface SessionContext {
 
 export interface SessionHandle {
   sessionId: string;
-  events: AsyncIterable<UIEvent>;
+  events: AsyncIterable<StreamChunk>;
 }

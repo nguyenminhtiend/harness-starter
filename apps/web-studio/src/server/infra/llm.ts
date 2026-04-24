@@ -1,3 +1,5 @@
+import { createOllama } from 'ollama-ai-provider-v2';
+
 export type ProviderId = 'google' | 'openrouter' | 'groq' | 'ollama';
 
 export interface ProviderKeys {
@@ -46,6 +48,8 @@ export const knownModels: readonly ModelEntry[] = [
   },
 
   { id: 'ollama:qwen2.5:3b', label: 'Qwen 2.5 3B (local)', provider: 'ollama' },
+  { id: 'ollama:llama3.2:3b', label: 'Llama 3.2 3B (local)', provider: 'ollama' },
+  { id: 'ollama:gemma3:4b', label: 'Gemma 3 4B (local)', provider: 'ollama' },
 ];
 
 export function listAvailableModels(keys: ProviderKeys): ModelEntry[] {
@@ -55,6 +59,23 @@ export function listAvailableModels(keys: ProviderKeys): ModelEntry[] {
     }
     return Boolean(keys[m.provider]);
   });
+}
+
+import type { MastraModelConfig } from '@mastra/core/llm';
+
+/**
+ * Resolve a `provider:model` string into a Mastra-compatible model config.
+ * For `ollama:*`, uses the ollama-ai-provider SDK.
+ * All other prefixes are passed through as plain strings for Mastra's router.
+ */
+export function resolveModel(modelId: string): MastraModelConfig {
+  if (modelId.startsWith('ollama:')) {
+    const modelName = modelId.slice('ollama:'.length);
+    const baseURL = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
+    const ollama = createOllama({ baseURL: `${baseURL}/api` });
+    return ollama.chat(modelName) as MastraModelConfig;
+  }
+  return modelId as MastraModelConfig;
 }
 
 export function loadProviderKeysFromEnv(): ProviderKeys {

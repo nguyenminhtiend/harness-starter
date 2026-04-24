@@ -2,7 +2,7 @@ import type { ComponentPropsWithoutRef, CSSProperties } from 'react';
 import { useCallback, useState } from 'react';
 import type { Components, ExtraProps } from 'react-markdown';
 import Markdown from 'react-markdown';
-import type { UIEvent } from '../../shared/events.ts';
+import type { StreamChunk } from '../../shared/events.ts';
 
 type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & ExtraProps;
 
@@ -14,12 +14,12 @@ function isCodeInsidePre(node: ExtraProps['node']): boolean {
   return parent?.type === 'element' && parent.tagName === 'pre';
 }
 
-/** Prefer the last `complete` payload; otherwise concatenate writer deltas. */
-export function deriveReportMarkdown(events: readonly UIEvent[]): string | undefined {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const ev = events[i];
-    if (ev?.type === 'complete') {
-      const r = ev.report;
+/** Prefer the last `done` chunk's report; otherwise concatenate text-delta chunks. */
+export function deriveReportMarkdown(chunks: readonly StreamChunk[]): string | undefined {
+  for (let i = chunks.length - 1; i >= 0; i--) {
+    const c = chunks[i];
+    if (c?.type === 'done') {
+      const r = c.report;
       if (typeof r === 'string' && r.trim().length > 0) {
         return r;
       }
@@ -27,14 +27,14 @@ export function deriveReportMarkdown(events: readonly UIEvent[]): string | undef
     }
   }
 
-  const writerDeltas: string[] = [];
-  for (const ev of events) {
-    if (ev.type === 'writer' && ev.delta) {
-      writerDeltas.push(ev.delta);
+  const deltas: string[] = [];
+  for (const c of chunks) {
+    if (c.type === 'text-delta' && c.text) {
+      deltas.push(c.text as string);
     }
   }
-  if (writerDeltas.length > 0) {
-    const joined = writerDeltas.join('');
+  if (deltas.length > 0) {
+    const joined = deltas.join('');
     if (joined.trim().length > 0) {
       return joined;
     }

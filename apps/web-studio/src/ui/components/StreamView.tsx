@@ -1,47 +1,22 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { LlmMessage, SessionStatus, UIEvent } from '../../shared/events.ts';
+import type { SessionStatus, StreamChunk } from '../../shared/events.ts';
 import { Button } from './primitives.tsx';
 import { InlineReport } from './ReportView.tsx';
 
 const PHASE_META: Record<string, { label: string; color: string }> = {
-  planner: { label: 'Planner', color: 'var(--phase-planner)' },
-  researcher: { label: 'Researcher', color: 'var(--phase-researcher)' },
-  writer: { label: 'Writer', color: 'var(--phase-writer)' },
-  factchecker: { label: 'Fact-Checker', color: 'var(--phase-factchecker)' },
-  complete: { label: 'Complete', color: 'var(--status-success)' },
-  error: { label: 'Error', color: 'var(--status-error)' },
-  agent: { label: 'Agent', color: 'var(--text-tertiary)' },
-  tool: { label: 'Tool', color: 'var(--accent)' },
-  metric: { label: 'Metric', color: 'var(--text-disabled)' },
+  'text-delta': { label: 'Text', color: 'var(--phase-writer)' },
+  'tool-call': { label: 'Tool call', color: 'var(--accent)' },
+  'tool-result': { label: 'Tool result', color: 'var(--accent)' },
+  'tool-error': { label: 'Tool error', color: 'var(--status-error)' },
+  'step-finish': { label: 'Step', color: 'var(--text-disabled)' },
+  'reasoning-delta': { label: 'Thinking', color: 'var(--text-tertiary)' },
   status: { label: 'Status', color: 'var(--text-tertiary)' },
+  error: { label: 'Error', color: 'var(--status-error)' },
+  done: { label: 'Complete', color: 'var(--status-success)' },
   'hitl-required': { label: 'Approval', color: 'var(--accent)' },
-  'hitl-resolved': { label: 'Approval', color: 'var(--text-secondary)' },
+  'hitl-resolved': { label: 'Resolved', color: 'var(--text-secondary)' },
   node: { label: 'Node', color: 'var(--phase-researcher)' },
-  llm: { label: 'LLM', color: 'var(--phase-writer)' },
-  'llm-request': { label: 'LLM ← input', color: 'var(--phase-planner)' },
-  'llm-response': { label: 'LLM → output', color: 'var(--phase-writer)' },
-  'llm-thinking': { label: 'Thinking', color: 'var(--text-tertiary)' },
-  'llm-tool-call': { label: 'Tool call', color: 'var(--accent)' },
-  'tool-start': { label: 'Tool →', color: 'var(--accent)' },
-  'tool-result': { label: 'Tool ←', color: 'var(--accent)' },
-  'tool-error': { label: 'Tool ✕', color: 'var(--status-error)' },
 };
-
-function metaKey(ev: UIEvent): string {
-  if (ev.type === 'llm') {
-    return `llm-${ev.phase}`;
-  }
-  if (ev.type === 'tool') {
-    if (ev.isError) {
-      return 'tool-error';
-    }
-    if (ev.result !== undefined) {
-      return 'tool-result';
-    }
-    return 'tool-start';
-  }
-  return ev.type;
-}
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) {
@@ -50,185 +25,99 @@ function truncate(s: string, max: number): string {
   return `${s.slice(0, max)}…`;
 }
 
-function formatArgs(args: unknown): string {
-  if (args === null || args === undefined) {
+function formatJson(v: unknown): string {
+  if (v === null || v === undefined) {
     return '';
   }
-  if (typeof args === 'string') {
-    return args;
+  if (typeof v === 'string') {
+    return v;
   }
   try {
-    return JSON.stringify(args, null, 2);
+    return JSON.stringify(v, null, 2);
   } catch {
-    return String(args);
+    return String(v);
   }
 }
 
-function formatMessageContent(content: unknown): string {
-  if (content === null || content === undefined) {
-    return '';
-  }
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (part && typeof part === 'object') {
-          const p = part as { type?: string; text?: string };
-          if (p.type === 'text' && typeof p.text === 'string') {
-            return p.text;
-          }
-          try {
-            return JSON.stringify(part);
-          } catch {
-            return String(part);
-          }
-        }
-        return String(part);
-      })
-      .join('\n');
-  }
-  try {
-    return JSON.stringify(content, null, 2);
-  } catch {
-    return String(content);
-  }
+function isVerbose(c: StreamChunk): boolean {
+  return c.type === 'status' || c.type === 'step-finish';
 }
 
-function formatMessages(messages: LlmMessage[] | undefined): string {
-  if (!messages || messages.length === 0) {
-    return '(no messages)';
-  }
-  return messages
-    .map((m) => {
-      const body = formatMessageContent(m.content);
-      return `── ${m.role} ──\n${body}`;
-    })
-    .join('\n\n');
-}
-
-function isVerbose(ev: UIEvent): boolean {
-  return ev.type === 'agent' || ev.type === 'metric' || ev.type === 'status';
-}
-
-function shortPreview(ev: UIEvent): string {
-  switch (ev.type) {
-    case 'writer':
-      return ev.delta ?? 'Writing…';
-    case 'tool': {
-      if (ev.isError) {
-        return `${ev.toolName || 'tool'} — ${truncate(ev.result ?? 'error', 200)}`;
-      }
-      if (ev.result !== undefined) {
-        const dur = ev.durationMs !== undefined ? `${ev.durationMs}ms · ` : '';
-        return `${ev.toolName || 'tool'} · ${dur}${truncate(ev.result, 200)}`;
-      }
-      return ev.toolName || 'tool';
+function shortPreview(c: StreamChunk): string {
+  switch (c.type) {
+    case 'text-delta':
+      return (c.text as string) ?? '';
+    case 'tool-call':
+      return (c.toolName as string) ?? 'tool';
+    case 'tool-result': {
+      const result = typeof c.result === 'string' ? c.result : formatJson(c.result);
+      return `${(c.toolName as string) ?? 'tool'} · ${truncate(result, 200)}`;
     }
-    case 'agent':
-      return ev.message ?? ev.phase;
-    case 'metric': {
-      const cost = ev.costUsd ? ` · $${ev.costUsd.toFixed(4)}` : '';
-      return (
-        `${ev.inputTokens.toLocaleString()} in / ` +
-        `${ev.outputTokens.toLocaleString()} out${cost}`
-      );
+    case 'tool-error':
+      return `${(c.toolName as string) ?? 'tool'} — ${truncate(formatJson(c.error), 200)}`;
+    case 'step-finish': {
+      const u = c.totalUsage as { inputTokens?: number; outputTokens?: number } | undefined;
+      if (u) {
+        return `${(u.inputTokens ?? 0).toLocaleString()} in / ${(u.outputTokens ?? 0).toLocaleString()} out`;
+      }
+      return 'step complete';
     }
-    case 'complete': {
-      const cost = ev.totalCostUsd ? ` · $${ev.totalCostUsd.toFixed(4)}` : '';
-      return `${ev.totalTokens.toLocaleString()} tokens${cost}`;
+    case 'reasoning-delta':
+      return truncate((c.text as string) ?? '', 200);
+    case 'done': {
+      const tokens = c.totalTokens as number | undefined;
+      return tokens ? `${tokens.toLocaleString()} tokens` : 'done';
     }
     case 'error':
-      return ev.message;
+      return (c.message as string) ?? 'unknown error';
     case 'hitl-required':
       return 'Plan approval required';
     case 'hitl-resolved':
-      return `Plan ${ev.decision}d`;
+      return `Plan ${c.decision as string}d`;
     case 'status':
-      return `Status → ${ev.status}`;
+      return `Status → ${c.status as string}`;
     case 'node':
-      return ev.from ? `${ev.from} → ${ev.node}` : ev.node;
-    case 'llm': {
-      if (ev.phase === 'request') {
-        const count = ev.messages?.length ?? 0;
-        const provider = ev.providerId ? `${ev.providerId} · ` : '';
-        return `${provider}${count} message${count === 1 ? '' : 's'}`;
-      }
-      if (ev.phase === 'response') {
-        return truncate(ev.text ?? '', 200);
-      }
-      if (ev.phase === 'thinking') {
-        return truncate(ev.text ?? '', 200);
-      }
-      if (ev.phase === 'tool-call') {
-        return ev.toolName ?? 'tool';
-      }
-      return ev.phase;
-    }
+      return c.from ? `${c.from as string} → ${c.node as string}` : (c.node as string);
     default:
-      return '';
+      return c.type;
   }
 }
 
-function expandableBody(ev: UIEvent): string | null {
-  switch (ev.type) {
-    case 'tool': {
-      const sections: string[] = [];
-      if (ev.args !== undefined) {
-        sections.push(`args:\n${formatArgs(ev.args)}`);
-      }
-      if (ev.result !== undefined) {
-        const label = ev.isError ? 'error' : 'result';
-        sections.push(`${label}:\n${ev.result}`);
-      }
-      if (sections.length === 0) {
-        return null;
-      }
-      return sections.join('\n\n');
-    }
-    case 'llm': {
-      if (ev.phase === 'request') {
-        return formatMessages(ev.messages);
-      }
-      if (ev.phase === 'tool-call') {
-        return formatArgs(ev.args);
-      }
-      if (ev.phase === 'response' || ev.phase === 'thinking') {
-        return ev.text ?? null;
-      }
-      return null;
-    }
+function expandableBody(c: StreamChunk): string | null {
+  switch (c.type) {
+    case 'tool-call':
+      return formatJson(c.args) || null;
+    case 'tool-result':
+      return typeof c.result === 'string' ? c.result : formatJson(c.result) || null;
+    case 'tool-error':
+      return formatJson(c.error) || null;
     case 'hitl-required':
-      return formatArgs(ev.plan);
+      return formatJson(c.plan) || null;
     case 'error':
-      return ev.code ? `code: ${ev.code}\n${ev.message}` : null;
+      return c.code ? `code: ${c.code as string}\n${c.message as string}` : null;
+    case 'reasoning-delta':
+      return (c.text as string) ?? null;
     default:
       return null;
   }
 }
 
-function hasLongBody(ev: UIEvent): boolean {
-  const body = expandableBody(ev);
+function hasLongBody(c: StreamChunk): boolean {
+  const body = expandableBody(c);
   return body !== null && body.length > 0;
 }
 
-interface TimelineEventProps {
-  event: UIEvent;
+interface TimelineChunkProps {
+  chunk: StreamChunk;
   index: number;
 }
 
-const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEventProps) {
-  const key = metaKey(event);
-  const meta = PHASE_META[key] ??
-    PHASE_META[event.type] ?? {
-      label: event.type,
-      color: 'var(--text-tertiary)',
-    };
-  const preview = shortPreview(event);
-  const body = expandableBody(event);
-  const isV = isVerbose(event);
-  const defaultOpen = event.type === 'llm' && event.phase === 'tool-call';
+const TimelineChunk = memo(function TimelineChunk({ chunk, index }: TimelineChunkProps) {
+  const meta = PHASE_META[chunk.type] ?? { label: chunk.type, color: 'var(--text-tertiary)' };
+  const preview = shortPreview(chunk);
+  const body = expandableBody(chunk);
+  const isV = isVerbose(chunk);
+  const defaultOpen = chunk.type === 'tool-call';
   const [open, setOpen] = useState(defaultOpen);
 
   return (
@@ -286,7 +175,7 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
           >
             {meta.label}
           </span>
-          {hasLongBody(event) && (
+          {hasLongBody(chunk) && (
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
@@ -313,7 +202,7 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
               marginLeft: 'auto',
             }}
           >
-            {new Date(event.ts).toLocaleTimeString([], {
+            {new Date(chunk.ts).toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
               second: '2-digit',
@@ -329,16 +218,16 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             fontFamily:
-              event.type === 'tool' ||
-              event.type === 'metric' ||
-              event.type === 'llm' ||
-              event.type === 'node'
+              chunk.type === 'tool-call' ||
+              chunk.type === 'tool-result' ||
+              chunk.type === 'step-finish' ||
+              chunk.type === 'node'
                 ? 'var(--font-mono)'
                 : 'var(--font-sans)',
           }}
         >
           {preview}
-          {event.type === 'writer' && event.delta && (
+          {chunk.type === 'text-delta' && typeof chunk.text === 'string' && (
             <span
               style={{
                 display: 'inline-block',
@@ -379,33 +268,31 @@ const TimelineEvent = memo(function TimelineEvent({ event, index }: TimelineEven
 });
 
 interface StreamViewProps {
-  events: readonly UIEvent[];
+  chunks: readonly StreamChunk[];
   status: SessionStatus | 'idle';
   onRetry?: () => void;
   report?: string | undefined;
 }
 
-export function StreamView({ events, status, onRetry, report }: StreamViewProps) {
+export function StreamView({ chunks, status, onRetry, report }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
   const [verbose, setVerbose] = useState(true);
 
-  const visibleEvents = verbose ? events : events.filter((e) => !isVerbose(e));
+  const visible = verbose ? chunks : chunks.filter((c) => !isVerbose(c));
 
-  let usageDisplay: {
-    inputTokens: number;
-    outputTokens: number;
-    costUsd: number;
-  } | null = null;
-  for (let i = events.length - 1; i >= 0; i--) {
-    const ev = events[i];
-    if (ev?.type === 'metric') {
-      usageDisplay = {
-        inputTokens: ev.inputTokens,
-        outputTokens: ev.outputTokens,
-        costUsd: ev.costUsd ?? 0,
-      };
+  let usageDisplay: { inputTokens: number; outputTokens: number } | null = null;
+  for (let i = chunks.length - 1; i >= 0; i--) {
+    const c = chunks[i];
+    if (c?.type === 'step-finish') {
+      const u = c.totalUsage as { inputTokens?: number; outputTokens?: number } | undefined;
+      if (u) {
+        usageDisplay = {
+          inputTokens: u.inputTokens ?? 0,
+          outputTokens: u.outputTokens ?? 0,
+        };
+      }
       break;
     }
   }
@@ -418,7 +305,7 @@ export function StreamView({ events, status, onRetry, report }: StreamViewProps)
     }
   }, [pinned]);
 
-  const count = visibleEvents.length;
+  const count = visible.length;
   if (count !== prevCountRef.current) {
     prevCountRef.current = count;
     if (pinned && bottomRef.current) {
@@ -461,7 +348,6 @@ export function StreamView({ events, status, onRetry, report }: StreamViewProps)
               {usageDisplay.inputTokens.toLocaleString()} in
               {' / '}
               {usageDisplay.outputTokens.toLocaleString()} out
-              {usageDisplay.costUsd > 0 ? ` · $${usageDisplay.costUsd.toFixed(4)}` : ''}
             </span>
           )}
         </div>
@@ -535,7 +421,7 @@ export function StreamView({ events, status, onRetry, report }: StreamViewProps)
         onScroll={handleScroll}
         style={{ flex: 1, overflowY: 'auto', padding: 'var(--s5) var(--s5) 0' }}
       >
-        {events.length === 0 ? (
+        {chunks.length === 0 ? (
           <div
             style={{
               display: 'flex',
@@ -547,17 +433,14 @@ export function StreamView({ events, status, onRetry, report }: StreamViewProps)
               color: 'var(--text-disabled)',
             }}
           >
-            <span style={{ fontSize: 'var(--text-sm)' }}>Waiting for events…</span>
+            <span style={{ fontSize: 'var(--text-sm)' }}>Waiting for stream…</span>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {visibleEvents.map((ev, i) => (
-              <TimelineEvent
-                key={`${ev.ts}-${ev.type}-${'phase' in ev ? ev.phase : ''}-${'toolName' in ev ? ev.toolName : ''}-${ev.runId}`}
-                event={ev}
-                index={i}
-              />
-            ))}
+            {visible.map((c, i) => {
+              const chunkKey = `${c.ts}-${c.type}-${(c.toolName as string) ?? ''}-${(c.toolCallId as string) ?? ''}`;
+              return <TimelineChunk key={chunkKey} chunk={c} index={i} />;
+            })}
             {(status === 'failed' || status === 'cancelled') && onRetry && (
               <div style={{ padding: 'var(--s5)', textAlign: 'center' }}>
                 <Button variant="primary" size="lg" onClick={onRetry}>

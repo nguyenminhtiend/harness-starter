@@ -1,9 +1,10 @@
 import { createSimpleChatAgent } from '@harness/agents';
 import { z } from 'zod';
+import { resolveModel } from '../../infra/llm.ts';
 import type { MastraToolDef } from '../tools/types.ts';
 
 const settingsSchema = z.object({
-  model: z.string().default('openrouter/free'),
+  model: z.string().default('ollama:qwen2.5:3b'),
   systemPrompt: z
     .string()
     .default('You are a helpful assistant. Use tools when they would give a better answer.'),
@@ -18,9 +19,9 @@ export const simpleChatToolDef: MastraToolDef<typeof settingsSchema> = {
   settingsSchema,
   defaultSettings: settingsSchema.parse({}),
   runtime: 'mastra',
-  createAgent(_settings, ctx) {
+  createAgent(settings, ctx) {
     return createSimpleChatAgent({
-      model: 'openai:gpt-4o-mini',
+      model: resolveModel(settings.model),
       ...(ctx?.memory ? { memory: ctx.memory } : {}),
     });
   },

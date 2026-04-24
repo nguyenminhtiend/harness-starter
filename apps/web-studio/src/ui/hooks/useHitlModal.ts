@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { HitlRequiredEvent } from '../../shared/events.ts';
+import type { StreamChunk } from '../../shared/events.ts';
 import { api } from '../api.ts';
 
 interface HitlModalState {
@@ -18,8 +18,8 @@ export function useHitlModal(sessionId: string | null, onToast: (msg: string) =>
     setHitl(CLOSED);
   }
 
-  const onHitlRequired = useCallback((ev: HitlRequiredEvent) => {
-    setHitl({ open: true, plan: ev.plan, initialPlan: ev.plan });
+  const onHitlRequired = useCallback((chunk: StreamChunk) => {
+    setHitl({ open: true, plan: chunk.plan, initialPlan: chunk.plan });
   }, []);
 
   const reject = useCallback(async () => {

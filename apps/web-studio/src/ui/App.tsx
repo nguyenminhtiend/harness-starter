@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { SessionMeta, SessionStatus } from '../shared/events.ts';
+import type { SessionMeta, SessionStatus, StreamChunk } from '../shared/events.ts';
 import { api, type ConversationSummary } from './api.ts';
 import { ChatView } from './components/ChatView.tsx';
 import { HistorySidebar, type HistoryStatusFilter } from './components/HistorySidebar.tsx';
@@ -51,7 +51,7 @@ export function App() {
   const stream = useEventStream(sessionId, { onHitlRequired });
   const status = stream.status;
 
-  const reportMarkdown = useMemo(() => deriveReportMarkdown(stream.events), [stream.events]);
+  const reportMarkdown = useMemo(() => deriveReportMarkdown(stream.chunks), [stream.chunks]);
 
   const mutations = useSessionMutations({
     activeTool,
@@ -118,7 +118,7 @@ export function App() {
   }, []);
 
   const showStream = Boolean(
-    sessionId && (stream.events.length > 0 || stream.status === 'running'),
+    sessionId && (stream.chunks.length > 0 || stream.status === 'running'),
   );
 
   useEffect(() => {
@@ -295,7 +295,7 @@ interface MainPaneProps {
   form: SessionFormState;
   setForm: React.Dispatch<React.SetStateAction<SessionFormState>>;
   showStream: boolean;
-  stream: { events: readonly import('../shared/events.ts').UIEvent[] };
+  stream: { chunks: readonly StreamChunk[] };
   reportMarkdown: string | undefined;
   activeTool: string;
   settings?: import('../shared/settings.ts').SettingsResponse | undefined;
@@ -387,7 +387,7 @@ function MainPane({
             compact
           />
           <StreamView
-            events={stream.events}
+            chunks={stream.chunks}
             status={status}
             onRetry={onRetry}
             report={reportMarkdown}

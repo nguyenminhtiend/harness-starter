@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
-import type { UIEvent } from '../../../shared/events.ts';
+import type { StreamChunk } from '../../../shared/events.ts';
 import type { ApprovalDecision, ApprovalStore } from '../../infra/approval.ts';
 import { createRunBroadcast, type RunBroadcast } from '../../infra/broadcast.ts';
 import type { ProviderKeys } from '../../infra/llm.ts';
@@ -21,20 +21,8 @@ const CreateSessionBody = z.object({
   toolId: z.string().min(1),
   question: z.string().min(1),
   settings: z.record(z.string(), z.unknown()).default({}),
-  resumeSessionId: z
-    .string()
-    .uuid()
-    .optional()
-    .describe(
-      'Reserved for future checkpoint resume. When implemented, this will load graph state from the referenced session. Currently accepted but ignored.',
-    ),
-  conversationId: z
-    .string()
-    .uuid()
-    .optional()
-    .describe(
-      'Shared conversation ID for multi-turn chat. Sessions with the same ID share memory.',
-    ),
+  resumeSessionId: z.string().uuid().optional(),
+  conversationId: z.string().uuid().optional(),
 });
 
 const ApproveBody = z.object({
@@ -61,7 +49,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
       return result.response;
     }
 
-    const { toolId, question, settings, resumeSessionId, conversationId } = result.data;
+    const { toolId, question, settings, conversationId } = result.data;
     const sessionId = crypto.randomUUID();
     const ac = new AbortController();
 
@@ -72,7 +60,6 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
           toolId,
           question,
           settings,
-          ...(resumeSessionId !== undefined ? { resumeSessionId } : {}),
           ...(conversationId !== undefined ? { conversationId } : {}),
           signal: ac.signal,
           abortController: ac,
@@ -139,11 +126,11 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
       const fromSeq = lastEventId ? Number.parseInt(lastEventId, 10) + 1 : 0;
       const sub = active.broadcast.subscribe(Number.isNaN(fromSeq) ? 0 : fromSeq);
       return streamSSE(c, async (stream) => {
-        for await (const { seq, event } of sub) {
+        for await (const { seq, chunk } of sub) {
           await stream.writeSSE({
             event: 'event',
             id: String(seq),
-            data: JSON.stringify(event),
+            data: JSON.stringify(chunk),
           });
         }
         await stream.writeSSE({ event: 'done', data: '{}' });
@@ -162,15 +149,15 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
       let seq = 0;
       for (const stored of storedEvents) {
         if (seq >= (Number.isNaN(replayFrom) ? 0 : replayFrom)) {
+          const rebuilt: StreamChunk = {
+            type: stored.type,
+            ts: stored.ts,
+            ...stored.payload,
+          };
           await stream.writeSSE({
             event: 'event',
             id: String(seq),
-            data: JSON.stringify({
-              type: stored.type,
-              ts: stored.ts,
-              runId: sessionId,
-              ...stored.payload,
-            }),
+            data: JSON.stringify(rebuilt),
           });
         }
         seq++;
@@ -218,20 +205,8 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
       const events = sessionStore.getEvents(session.id);
       let assistantText = '';
       for (const ev of events) {
-        if (ev.type === 'writer' && typeof ev.payload.delta === 'string') {
-          assistantText += ev.payload.delta;
-        }
-        if (ev.type === 'llm' && ev.payload.phase === 'response') {
-          const msgs = ev.payload.messages;
-          if (Array.isArray(msgs)) {
-            for (let i = msgs.length - 1; i >= 0; i--) {
-              const m = msgs[i] as { role?: string; content?: string };
-              if (m?.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
-                assistantText = m.content;
-                break;
-              }
-            }
-          }
+        if (ev.type === 'text-delta' && typeof ev.payload.text === 'string') {
+          assistantText += ev.payload.text;
         }
       }
       if (assistantText.trim()) {
@@ -279,16 +254,15 @@ export function createSessionsRoutes(deps: SessionsRouteDeps) {
 
     inflight.add(sessionId);
     try {
-      const resolvedEvent: UIEvent = {
+      const resolvedChunk: StreamChunk = {
         type: 'hitl-resolved',
         ts: Date.now(),
-        runId: sessionId,
         decision: parsed.data.decision,
         ...(parsed.data.decision === 'approve' && parsed.data.editedPlan !== undefined
           ? { editedPlan: parsed.data.editedPlan }
           : {}),
       };
-      sessionStore.appendEvent(sessionId, resolvedEvent);
+      sessionStore.appendEvent(sessionId, resolvedChunk);
 
       if (parsed.data.decision === 'reject') {
         const active = activeSessions.get(sessionId);

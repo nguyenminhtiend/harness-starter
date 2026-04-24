@@ -132,14 +132,11 @@ describe('GET /api/sessions/:id/events', () => {
       type: 'status',
       status: 'completed',
       ts: 1,
-      runId: sessionId,
     });
     sessionStore.appendEvent(sessionId, {
-      type: 'complete',
+      type: 'done',
       ts: 2,
-      runId: sessionId,
       totalTokens: 3,
-      totalCostUsd: 0,
     });
 
     const app = makeApp();
@@ -147,7 +144,6 @@ describe('GET /api/sessions/:id/events', () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('done');
-    expect(text).toContain('complete');
     expect(text).toContain('completed');
   });
 

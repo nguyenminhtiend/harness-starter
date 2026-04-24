@@ -1,4 +1,4 @@
-import type { SessionMeta, UIEvent } from '../shared/events.ts';
+import type { SessionMeta, StreamChunk } from '../shared/events.ts';
 import type { SettingsResponse, SettingsUpdateRequest } from '../shared/settings.ts';
 
 const BASE = '/api';
@@ -113,7 +113,7 @@ export const api = {
 
 export function connectSSE(
   sessionId: string,
-  onEvent: (ev: UIEvent) => void,
+  onChunk: (chunk: StreamChunk) => void,
   onDone: () => void,
   onError: (err: Error) => void,
 ): () => void {
@@ -122,8 +122,8 @@ export function connectSSE(
 
   es.addEventListener('event', (e) => {
     try {
-      const parsed = JSON.parse(e.data) as UIEvent;
-      onEvent(parsed);
+      const parsed = JSON.parse(e.data) as StreamChunk;
+      onChunk(parsed);
     } catch {
       // skip malformed
     }

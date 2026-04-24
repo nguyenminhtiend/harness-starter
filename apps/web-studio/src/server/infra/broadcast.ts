@@ -1,15 +1,15 @@
-import type { UIEvent } from '../../shared/events.ts';
+import type { StreamChunk } from '../../shared/events.ts';
 
 export interface RunBroadcast {
-  push(event: UIEvent): void;
+  push(chunk: StreamChunk): void;
   done(): void;
-  subscribe(fromSeq?: number): AsyncIterable<{ seq: number; event: UIEvent }>;
+  subscribe(fromSeq?: number): AsyncIterable<{ seq: number; chunk: StreamChunk }>;
   readonly finished: boolean;
   readonly length: number;
 }
 
 export function createRunBroadcast(): RunBroadcast {
-  const buffer: UIEvent[] = [];
+  const buffer: StreamChunk[] = [];
   let finished = false;
   const waiters: Array<{ resolve: () => void }> = [];
 
@@ -28,11 +28,11 @@ export function createRunBroadcast(): RunBroadcast {
       return buffer.length;
     },
 
-    push(event) {
+    push(chunk) {
       if (finished) {
         return;
       }
-      buffer.push(event);
+      buffer.push(chunk);
       notify();
     },
 
@@ -41,7 +41,7 @@ export function createRunBroadcast(): RunBroadcast {
       notify();
     },
 
-    subscribe(fromSeq = 0): AsyncIterable<{ seq: number; event: UIEvent }> {
+    subscribe(fromSeq = 0): AsyncIterable<{ seq: number; chunk: StreamChunk }> {
       let cursor = Math.max(0, fromSeq);
       return {
         [Symbol.asyncIterator]() {
@@ -53,11 +53,11 @@ export function createRunBroadcast(): RunBroadcast {
                 });
               }
               if (cursor < buffer.length) {
-                const event = buffer[cursor];
+                const chunk = buffer[cursor];
                 const seq = cursor;
                 cursor++;
-                if (event) {
-                  return { done: false, value: { seq, event } };
+                if (chunk) {
+                  return { done: false, value: { seq, chunk } };
                 }
               }
               return { done: true, value: undefined };
