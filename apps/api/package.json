@@ -10,7 +10,6 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
-    "@harness/adapters": "workspace:*",
     "@harness/capabilities": "workspace:*",
     "@harness/core": "workspace:*",
     "@harness/http": "workspace:*"
