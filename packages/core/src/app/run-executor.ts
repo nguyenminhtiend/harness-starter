@@ -6,6 +6,7 @@ import type { Clock } from '../ports/clock.ts';
 import type { EventBus } from '../ports/event-bus.ts';
 import type { EventLog } from '../ports/event-log.ts';
 import type { RunStore } from '../ports/run-store.ts';
+import type { Tracer } from '../ports/tracer.ts';
 
 export interface RunExecutorDeps {
   readonly runStore: RunStore;
@@ -14,6 +15,7 @@ export interface RunExecutorDeps {
   readonly clock: Clock;
   readonly logger: Logger;
   readonly approvalQueue?: ApprovalQueue | undefined;
+  readonly tracer?: Tracer | undefined;
 }
 
 export interface RunExecutionParams {
@@ -73,8 +75,16 @@ export class RunExecutor {
     signal: AbortSignal,
     params?: RunExecutionParams,
   ): Promise<void> {
-    const { runStore, eventLog, eventBus, clock, logger } = this.deps;
+    const { runStore, eventLog, eventBus, clock, logger, tracer } = this.deps;
     const ts = clock.now();
+    const startTime = performance.now();
+
+    const span = tracer?.startSpan('run.execute', {
+      runId: run.id,
+      capabilityId: run.capabilityId,
+    });
+
+    logger.info('Run started', { runId: run.id, capabilityId: run.capabilityId });
 
     const startEvent = run.start(input, ts);
     await eventLog.append(startEvent);
@@ -97,6 +107,8 @@ export class RunExecutor {
         eventBus.publish(cancelEvent);
         await runStore.updateStatus(run.id, run.status, ts);
         eventBus.close(run.id);
+        span?.setStatus('ok');
+        span?.end();
         return;
       }
 
@@ -121,9 +133,24 @@ export class RunExecutor {
         eventBus.publish(completeEvent);
         await runStore.updateStatus(run.id, run.status, clock.now());
       }
+
+      const durationMs = Math.round(performance.now() - startTime);
+      logger.info('Run completed', {
+        runId: run.id,
+        capabilityId: run.capabilityId,
+        status: run.status,
+        durationMs,
+      });
+      span?.setStatus('ok');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      logger.error('Capability execution failed', { runId: run.id, error: message });
+      const durationMs = Math.round(performance.now() - startTime);
+      logger.error('Run failed', {
+        runId: run.id,
+        capabilityId: run.capabilityId,
+        error: message,
+        durationMs,
+      });
 
       if (run.status === 'running') {
         const failEvent = run.fail({ code: 'CAPABILITY_EXECUTION_ERROR', message }, clock.now());
@@ -131,7 +158,10 @@ export class RunExecutor {
         eventBus.publish(failEvent);
         await runStore.updateStatus(run.id, run.status, clock.now());
       }
+
+      span?.setStatus('error');
     } finally {
+      span?.end();
       eventBus.close(run.id);
     }
   }

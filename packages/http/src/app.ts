@@ -3,6 +3,7 @@ import type { HttpAppDeps } from './deps.ts';
 import { bodyLimit } from './middleware/body-limit.ts';
 import { localCors } from './middleware/cors.ts';
 import { errorHandler } from './middleware/error-handler.ts';
+import { accessLogger } from './middleware/logger.ts';
 import { requestId } from './middleware/request-id.ts';
 import { buildOpenApiSpec, getScalarHtml } from './openapi.ts';
 import { approvalsRoutes } from './routes/approvals.routes.ts';
@@ -24,7 +25,8 @@ export function createHttpApp(deps: HttpAppDeps, config?: HttpAppConfig): Hono {
   app.use('*', localCors());
   app.use('*', requestId());
   app.use('*', bodyLimit());
-  app.onError(errorHandler());
+  app.use('*', accessLogger(deps.logger));
+  app.onError(errorHandler(deps.logger));
 
   const spec = buildOpenApiSpec();
   app.get('/openapi.json', (c) => c.json(spec));

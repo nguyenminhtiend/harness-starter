@@ -7,6 +7,7 @@ import {
   createInMemoryEventLog,
   createInMemoryRunStore,
   createInMemorySettingsStore,
+  createNoOpTracer,
   createPinoLogger,
   createProviderResolver,
   createSystemClock,
@@ -27,6 +28,7 @@ export function compose(config: Config): ComposedApp {
   const logger = createPinoLogger({ level: config.logLevel });
   const clock = createSystemClock();
   const idGen = createCryptoIdGen();
+  const tracer = createNoOpTracer();
 
   const runStore = createInMemoryRunStore();
   const eventLog = createInMemoryEventLog();
@@ -46,6 +48,7 @@ export function compose(config: Config): ComposedApp {
     clock,
     logger,
     approvalQueue,
+    tracer,
   });
 
   const runAbortControllers = new Map<string, AbortController>();
