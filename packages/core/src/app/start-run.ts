@@ -1,8 +1,8 @@
 import { NotFoundError } from '../domain/errors.ts';
 import { Run } from '../domain/run.ts';
+import type { MemoryProvider } from '../memory/conversation-memory.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { CapabilityRegistry } from '../ports/capability-registry.ts';
-import type { MemoryProvider } from '../ports/memory-provider.ts';
 import type { ConversationStore } from '../storage/inmem-conversation-store.ts';
 import type { RunStore } from '../storage/inmem-run-store.ts';
 import type { Clock } from '../time/clock.ts';

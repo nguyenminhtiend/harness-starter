@@ -1,5 +1,5 @@
 import type { Logger } from '../domain/capability.ts';
-import type { MemoryProvider } from '../ports/memory-provider.ts';
+import type { MemoryProvider } from '../memory/conversation-memory.ts';
 import { createInMemoryApprovalStore } from '../storage/inmem-approval-store.ts';
 import { createInMemoryConversationStore } from '../storage/inmem-conversation-store.ts';
 import { createInMemoryEventBus } from '../storage/inmem-event-bus.ts';
