@@ -1,11 +1,11 @@
 import { createSimpleChatAgent } from '@harness/agents';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 
-export interface BuildMastraConfigOptions {
+export interface BuildStudioConfigOptions {
   model: string;
 }
 
-export function buildMastraConfig(opts: BuildMastraConfigOptions) {
+export function buildStudioConfig(opts: BuildStudioConfigOptions) {
   const simpleChatAgent = createSimpleChatAgent({ model: opts.model });
   const deepResearch = createDeepResearchWorkflow({ model: opts.model });
 
