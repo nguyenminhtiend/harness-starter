@@ -4,6 +4,7 @@ import type { CapabilityRegistry } from '../ports/capability-registry.ts';
 import type { Clock } from '../ports/clock.ts';
 import type { IdGen } from '../ports/id-gen.ts';
 import type { Logger } from '../ports/logger.ts';
+import type { MemoryProvider } from '../ports/memory-provider.ts';
 import type { RunStore } from '../ports/run-store.ts';
 import type { RunExecutor } from './run-executor.ts';
 
@@ -14,6 +15,7 @@ export interface StartRunDeps {
   readonly clock: Clock;
   readonly executor: RunExecutor;
   readonly logger: Logger;
+  readonly memoryProvider?: MemoryProvider;
 }
 
 export interface StartRunInput {
@@ -43,12 +45,21 @@ export async function startRun(
 
   await deps.runStore.create(runId, params.capabilityId, createdAt, params.conversationId);
 
-  deps.executor.execute(run, capability, params.input, signal).catch((err) => {
-    deps.logger.error('RunExecutor unhandled error', {
-      runId,
-      error: err instanceof Error ? err.message : 'unknown',
+  const memory = params.conversationId
+    ? (deps.memoryProvider?.forConversation(params.conversationId) ?? null)
+    : null;
+
+  deps.executor
+    .execute(run, capability, params.input, signal, {
+      settings: params.settings,
+      memory,
+    })
+    .catch((err) => {
+      deps.logger.error('RunExecutor unhandled error', {
+        runId,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
     });
-  });
 
   return { runId };
 }

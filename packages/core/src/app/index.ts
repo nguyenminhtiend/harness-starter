@@ -10,7 +10,7 @@ export type { ListCapabilitiesDeps } from './list-capabilities.ts';
 export { listCapabilities } from './list-capabilities.ts';
 export type { ListConversationsDeps } from './list-conversations.ts';
 export { listConversations } from './list-conversations.ts';
-export type { RunExecutorDeps } from './run-executor.ts';
+export type { RunExecutionParams, RunExecutorDeps } from './run-executor.ts';
 export { RunExecutor } from './run-executor.ts';
 export type { StartRunDeps, StartRunInput, StartRunResult } from './start-run.ts';
 export { startRun } from './start-run.ts';

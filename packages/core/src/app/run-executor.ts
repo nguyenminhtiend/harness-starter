@@ -1,4 +1,4 @@
-import type { Logger } from '../domain/capability.ts';
+import type { ExecutionContext, Logger, MemoryHandle } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
 import type { Clock } from '../ports/clock.ts';
 import type { EventBus } from '../ports/event-bus.ts';
@@ -13,12 +13,21 @@ export interface RunExecutorDeps {
   readonly logger: Logger;
 }
 
+export interface RunExecutionParams {
+  readonly settings?: unknown;
+  readonly memory?: MemoryHandle | null;
+}
+
 interface ExecutableCapability {
   execute(
     input: unknown,
-    ctx: { signal: AbortSignal },
+    ctx: ExecutionContext,
   ): AsyncIterable<import('../domain/capability.ts').CapabilityEvent>;
 }
+
+const noopApprovals = {
+  request: () => Promise.reject(new Error('Approvals not configured')),
+};
 
 export class RunExecutor {
   private readonly deps: RunExecutorDeps;
@@ -32,6 +41,7 @@ export class RunExecutor {
     capability: ExecutableCapability,
     input: unknown,
     signal: AbortSignal,
+    params?: RunExecutionParams,
   ): Promise<void> {
     const { runStore, eventLog, eventBus, clock, logger } = this.deps;
     const ts = clock.now();
@@ -40,6 +50,15 @@ export class RunExecutor {
     await eventLog.append(startEvent);
     eventBus.publish(startEvent);
     await runStore.updateStatus(run.id, run.status);
+
+    const ctx: ExecutionContext = {
+      runId: run.id,
+      settings: params?.settings ?? {},
+      memory: params?.memory ?? null,
+      signal,
+      approvals: noopApprovals,
+      logger: logger.child({ runId: run.id }),
+    };
 
     try {
       if (signal.aborted) {
@@ -51,7 +70,7 @@ export class RunExecutor {
         return;
       }
 
-      const stream = capability.execute(input, { signal });
+      const stream = capability.execute(input, ctx);
       for await (const capEvent of stream) {
         if (signal.aborted) {
           break;

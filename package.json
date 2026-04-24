@@ -8,6 +8,7 @@
     "apps/*"
   ],
   "scripts": {
+    "api": "bun run --filter @harness/example-api dev",
     "web": "bun run --filter @harness/example-web-studio dev",
     "web:server": "bun run --filter @harness/example-web-studio dev:server",
     "web:ui": "bun run --filter @harness/example-web-studio dev:ui",
