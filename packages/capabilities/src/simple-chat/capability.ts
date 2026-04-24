@@ -1,5 +1,6 @@
-import { createLanguageModel, fromMastraAgent } from '@harness/adapters';
+import { createLanguageModel } from '@harness/adapters';
 import { createSimpleChatAgent } from '@harness/agents';
+import type { CapabilityDefinition } from '@harness/core';
 import { withModelOverride } from '../with-model-override.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
@@ -13,23 +14,28 @@ function resolveModel(raw: unknown): AgentModel {
   return raw as AgentModel;
 }
 
-function buildCapability(modelOverride?: unknown) {
-  return fromMastraAgent<SimpleChatInput, SimpleChatOutput>({
+function buildCapability(
+  modelOverride?: unknown,
+): CapabilityDefinition<SimpleChatInput, SimpleChatOutput> {
+  return {
     id: 'simple-chat',
     title: 'Simple Chat',
     description: 'A conversational assistant with calculator and time tools.',
     inputSchema: SimpleChatInput,
     outputSchema: SimpleChatOutput,
     settingsSchema: SimpleChatSettings,
-    createAgent: (settings) => {
-      const s = settings as SimpleChatSettings;
-      return createSimpleChatAgent({
-        model: resolveModel(modelOverride ?? s.model),
-      });
+    runner: {
+      kind: 'agent',
+      build: (settings) => {
+        const s = settings as SimpleChatSettings;
+        return createSimpleChatAgent({
+          model: resolveModel(modelOverride ?? s.model),
+        });
+      },
+      extractPrompt: (input) => (input as SimpleChatInput).message,
+      maxSteps: 5,
     },
-    extractPrompt: (input) => input.message,
-    maxSteps: 5,
-  });
+  };
 }
 
 export const simpleChatCapability = withModelOverride(buildCapability);
