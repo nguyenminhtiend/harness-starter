@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { ApprovalStore, PendingApproval } from '@harness/core';
-import { createInMemoryApprovalStore } from './approval-store.ts';
+import type { PendingApproval } from '../domain/approval.ts';
+import type { ApprovalStore } from './inmem-approval-store.ts';
+import { createInMemoryApprovalStore } from './inmem-approval-store.ts';
 
 function makeStore(): ApprovalStore {
   return createInMemoryApprovalStore();

@@ -1,4 +1,10 @@
-import type { EventBus, SessionEvent } from '@harness/core';
+import type { SessionEvent } from '../domain/session-event.ts';
+
+export interface EventBus {
+  publish(event: SessionEvent): void;
+  subscribe(runId: string, fromSeq?: number): AsyncIterable<SessionEvent>;
+  close(runId: string): void;
+}
 
 const MAX_BUFFER_SIZE = 10_000;
 
@@ -15,6 +21,7 @@ const ITER_DONE: IteratorResult<SessionEvent> = {
 
 export function createInMemoryEventBus(): EventBus {
   const subscribers = new Map<string, Subscriber[]>();
+  const closed = new Set<string>();
 
   function removeSub(runId: string, sub: Subscriber): void {
     const subs = subscribers.get(runId);
@@ -51,7 +58,7 @@ export function createInMemoryEventBus(): EventBus {
         r(ITER_DONE);
       }
 
-      let closing = false;
+      let closing = closed.has(runId);
 
       const sub: Subscriber = {
         get dead() {
@@ -124,6 +131,7 @@ export function createInMemoryEventBus(): EventBus {
     },
 
     close(runId) {
+      closed.add(runId);
       const subs = subscribers.get(runId);
       if (subs) {
         for (const sub of subs) {

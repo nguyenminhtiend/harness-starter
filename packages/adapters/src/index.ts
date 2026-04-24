@@ -1,6 +1,3 @@
-export type { ConversationMemoryConfig } from './conversation-memory.ts';
-export { createConversationMemoryProvider } from './conversation-memory.ts';
-export { createCryptoIdGen, createSystemClock } from './identity/index.ts';
 export {
   createInMemoryApprovalQueue,
   createInMemoryApprovalStore,
@@ -9,7 +6,10 @@ export {
   createInMemoryEventLog,
   createInMemoryRunStore,
   createInMemorySettingsStore,
-} from './inmem/index.ts';
+} from '@harness/core';
+export type { ConversationMemoryConfig } from './conversation-memory.ts';
+export { createConversationMemoryProvider } from './conversation-memory.ts';
+export { createCryptoIdGen, createSystemClock } from './identity/index.ts';
 export { createNoOpTracer, createPinoLogger } from './observability/index.ts';
 export {
   createLanguageModel,

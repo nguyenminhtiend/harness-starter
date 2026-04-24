@@ -2,11 +2,11 @@ import { NotFoundError } from '../domain/errors.ts';
 import { Run } from '../domain/run.ts';
 import type { CapabilityRegistry } from '../ports/capability-registry.ts';
 import type { Clock } from '../ports/clock.ts';
-import type { ConversationStore } from '../ports/conversation-store.ts';
 import type { IdGen } from '../ports/id-gen.ts';
 import type { Logger } from '../ports/logger.ts';
 import type { MemoryProvider } from '../ports/memory-provider.ts';
-import type { RunStore } from '../ports/run-store.ts';
+import type { ConversationStore } from '../storage/inmem-conversation-store.ts';
+import type { RunStore } from '../storage/inmem-run-store.ts';
 import type { RunExecutor } from './run-executor.ts';
 
 export interface StartRunDeps {

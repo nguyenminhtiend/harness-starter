@@ -1,4 +1,4 @@
-import type { SettingsStore } from '../ports/settings-store.ts';
+import type { SettingsStore } from '../storage/inmem-settings-store.ts';
 
 export interface GetSettingsDeps {
   readonly settingsStore: SettingsStore;

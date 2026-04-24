@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { ApprovalDecision } from '@harness/core';
-import { createInMemoryApprovalQueue } from './approval-queue.ts';
-import { createInMemoryApprovalStore } from './approval-store.ts';
+import type { ApprovalDecision } from '../domain/approval.ts';
+import { createInMemoryApprovalQueue } from './inmem-approval-queue.ts';
+import { createInMemoryApprovalStore } from './inmem-approval-store.ts';
 
 describe('InMemoryApprovalQueue', () => {
   it('request() resolves when resolve() is called after', async () => {
