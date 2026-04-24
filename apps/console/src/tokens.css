@@ -1,0 +1,248 @@
+/* ─── Web Studio Design Tokens ─────────────────────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  /* ── Background scale ── */
+  --bg-base: oklch(7.5% 0.008 258);
+  --bg-surface: oklch(11% 0.008 258);
+  --bg-elevated: oklch(14% 0.009 258);
+  --bg-overlay: oklch(17% 0.01 258);
+  --bg-hover: oklch(20% 0.009 258);
+
+  /* ── Borders ── */
+  --border-subtle: oklch(19% 0.008 258);
+  --border-default: oklch(24% 0.009 258);
+  --border-strong: oklch(34% 0.01 258);
+
+  /* ── Text ── */
+  --text-primary: oklch(93% 0.007 258);
+  --text-secondary: oklch(62% 0.008 258);
+  --text-tertiary: oklch(43% 0.008 258);
+  --text-disabled: oklch(30% 0.006 258);
+  --text-inverse: oklch(8% 0.006 258);
+
+  /* ── Accent (interactive blue) ── */
+  --accent: oklch(65% 0.18 262);
+  --accent-hover: oklch(70% 0.18 262);
+  --accent-active: oklch(60% 0.18 262);
+  --accent-subtle: oklch(65% 0.18 262 / 0.14);
+  --accent-border: oklch(65% 0.18 262 / 0.35);
+
+  /* ── Phase semantic colors ── */
+  --phase-planner: oklch(68% 0.14 292);
+  --phase-planner-subtle: oklch(68% 0.14 292 / 0.12);
+  --phase-planner-border: oklch(68% 0.14 292 / 0.3);
+  --phase-researcher: oklch(68% 0.14 195);
+  --phase-researcher-subtle: oklch(68% 0.14 195 / 0.12);
+  --phase-researcher-border: oklch(68% 0.14 195 / 0.3);
+  --phase-writer: oklch(68% 0.14 148);
+  --phase-writer-subtle: oklch(68% 0.14 148 / 0.12);
+  --phase-writer-border: oklch(68% 0.14 148 / 0.3);
+  --phase-factchecker: oklch(72% 0.14 55);
+  --phase-factchecker-subtle: oklch(72% 0.14 55 / 0.12);
+  --phase-factchecker-border: oklch(72% 0.14 55 / 0.3);
+
+  /* ── Status colors ── */
+  --status-running: oklch(75% 0.15 55);
+  --status-success: oklch(70% 0.15 148);
+  --status-error: oklch(64% 0.18 25);
+  --status-cancelled: oklch(50% 0.008 258);
+  --status-running-subtle: oklch(75% 0.15 55 / 0.12);
+  --status-success-subtle: oklch(70% 0.15 148 / 0.12);
+  --status-error-subtle: oklch(64% 0.18 25 / 0.12);
+
+  /* ── Typography ── */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 15px;
+  --text-xl: 17px;
+  --text-2xl: 20px;
+  --text-3xl: 26px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-loose: 1.75;
+  --tracking-tight: -0.02em;
+  --tracking-wide: 0.05em;
+
+  /* ── Spacing (4px grid) ── */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+  --s10: 40px;
+  --s12: 48px;
+  --s16: 64px;
+
+  /* ── Radii ── */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-full: 9999px;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.35);
+  --shadow-md: 0 4px 14px oklch(0% 0 0 / 0.45);
+  --shadow-lg: 0 8px 36px oklch(0% 0 0 / 0.55);
+  --shadow-xl: 0 16px 60px oklch(0% 0 0 / 0.65);
+
+  /* ── Transitions ── */
+  --t-fast: 80ms ease;
+  --t-base: 160ms ease;
+  --t-slow: 280ms ease;
+  --t-enter: 220ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Layout ── */
+  --sidebar-w: 220px;
+  --settings-w: 308px;
+  --header-h: 44px;
+  --toolbar-h: 48px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+
+:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--r-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* ── Keyframes ── */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(calc(100% + var(--s6)));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes toastFadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(var(--s4));
+  }
+}
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── Range input thumb ── */
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-base);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-base);
+  cursor: pointer;
+}
+
+select option {
+  background: #1a1b23;
+}

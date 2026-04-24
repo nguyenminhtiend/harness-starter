@@ -13,6 +13,20 @@ const StartRunBody = z.object({
 export function runsRoutes(deps: HttpAppDeps): Hono {
   const app = new Hono();
 
+  app.get('/', async (c) => {
+    const status = c.req.query('status') as import('@harness/core').RunStatus | undefined;
+    const capabilityId = c.req.query('capabilityId');
+    const limit = c.req.query('limit')
+      ? Number.parseInt(c.req.query('limit') ?? '', 10)
+      : undefined;
+    const runs = await deps.runStore.list({
+      ...(status ? { status } : {}),
+      ...(capabilityId ? { capabilityId } : {}),
+      ...(limit ? { limit } : {}),
+    });
+    return c.json({ runs });
+  });
+
   app.post('/', async (c) => {
     const body = StartRunBody.parse(await c.req.json());
     const abortController = new AbortController();

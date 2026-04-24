@@ -9,7 +9,9 @@
   ],
   "scripts": {
     "api": "bun run --filter @harness/example-api dev",
-    "web": "bun run --filter @harness/example-web-studio dev",
+    "console": "bun run --filter @harness/example-console dev",
+    "web": "bun run api & bun run console",
+    "web:legacy": "bun run --filter @harness/example-web-studio dev",
     "web:server": "bun run --filter @harness/example-web-studio dev:server",
     "web:ui": "bun run --filter @harness/example-web-studio dev:ui",
     "server": "bun run --filter @harness/example-http-server dev",
