@@ -133,7 +133,7 @@ export function App() {
 
   const toolSettings = useMemo(
     () =>
-      settingsQuery.data?.capabilities[activeTool]?.values as Record<string, unknown> | undefined,
+      settingsQuery.data?.capabilities?.[activeTool]?.values as Record<string, unknown> | undefined,
     [settingsQuery.data, activeTool],
   );
 

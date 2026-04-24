@@ -79,6 +79,7 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
       controller.abort();
       deps.runAbortControllers.delete(runId);
     }
+    await deps.eventLog.deleteByRunId(runId);
     await deps.runStore.delete(runId);
     return c.body(null, 204);
   });
@@ -91,7 +92,8 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
     }
 
     const lastEventId = c.req.header('last-event-id');
-    const fromSeq = lastEventId ? Number.parseInt(lastEventId, 10) + 1 : undefined;
+    const parsed = lastEventId ? Number.parseInt(lastEventId, 10) : undefined;
+    const fromSeq = parsed !== undefined && Number.isFinite(parsed) ? parsed + 1 : undefined;
 
     const stream = streamRunEvents(deps, runId, fromSeq);
 
@@ -104,9 +106,8 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
               const data = `event: session\nid: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`;
               controller.enqueue(encoder.encode(data));
             }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Stream error';
-            const errorData = `event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`;
+          } catch (_err) {
+            const errorData = `event: error\ndata: ${JSON.stringify({ message: 'Stream interrupted' })}\n\n`;
             controller.enqueue(encoder.encode(errorData));
           } finally {
             controller.close();

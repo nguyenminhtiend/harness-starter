@@ -1,4 +1,4 @@
-import { fromMastraWorkflow } from '@harness/adapters';
+import { createLanguageModel, fromMastraWorkflow } from '@harness/adapters';
 import type { Capability } from '@harness/core';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
@@ -8,6 +8,13 @@ import { DeepResearchInput, DeepResearchOutput } from './input.ts';
 import { DeepResearchSettings } from './settings.ts';
 
 type WorkflowModel = Parameters<typeof createDeepResearchWorkflow>[0]['model'];
+
+function resolveModel(raw: unknown): WorkflowModel {
+  if (typeof raw === 'string') {
+    return createLanguageModel(raw) as WorkflowModel;
+  }
+  return raw as WorkflowModel;
+}
 
 function buildCapability(
   modelOverride?: unknown,
@@ -24,7 +31,7 @@ function buildCapability(
     workflowId: 'deepResearch',
     createMastra: (settings) => {
       const s = settings as DeepResearchSettings;
-      const model = (modelOverride ?? s.model) as WorkflowModel;
+      const model = resolveModel(modelOverride ?? s.model);
       const wf = createDeepResearchWorkflow({
         model,
         ...(s.depth ? { depth: s.depth } : {}),

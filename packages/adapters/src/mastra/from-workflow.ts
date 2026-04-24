@@ -61,20 +61,12 @@ export function fromMastraWorkflow<I, O>(config: FromMastraWorkflowConfig<I, O>)
         if (resumed.status === 'success') {
           yield { type: 'artifact', name: 'result', data: resumed.result };
         } else {
-          yield {
-            type: 'custom',
-            kind: 'workflow-error',
-            data: { status: resumed.status },
-          };
+          throw new Error(`Workflow failed after resume with status: ${resumed.status}`);
         }
       } else if (initial.status === 'success') {
         yield { type: 'artifact', name: 'result', data: initial.result };
       } else {
-        yield {
-          type: 'custom',
-          kind: 'workflow-error',
-          data: { status: initial.status },
-        };
+        throw new Error(`Workflow failed with status: ${initial.status}`);
       }
     },
   };

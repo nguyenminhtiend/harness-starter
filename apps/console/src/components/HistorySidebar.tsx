@@ -238,10 +238,17 @@ function ConversationList({
               {filtered.map((conv) => {
                 const active = conv.conversationId === activeConversationId;
                 return (
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     key={conv.conversationId}
                     onClick={() => onSelectConversation?.(conv)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSelectConversation?.(conv);
+                      }
+                    }}
                     style={{
                       display: 'block',
                       width: '100%',
@@ -313,7 +320,7 @@ function ConversationList({
                         ✕
                       </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -468,10 +475,17 @@ function SessionList({
               {filtered.map((session) => {
                 const active = session.id === activeSessionId;
                 return (
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     key={session.id}
                     onClick={() => onSelectSession(session)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSelectSession(session);
+                      }
+                    }}
                     style={{
                       display: 'block',
                       width: '100%',
@@ -565,7 +579,7 @@ function SessionList({
                         ✕
                       </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

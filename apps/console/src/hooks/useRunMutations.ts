@@ -39,7 +39,9 @@ export function useRunMutations(deps: RunMutationsDeps) {
     mutationFn: (vars: { question: string; label: string }) => {
       const capabilityOverrides =
         activeTool === 'deep-research'
-          ? (settings?.capabilities['deep-research']?.values as Record<string, unknown> | undefined)
+          ? (settings?.capabilities?.['deep-research']?.values as
+              | Record<string, unknown>
+              | undefined)
           : undefined;
       const input =
         activeTool === 'deep-research' ? { question: vars.question } : { message: vars.question };

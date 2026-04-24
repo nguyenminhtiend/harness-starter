@@ -103,7 +103,7 @@ export function SettingsPanel({ activeTool }: SettingsPanelProps) {
 
   const activeToolDef = capQuery.data;
 
-  const toolView = data?.capabilities[activeTool];
+  const toolView = data?.capabilities?.[activeTool];
   const values = toolView?.values ?? {};
   const inherited = toolView?.inheritedFromGlobal ?? {};
 
@@ -540,7 +540,7 @@ export function SettingsPanel({ activeTool }: SettingsPanelProps) {
               <span style={fieldLabelStyle}>model</span>
               <input
                 type="text"
-                value={data.global.defaultModel}
+                value={data?.global?.defaultModel ?? ''}
                 onChange={(e) => {
                   onGlobalField({ defaultModel: e.target.value });
                 }}
@@ -560,7 +560,7 @@ export function SettingsPanel({ activeTool }: SettingsPanelProps) {
               <input
                 type="number"
                 step="0.01"
-                value={data.global.budgetUsd}
+                value={data?.global?.budgetUsd ?? 0}
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   if (!Number.isNaN(v)) {
@@ -585,14 +585,14 @@ export function SettingsPanel({ activeTool }: SettingsPanelProps) {
                 min={10_000}
                 max={1_000_000}
                 step={1000}
-                value={data.global.budgetTokens}
+                value={data?.global?.budgetTokens ?? 100000}
                 onChange={(e) => {
                   onGlobalField({ budgetTokens: Number(e.target.value) });
                 }}
               />
               <input
                 type="number"
-                value={data.global.budgetTokens}
+                value={data?.global?.budgetTokens ?? 100000}
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   if (!Number.isNaN(v)) {
@@ -617,14 +617,14 @@ export function SettingsPanel({ activeTool }: SettingsPanelProps) {
                 min={1}
                 max={16}
                 step={1}
-                value={data.global.concurrency}
+                value={data?.global?.concurrency ?? 1}
                 onChange={(e) => {
                   onGlobalField({ concurrency: Number(e.target.value) });
                 }}
               />
               <input
                 type="number"
-                value={data.global.concurrency}
+                value={data?.global?.concurrency ?? 1}
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   if (!Number.isNaN(v)) {

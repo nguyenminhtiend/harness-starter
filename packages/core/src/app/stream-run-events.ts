@@ -22,6 +22,7 @@ export async function* streamRunEvents(
     throw new NotFoundError('Run', runId);
   }
 
+  const subscription = deps.eventBus.subscribe(runId, fromSeq);
   const catchup = await deps.eventLog.read(runId, fromSeq);
   const seen = new Set<number>();
 
@@ -33,7 +34,7 @@ export async function* streamRunEvents(
     }
   }
 
-  for await (const event of deps.eventBus.subscribe(runId, fromSeq)) {
+  for await (const event of subscription) {
     if (seen.has(event.seq)) {
       continue;
     }

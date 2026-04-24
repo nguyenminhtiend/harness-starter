@@ -226,6 +226,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/console/src/components/HistorySidebar.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off"
+          }
+        }
+      }
     }
   ]
 }

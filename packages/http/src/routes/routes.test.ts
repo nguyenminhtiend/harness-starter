@@ -375,19 +375,37 @@ describe('GET /settings', () => {
 
     const res = await app.request('/settings');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ model: 'gpt-4' });
+    const body = await res.json();
+    expect(body.global.model).toBe('gpt-4');
+    expect(body.capabilities).toEqual({});
   });
 
-  test('returns scoped settings merged with global', async () => {
+  test('returns per-capability settings merged with global', async () => {
     const settingsStore = createFakeSettingsStore();
     await settingsStore.set('global', 'model', 'gpt-4');
     await settingsStore.set('simple-chat', 'model', 'claude');
-    const deps = createFakeHttpDeps({ settingsStore });
+    const fakeCap = {
+      id: 'simple-chat',
+      title: 'Chat',
+      description: '',
+      inputSchema: {} as never,
+      outputSchema: {} as never,
+      settingsSchema: {} as never,
+      execute: async function* () {},
+    };
+    const deps = createFakeHttpDeps({
+      settingsStore,
+      capabilityRegistry: {
+        list: () => [fakeCap],
+        get: (id: string) => (id === 'simple-chat' ? fakeCap : undefined),
+      },
+    });
     const app = createHttpApp(deps);
 
-    const res = await app.request('/settings?scope=simple-chat');
+    const res = await app.request('/settings');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ model: 'claude' });
+    const body = await res.json();
+    expect(body.capabilities['simple-chat'].values.model).toBe('claude');
   });
 });
 
@@ -404,8 +422,8 @@ describe('PUT /settings', () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.model).toBe('gpt-4');
-    expect(body.temp).toBe(0.7);
+    expect(body.global.model).toBe('gpt-4');
+    expect(body.global.temp).toBe(0.7);
   });
 });
 

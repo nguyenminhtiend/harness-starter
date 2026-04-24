@@ -74,6 +74,8 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
         return;
       }
 
+      closeRef.current?.();
+
       const close = connectSSE(
         rid,
         (event) => {
@@ -81,7 +83,7 @@ export function useEventStream(runId: string | null, options?: UseEventStreamOpt
           if (event.type === 'approval.requested') {
             optionsRef.current?.onApprovalRequested?.(event);
           }
-          eventsRef.current = [...eventsRef.current, event];
+          eventsRef.current.push(event);
           const nextStatus = statusFromEvent(event);
           setState((prev) => ({
             ...prev,
