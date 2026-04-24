@@ -1,6 +1,7 @@
 import type { ApprovalDecision, ApprovalRequester } from '../domain/approval.ts';
 import type { ExecutionContext, Logger, MemoryHandle } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
+import type { SessionEvent } from '../domain/session-event.ts';
 import type { ApprovalQueue } from '../ports/approval-queue.ts';
 import type { Clock } from '../ports/clock.ts';
 import type { EventBus } from '../ports/event-bus.ts';
@@ -41,27 +42,33 @@ export class RunExecutor {
     this.deps = deps;
   }
 
+  private async emit(event: SessionEvent): Promise<void> {
+    await this.deps.eventLog.append(event);
+    this.deps.eventBus.publish(event);
+  }
+
+  private async emitAndSync(event: SessionEvent, run: Run, finishedAt?: string): Promise<void> {
+    await this.emit(event);
+    await this.deps.runStore.updateStatus(run.id, run.status, finishedAt);
+  }
+
   private createApprovalRequester(run: Run): ApprovalRequester {
-    const { approvalQueue, eventLog, eventBus, runStore, clock } = this.deps;
+    const { approvalQueue, clock } = this.deps;
     if (!approvalQueue) {
       return noopApprovals;
     }
 
     return {
-      async request(approvalId: string, payload: unknown): Promise<ApprovalDecision> {
+      request: async (approvalId: string, payload: unknown): Promise<ApprovalDecision> => {
         const suspendTs = clock.now();
         const suspendEvent = run.suspendForApproval(approvalId, payload, suspendTs);
-        await eventLog.append(suspendEvent);
-        eventBus.publish(suspendEvent);
-        await runStore.updateStatus(run.id, run.status, suspendTs);
+        await this.emitAndSync(suspendEvent, run, suspendTs);
 
         const decision = await approvalQueue.request(approvalId, run.id, payload, suspendTs);
 
         const resumeTs = clock.now();
         const resumeEvent = run.resumeFromApproval(approvalId, decision, resumeTs);
-        await eventLog.append(resumeEvent);
-        eventBus.publish(resumeEvent);
-        await runStore.updateStatus(run.id, run.status);
+        await this.emitAndSync(resumeEvent, run);
 
         return decision;
       },
@@ -75,7 +82,7 @@ export class RunExecutor {
     signal: AbortSignal,
     params?: RunExecutionParams,
   ): Promise<void> {
-    const { runStore, eventLog, eventBus, clock, logger, tracer } = this.deps;
+    const { clock, logger, tracer } = this.deps;
     const ts = clock.now();
     const startTime = performance.now();
 
@@ -86,10 +93,7 @@ export class RunExecutor {
 
     logger.info('Run started', { runId: run.id, capabilityId: run.capabilityId });
 
-    const startEvent = run.start(input, ts);
-    await eventLog.append(startEvent);
-    eventBus.publish(startEvent);
-    await runStore.updateStatus(run.id, run.status);
+    await this.emitAndSync(run.start(input, ts), run);
 
     const ctx: ExecutionContext = {
       runId: run.id,
@@ -102,11 +106,8 @@ export class RunExecutor {
 
     try {
       if (signal.aborted) {
-        const cancelEvent = run.cancel('Aborted before execution', ts);
-        await eventLog.append(cancelEvent);
-        eventBus.publish(cancelEvent);
-        await runStore.updateStatus(run.id, run.status, ts);
-        eventBus.close(run.id);
+        await this.emitAndSync(run.cancel('Aborted before execution', ts), run, ts);
+        this.deps.eventBus.close(run.id);
         span?.setStatus('ok');
         span?.end();
         return;
@@ -117,21 +118,17 @@ export class RunExecutor {
         if (signal.aborted) {
           break;
         }
-        const sessionEvent = run.append(capEvent, clock.now());
-        await eventLog.append(sessionEvent);
-        eventBus.publish(sessionEvent);
+        await this.emit(run.append(capEvent, clock.now()));
       }
 
       if (signal.aborted && run.status === 'running') {
-        const cancelEvent = run.cancel('Aborted during execution', clock.now());
-        await eventLog.append(cancelEvent);
-        eventBus.publish(cancelEvent);
-        await runStore.updateStatus(run.id, run.status, clock.now());
+        await this.emitAndSync(
+          run.cancel('Aborted during execution', clock.now()),
+          run,
+          clock.now(),
+        );
       } else if (run.status === 'running') {
-        const completeEvent = run.complete(null, clock.now());
-        await eventLog.append(completeEvent);
-        eventBus.publish(completeEvent);
-        await runStore.updateStatus(run.id, run.status, clock.now());
+        await this.emitAndSync(run.complete(null, clock.now()), run, clock.now());
       }
 
       const durationMs = Math.round(performance.now() - startTime);
@@ -153,16 +150,17 @@ export class RunExecutor {
       });
 
       if (run.status === 'running') {
-        const failEvent = run.fail({ code: 'CAPABILITY_EXECUTION_ERROR', message }, clock.now());
-        await eventLog.append(failEvent);
-        eventBus.publish(failEvent);
-        await runStore.updateStatus(run.id, run.status, clock.now());
+        await this.emitAndSync(
+          run.fail({ code: 'CAPABILITY_EXECUTION_ERROR', message }, clock.now()),
+          run,
+          clock.now(),
+        );
       }
 
       span?.setStatus('error');
     } finally {
       span?.end();
-      eventBus.close(run.id);
+      this.deps.eventBus.close(run.id);
     }
   }
 }

@@ -1,8 +1,9 @@
 import { fromMastraWorkflow } from '@harness/adapters';
-import type { Capability, CapabilityEvent, ExecutionContext } from '@harness/core';
+import type { Capability } from '@harness/core';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
+import { withModelOverride } from '../with-model-override.ts';
 import { DeepResearchInput, DeepResearchOutput } from './input.ts';
 import { DeepResearchSettings } from './settings.ts';
 
@@ -48,24 +49,4 @@ function buildCapability(
   });
 }
 
-const base = buildCapability();
-
-export const deepResearchCapability: Capability<DeepResearchInput, DeepResearchOutput> & {
-  __createWithModel: (model: unknown) => Capability<DeepResearchInput, DeepResearchOutput>;
-} = {
-  id: base.id,
-  title: base.title,
-  description: base.description,
-  inputSchema: base.inputSchema,
-  outputSchema: base.outputSchema,
-  settingsSchema: base.settingsSchema,
-  supportsApproval: true,
-
-  execute(input: DeepResearchInput, ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
-    return base.execute(input, ctx);
-  },
-
-  __createWithModel(model: unknown) {
-    return buildCapability(model);
-  },
-};
+export const deepResearchCapability = withModelOverride(buildCapability);

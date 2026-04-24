@@ -1,7 +1,17 @@
+import type { RunStatus } from '@harness/core';
 import { cancelRun, startRun, streamRunEvents } from '@harness/core';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
+
+const VALID_STATUSES = new Set<string>([
+  'pending',
+  'running',
+  'suspended',
+  'completed',
+  'failed',
+  'cancelled',
+]);
 
 const StartRunBody = z.object({
   capabilityId: z.string().min(1),
@@ -14,11 +24,12 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
   const app = new Hono();
 
   app.get('/', async (c) => {
-    const status = c.req.query('status') as import('@harness/core').RunStatus | undefined;
+    const rawStatus = c.req.query('status');
+    const status =
+      rawStatus && VALID_STATUSES.has(rawStatus) ? (rawStatus as RunStatus) : undefined;
     const capabilityId = c.req.query('capabilityId');
-    const limit = c.req.query('limit')
-      ? Number.parseInt(c.req.query('limit') ?? '', 10)
-      : undefined;
+    const limitStr = c.req.query('limit');
+    const limit = limitStr ? Number.parseInt(limitStr, 10) : undefined;
     const runs = await deps.runStore.list({
       ...(status ? { status } : {}),
       ...(capabilityId ? { capabilityId } : {}),

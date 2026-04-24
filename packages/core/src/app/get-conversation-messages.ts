@@ -42,28 +42,23 @@ function extractMessages(runId: string, events: SessionEvent[]): ConversationMes
   const result: ConversationMessage[] = [];
   let userContent: string | undefined;
   let userTs: string | undefined;
+  const textParts: string[] = [];
+  let lastTextTs: string | undefined;
 
   for (const event of events) {
     if (event.type === 'run.started') {
       const input = event.input as { message?: string } | null;
       userContent = typeof input?.message === 'string' ? input.message : JSON.stringify(input);
       userTs = event.ts;
+    } else if (event.type === 'text.delta') {
+      textParts.push(event.text);
+      lastTextTs = event.ts;
     }
   }
 
   if (userContent !== undefined && userTs !== undefined) {
     result.push({ role: 'user', content: userContent, runId, ts: userTs });
   }
-
-  const textParts: string[] = [];
-  let lastTextTs: string | undefined;
-  for (const event of events) {
-    if (event.type === 'text.delta') {
-      textParts.push(event.text);
-      lastTextTs = event.ts;
-    }
-  }
-
   if (textParts.length > 0 && lastTextTs !== undefined) {
     result.push({ role: 'assistant', content: textParts.join(''), runId, ts: lastTextTs });
   }

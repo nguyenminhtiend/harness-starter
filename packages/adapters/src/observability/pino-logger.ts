@@ -1,39 +1,25 @@
 import type { Logger } from '@harness/core';
 import pino from 'pino';
 
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
 function wrapPino(p: pino.Logger): Logger {
+  const logAt =
+    (level: LogLevel) =>
+    (msg: string, data?: Record<string, unknown>): void => {
+      if (data) {
+        p[level](data, msg);
+      } else {
+        p[level](msg);
+      }
+    };
+
   return {
-    debug(msg, data) {
-      if (data) {
-        p.debug(data, msg);
-      } else {
-        p.debug(msg);
-      }
-    },
-    info(msg, data) {
-      if (data) {
-        p.info(data, msg);
-      } else {
-        p.info(msg);
-      }
-    },
-    warn(msg, data) {
-      if (data) {
-        p.warn(data, msg);
-      } else {
-        p.warn(msg);
-      }
-    },
-    error(msg, data) {
-      if (data) {
-        p.error(data, msg);
-      } else {
-        p.error(msg);
-      }
-    },
-    child(bindings) {
-      return wrapPino(p.child(bindings));
-    },
+    debug: logAt('debug'),
+    info: logAt('info'),
+    warn: logAt('warn'),
+    error: logAt('error'),
+    child: (bindings) => wrapPino(p.child(bindings)),
   };
 }
 

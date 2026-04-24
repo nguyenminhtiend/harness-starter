@@ -1,6 +1,7 @@
 import { fromMastraAgent } from '@harness/adapters';
 import { createSimpleChatAgent } from '@harness/agents';
-import type { Capability, CapabilityEvent, ExecutionContext } from '@harness/core';
+import type { Capability } from '@harness/core';
+import { withModelOverride } from '../with-model-override.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
 
@@ -25,24 +26,4 @@ function buildCapability(modelOverride?: unknown): Capability<SimpleChatInput, S
   });
 }
 
-const base = buildCapability();
-
-export const simpleChatCapability: Capability<SimpleChatInput, SimpleChatOutput> & {
-  __createWithModel: (model: unknown) => Capability<SimpleChatInput, SimpleChatOutput>;
-} = {
-  id: base.id,
-  title: base.title,
-  description: base.description,
-  inputSchema: base.inputSchema,
-  outputSchema: base.outputSchema,
-  settingsSchema: base.settingsSchema,
-  supportsApproval: false,
-
-  execute(input: SimpleChatInput, ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
-    return base.execute(input, ctx);
-  },
-
-  __createWithModel(model: unknown) {
-    return buildCapability(model);
-  },
-};
+export const simpleChatCapability = withModelOverride(buildCapability);

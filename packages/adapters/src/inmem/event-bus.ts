@@ -5,6 +5,11 @@ interface Subscriber {
   terminate(): void;
 }
 
+const ITER_DONE: IteratorResult<SessionEvent> = {
+  value: undefined as unknown as SessionEvent,
+  done: true,
+};
+
 export function createInMemoryEventBus(): EventBus {
   const subscribers = new Map<string, Subscriber[]>();
   const closed = new Set<string>();
@@ -23,6 +28,12 @@ export function createInMemoryEventBus(): EventBus {
       const buffer: SessionEvent[] = [];
       let resolve: ((value: IteratorResult<SessionEvent>) => void) | null = null;
       let done = false;
+
+      function flush(r: (value: IteratorResult<SessionEvent>) => void): void {
+        resolve = null;
+        done = true;
+        r(ITER_DONE);
+      }
 
       const sub: Subscriber = {
         push(event) {
@@ -45,10 +56,7 @@ export function createInMemoryEventBus(): EventBus {
             return;
           }
           if (buffer.length === 0 && resolve) {
-            done = true;
-            const r = resolve;
-            resolve = null;
-            r({ value: undefined as unknown as SessionEvent, done: true });
+            flush(resolve);
           }
         },
       };
@@ -62,7 +70,7 @@ export function createInMemoryEventBus(): EventBus {
           return {
             next(): Promise<IteratorResult<SessionEvent>> {
               if (done) {
-                return Promise.resolve({ value: undefined as unknown as SessionEvent, done: true });
+                return Promise.resolve(ITER_DONE);
               }
               const buffered = buffer.shift();
               if (buffered) {
@@ -70,20 +78,19 @@ export function createInMemoryEventBus(): EventBus {
               }
               if (closed.has(runId)) {
                 done = true;
-                return Promise.resolve({ value: undefined as unknown as SessionEvent, done: true });
+                return Promise.resolve(ITER_DONE);
               }
               return new Promise<IteratorResult<SessionEvent>>((r) => {
                 resolve = r;
               });
             },
             return() {
-              done = true;
               if (resolve) {
-                const r = resolve;
-                resolve = null;
-                r({ value: undefined as unknown as SessionEvent, done: true });
+                flush(resolve);
+              } else {
+                done = true;
               }
-              return Promise.resolve({ value: undefined as unknown as SessionEvent, done: true });
+              return Promise.resolve(ITER_DONE);
             },
           };
         },
