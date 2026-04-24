@@ -1,12 +1,7 @@
 import type { ApprovalDecision, ApprovalRequester } from '../domain/approval.ts';
-import type {
-  CapabilityEvent,
-  ExecutionContext,
-  Logger,
-  MemoryHandle,
-} from '../domain/capability.ts';
+import type { ExecutionContext, Logger, MemoryHandle } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
-import type { SessionEvent } from '../domain/session-event.ts';
+import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
 import type { ApprovalQueue } from '../ports/approval-queue.ts';
 import type { Clock } from '../ports/clock.ts';
 import type { EventBus } from '../ports/event-bus.ts';
@@ -30,7 +25,7 @@ export interface RunExecutionParams {
 }
 
 interface ExecutableCapability {
-  execute(input: unknown, ctx: ExecutionContext): AsyncIterable<CapabilityEvent>;
+  execute(input: unknown, ctx: ExecutionContext): AsyncIterable<StreamEventPayload>;
 }
 
 export type OnRunComplete = (runId: string) => void;

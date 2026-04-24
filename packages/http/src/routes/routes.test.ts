@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { CapabilityEvent, ExecutionContext, ModelEntry } from '@harness/core';
+import type { Capability, ExecutionContext, ModelEntry, StreamEventPayload } from '@harness/core';
 import {
   createFakeApprovalStore,
   createFakeConversationStore,
@@ -17,8 +17,8 @@ function fakeCapability(id = 'test-cap'): Capability {
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.object({ text: z.string() }),
     settingsSchema: z.object({ model: z.string() }),
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
-      yield { type: 'text-delta', text: 'hello' };
+    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
+      yield { type: 'text.delta', text: 'hello' };
     },
   };
 }

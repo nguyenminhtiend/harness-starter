@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { CapabilityEvent } from './capability.ts';
 import { InvalidRunStateError } from './errors.ts';
 import { Run } from './run.ts';
+import type { StreamEventPayload } from './session-event.ts';
 
 const RUN_ID = '550e8400-e29b-41d4-a716-446655440000';
 const CAPABILITY_ID = 'simple-chat';
@@ -52,12 +52,12 @@ describe('Run', () => {
   });
 
   describe('append()', () => {
-    it('wraps a CapabilityEvent into a SessionEvent with incrementing seq', () => {
+    it('wraps a StreamEventPayload into a SessionEvent with incrementing seq', () => {
       const run = createRun();
       run.start({ msg: 'hi' }, TS);
 
-      const capEvent: CapabilityEvent = { type: 'text-delta', text: 'Hello' };
-      const sessionEvent = run.append(capEvent, TS);
+      const payload: StreamEventPayload = { type: 'text.delta', text: 'Hello' };
+      const sessionEvent = run.append(payload, TS);
 
       expect(sessionEvent.type).toBe('text.delta');
       expect(sessionEvent.runId).toBe(RUN_ID);
@@ -67,20 +67,19 @@ describe('Run', () => {
       }
     });
 
-    it('maps all CapabilityEvent types correctly', () => {
+    it('passes through all StreamEventPayload types', () => {
       const run = createRun();
       run.start({}, TS);
 
-      const events: CapabilityEvent[] = [
-        { type: 'text-delta', text: 'a' },
-        { type: 'reasoning-delta', text: 'b' },
-        { type: 'tool-called', tool: 'calc', args: {}, callId: 'c1' },
-        { type: 'tool-result', callId: 'c1', result: 42 },
-        { type: 'step-finished', usage: { inputTokens: 10 } },
-        { type: 'plan-proposed', plan: { steps: [] } },
+      const events: StreamEventPayload[] = [
+        { type: 'text.delta', text: 'a' },
+        { type: 'reasoning.delta', text: 'b' },
+        { type: 'tool.called', tool: 'calc', args: {}, callId: 'c1' },
+        { type: 'tool.result', callId: 'c1', result: 42 },
+        { type: 'step.finished', usage: { inputTokens: 10 } },
+        { type: 'plan.proposed', plan: { steps: [] } },
         { type: 'artifact', name: 'report', data: {} },
         { type: 'usage', usage: { totalTokens: 20 } },
-        { type: 'custom', kind: 'foo', data: 'bar' },
       ];
 
       const sessionTypes = events.map((e) => run.append(e, TS).type);
@@ -93,7 +92,6 @@ describe('Run', () => {
         'plan.proposed',
         'artifact',
         'usage',
-        'artifact',
       ]);
     });
 
@@ -102,16 +100,16 @@ describe('Run', () => {
       run.start({}, TS);
 
       const seqs = [
-        run.append({ type: 'text-delta', text: 'a' }, TS).seq,
-        run.append({ type: 'text-delta', text: 'b' }, TS).seq,
-        run.append({ type: 'text-delta', text: 'c' }, TS).seq,
+        run.append({ type: 'text.delta', text: 'a' }, TS).seq,
+        run.append({ type: 'text.delta', text: 'b' }, TS).seq,
+        run.append({ type: 'text.delta', text: 'c' }, TS).seq,
       ];
       expect(seqs).toEqual([1, 2, 3]);
     });
 
     it('throws when not running', () => {
       const run = createRun();
-      expect(() => run.append({ type: 'text-delta', text: 'x' }, TS)).toThrow(InvalidRunStateError);
+      expect(() => run.append({ type: 'text.delta', text: 'x' }, TS)).toThrow(InvalidRunStateError);
     });
   });
 
@@ -264,10 +262,10 @@ describe('Run', () => {
     it('pending → running → suspended → running → completed', () => {
       const run = createRun();
       run.start({}, TS);
-      run.append({ type: 'text-delta', text: 'planning...' }, TS);
+      run.append({ type: 'text.delta', text: 'planning...' }, TS);
       run.suspendForApproval('apr-1', { plan: 'x' }, TS);
       run.resumeFromApproval('apr-1', { kind: 'approve' }, TS);
-      run.append({ type: 'text-delta', text: 'executing...' }, TS);
+      run.append({ type: 'text.delta', text: 'executing...' }, TS);
       run.complete({ report: 'done' }, TS);
 
       expect(run.status).toBe('completed');
@@ -278,11 +276,11 @@ describe('Run', () => {
       const events = [];
 
       events.push(run.start({}, TS));
-      events.push(run.append({ type: 'text-delta', text: 'a' }, TS));
-      events.push(run.append({ type: 'text-delta', text: 'b' }, TS));
+      events.push(run.append({ type: 'text.delta', text: 'a' }, TS));
+      events.push(run.append({ type: 'text.delta', text: 'b' }, TS));
       events.push(run.suspendForApproval('apr-1', {}, TS));
       events.push(run.resumeFromApproval('apr-1', { kind: 'approve' }, TS));
-      events.push(run.append({ type: 'text-delta', text: 'c' }, TS));
+      events.push(run.append({ type: 'text.delta', text: 'c' }, TS));
       events.push(run.complete('done', TS));
 
       const seqs = events.map((e) => e.seq);

@@ -4,6 +4,8 @@ export type { CancelRunDeps } from './cancel-run.ts';
 export { cancelRun } from './cancel-run.ts';
 export type { DeleteConversationDeps } from './delete-conversation.ts';
 export { deleteConversation } from './delete-conversation.ts';
+export type { RuntimeStreamChunk } from './event-mapper.ts';
+export { mapStreamChunk } from './event-mapper.ts';
 export type { GetCapabilityDeps } from './get-capability.ts';
 export { getCapability } from './get-capability.ts';
 export type {

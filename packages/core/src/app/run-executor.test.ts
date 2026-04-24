@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { CapabilityEvent, ExecutionContext } from '../domain/capability.ts';
+import type { ExecutionContext } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
-import type { SessionEvent } from '../domain/session-event.ts';
+import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
 import type { ApprovalDecision, ApprovalQueue } from '../ports/index.ts';
 import {
   createFakeApprovalStore,
@@ -44,9 +44,9 @@ function createFakeApprovalQueue(): ApprovalQueue & {
   };
 }
 
-function createTestCapability(events: CapabilityEvent[]) {
+function createTestCapability(events: StreamEventPayload[]) {
   return {
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
+    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
       for (const e of events) {
         yield e;
       }
@@ -54,9 +54,9 @@ function createTestCapability(events: CapabilityEvent[]) {
   };
 }
 
-function createAbortableCapability(events: CapabilityEvent[]) {
+function createAbortableCapability(events: StreamEventPayload[]) {
   return {
-    async *execute(_input: unknown, ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
+    async *execute(_input: unknown, ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
       for (const e of events) {
         if (ctx.signal.aborted) {
           return;
@@ -69,9 +69,9 @@ function createAbortableCapability(events: CapabilityEvent[]) {
 
 function createHitlCapability() {
   return {
-    async *execute(_input: unknown, ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
-      yield { type: 'step-finished' as const };
-      yield { type: 'plan-proposed' as const, plan: { summary: 'Test plan' } };
+    async *execute(_input: unknown, ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
+      yield { type: 'step.finished' as const };
+      yield { type: 'plan.proposed' as const, plan: { summary: 'Test plan' } };
 
       const decision = await ctx.approvals.request('apr-1', { summary: 'Test plan' });
 
@@ -79,7 +79,7 @@ function createHitlCapability() {
         return;
       }
 
-      yield { type: 'text-delta' as const, text: 'Research complete' };
+      yield { type: 'text.delta' as const, text: 'Research complete' };
       yield { type: 'artifact' as const, name: 'report', data: { text: 'Final report' } };
     },
   };
@@ -107,8 +107,8 @@ describe('RunExecutor', () => {
     const { eventLog, eventBus, executor } = setup();
     const run = new Run('run-1', 'test-cap', '2026-04-24T00:00:00.000Z');
     const capability = createTestCapability([
-      { type: 'text-delta', text: 'Hello' },
-      { type: 'text-delta', text: ' world' },
+      { type: 'text.delta', text: 'Hello' },
+      { type: 'text.delta', text: ' world' },
     ]);
 
     const collected: SessionEvent[] = [];
@@ -145,8 +145,8 @@ describe('RunExecutor', () => {
     await runStore.create('run-2', 'test-cap', '2026-04-24T00:00:00.000Z');
 
     const capability = {
-      async *execute(): AsyncIterable<CapabilityEvent> {
-        yield { type: 'text-delta' as const, text: 'start' };
+      async *execute(): AsyncIterable<StreamEventPayload> {
+        yield { type: 'text.delta' as const, text: 'start' };
         throw new Error('capability exploded');
       },
     };
@@ -166,9 +166,9 @@ describe('RunExecutor', () => {
     const controller = new AbortController();
 
     const capability = createAbortableCapability([
-      { type: 'text-delta', text: 'a' },
-      { type: 'text-delta', text: 'b' },
-      { type: 'text-delta', text: 'c' },
+      { type: 'text.delta', text: 'a' },
+      { type: 'text.delta', text: 'b' },
+      { type: 'text.delta', text: 'c' },
     ]);
 
     controller.abort();
@@ -185,7 +185,7 @@ describe('RunExecutor', () => {
     const run = new Run('run-4', 'test-cap', '2026-04-24T00:00:00.000Z');
     await runStore.create('run-4', 'test-cap', '2026-04-24T00:00:00.000Z');
 
-    const capability = createTestCapability([{ type: 'text-delta', text: 'done' }]);
+    const capability = createTestCapability([{ type: 'text.delta', text: 'done' }]);
     await executor.execute(run, capability, {}, new AbortController().signal);
 
     const stored = await runStore.get('run-4');

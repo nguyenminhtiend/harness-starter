@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { mockModel } from '@harness/agents/testing';
-import type { ApprovalDecision, CapabilityEvent, ExecutionContext } from '@harness/core';
+import type { ApprovalDecision, ExecutionContext, StreamEventPayload } from '@harness/core';
 import { deepResearchCapability } from './capability.ts';
 
 const fakePlan = {
@@ -47,8 +47,10 @@ function fakeCtx(
   };
 }
 
-async function collectEvents(iter: AsyncIterable<CapabilityEvent>): Promise<CapabilityEvent[]> {
-  const events: CapabilityEvent[] = [];
+async function collectEvents(
+  iter: AsyncIterable<StreamEventPayload>,
+): Promise<StreamEventPayload[]> {
+  const events: StreamEventPayload[] = [];
   for await (const e of iter) {
     events.push(e);
   }
@@ -84,14 +86,14 @@ describe('deepResearchCapability', () => {
     expect(result.success).toBe(true);
   });
 
-  test('yields plan-proposed and artifact after approval', async () => {
+  test('yields plan.proposed and artifact after approval', async () => {
     const model = buildModel();
     const cap = deepResearchCapability.__createWithModel(model);
     const events = await collectEvents(cap.execute({ question: 'What is X?' }, fakeCtx()));
 
-    const planProposed = events.find((e) => e.type === 'plan-proposed');
+    const planProposed = events.find((e) => e.type === 'plan.proposed');
     expect(planProposed).toBeDefined();
-    if (planProposed?.type === 'plan-proposed') {
+    if (planProposed?.type === 'plan.proposed') {
       const plan = planProposed.plan as { summary: string };
       expect(plan.summary).toBe('Test plan');
     }
@@ -110,7 +112,7 @@ describe('deepResearchCapability', () => {
     const ctx = fakeCtx({ kind: 'reject', reason: 'bad plan' });
     const events = await collectEvents(cap.execute({ question: 'What is X?' }, ctx));
 
-    const planProposed = events.find((e) => e.type === 'plan-proposed');
+    const planProposed = events.find((e) => e.type === 'plan.proposed');
     expect(planProposed).toBeDefined();
 
     const artifact = events.find((e) => e.type === 'artifact');

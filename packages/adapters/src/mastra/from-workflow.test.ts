@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { mockModel } from '@harness/agents/testing';
-import type { ApprovalDecision, CapabilityEvent, ExecutionContext } from '@harness/core';
+import type { ApprovalDecision, ExecutionContext, StreamEventPayload } from '@harness/core';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
@@ -74,17 +74,17 @@ function makeCtx(approvalDecision: ApprovalDecision = { kind: 'approve' }): Exec
 }
 
 describe('fromMastraWorkflow', () => {
-  it('yields plan-proposed when workflow suspends', async () => {
+  it('yields plan.proposed when workflow suspends', async () => {
     const capability = makeCapability(buildModel());
-    const events: CapabilityEvent[] = [];
+    const events: StreamEventPayload[] = [];
 
     for await (const event of capability.execute({ question: 'What is X?' }, makeCtx())) {
       events.push(event);
     }
 
-    const planProposed = events.find((e) => e.type === 'plan-proposed');
+    const planProposed = events.find((e) => e.type === 'plan.proposed');
     expect(planProposed).toBeDefined();
-    if (planProposed?.type === 'plan-proposed') {
+    if (planProposed?.type === 'plan.proposed') {
       const plan = planProposed.plan as { summary: string };
       expect(plan.summary).toBe('Test plan');
     }
@@ -92,7 +92,7 @@ describe('fromMastraWorkflow', () => {
 
   it('yields artifact with result after approval', async () => {
     const capability = makeCapability(buildModel());
-    const events: CapabilityEvent[] = [];
+    const events: StreamEventPayload[] = [];
 
     for await (const event of capability.execute({ question: 'What is X?' }, makeCtx())) {
       events.push(event);
@@ -108,14 +108,14 @@ describe('fromMastraWorkflow', () => {
 
   it('stops after rejection without producing artifact', async () => {
     const capability = makeCapability(buildModel());
-    const events: CapabilityEvent[] = [];
+    const events: StreamEventPayload[] = [];
     const ctx = makeCtx({ kind: 'reject', reason: 'bad plan' });
 
     for await (const event of capability.execute({ question: 'What is X?' }, ctx)) {
       events.push(event);
     }
 
-    const planProposed = events.find((e) => e.type === 'plan-proposed');
+    const planProposed = events.find((e) => e.type === 'plan.proposed');
     expect(planProposed).toBeDefined();
 
     const artifact = events.find((e) => e.type === 'artifact');

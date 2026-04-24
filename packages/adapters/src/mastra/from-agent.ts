@@ -1,8 +1,12 @@
-import type { Capability, CapabilityEvent, ExecutionContext } from '@harness/core';
+import type {
+  Capability,
+  ExecutionContext,
+  RuntimeStreamChunk,
+  StreamEventPayload,
+} from '@harness/core';
+import { mapStreamChunk } from '@harness/core';
 import type { Agent } from '@mastra/core/agent';
 import type { z } from 'zod';
-import type { MastraStreamChunk } from './event-mapper.ts';
-import { mapMastraChunk } from './event-mapper.ts';
 
 export interface FromMastraAgentConfig<I, O> {
   readonly id: string;
@@ -25,7 +29,7 @@ export function fromMastraAgent<I, O>(config: FromMastraAgentConfig<I, O>): Capa
     outputSchema: config.outputSchema,
     settingsSchema: config.settingsSchema,
 
-    async *execute(input: I, ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
+    async *execute(input: I, ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
       const agent = config.createAgent(ctx.settings);
       const prompt = config.extractPrompt(input);
 
@@ -50,7 +54,7 @@ export function fromMastraAgent<I, O>(config: FromMastraAgentConfig<I, O>): Capa
           if (done) {
             break;
           }
-          const event = mapMastraChunk(value as MastraStreamChunk);
+          const event = mapStreamChunk(value as RuntimeStreamChunk);
           if (event) {
             yield event;
           }

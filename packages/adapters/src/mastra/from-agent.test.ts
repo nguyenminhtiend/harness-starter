@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { createSimpleChatAgent } from '@harness/agents';
 import { mockModel } from '@harness/agents/testing';
-import type { CapabilityEvent, ExecutionContext } from '@harness/core';
+import type { ExecutionContext, StreamEventPayload } from '@harness/core';
 import { z } from 'zod';
 import { fromMastraAgent } from './from-agent.ts';
 
@@ -40,19 +40,19 @@ function makeCapability(responses: Parameters<typeof mockModel>[0]) {
 }
 
 describe('fromMastraAgent', () => {
-  it('produces step-finished events from the Mastra stream', async () => {
+  it('produces step.finished events from the stream', async () => {
     const capability = makeCapability([{ type: 'text', text: 'Hello!' }]);
 
-    const events: CapabilityEvent[] = [];
+    const events: StreamEventPayload[] = [];
     for await (const event of capability.execute({ message: 'hi' }, makeCtx())) {
       events.push(event);
     }
 
-    const stepFinished = events.filter((e) => e.type === 'step-finished');
+    const stepFinished = events.filter((e) => e.type === 'step.finished');
     expect(stepFinished.length).toBeGreaterThan(0);
   });
 
-  it('produces tool-called events for tool use', async () => {
+  it('produces tool.called events for tool use', async () => {
     const capability = makeCapability([
       {
         type: 'tool-call',
@@ -63,14 +63,14 @@ describe('fromMastraAgent', () => {
       { type: 'text', text: 'The answer is 5.' },
     ]);
 
-    const events: CapabilityEvent[] = [];
+    const events: StreamEventPayload[] = [];
     for await (const event of capability.execute({ message: 'What is 2+3?' }, makeCtx())) {
       events.push(event);
     }
 
-    const toolCalled = events.filter((e) => e.type === 'tool-called');
+    const toolCalled = events.filter((e) => e.type === 'tool.called');
     expect(toolCalled.length).toBeGreaterThan(0);
-    if (toolCalled[0]?.type === 'tool-called') {
+    if (toolCalled[0]?.type === 'tool.called') {
       expect(toolCalled[0].tool).toBe('calculator');
     }
   });
@@ -78,7 +78,7 @@ describe('fromMastraAgent', () => {
   it('produces usage events at stream end', async () => {
     const capability = makeCapability([{ type: 'text', text: 'Hello!' }]);
 
-    const events: CapabilityEvent[] = [];
+    const events: StreamEventPayload[] = [];
     for await (const event of capability.execute({ message: 'hi' }, makeCtx())) {
       events.push(event);
     }

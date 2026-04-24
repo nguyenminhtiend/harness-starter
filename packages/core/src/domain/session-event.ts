@@ -91,3 +91,18 @@ export const SessionEvent = z.discriminatedUnion('type', [
 export type SessionEvent = z.infer<typeof SessionEvent>;
 
 export type SessionEventType = SessionEvent['type'];
+
+export type StreamEventPayload =
+  | { readonly type: 'text.delta'; readonly text: string }
+  | { readonly type: 'reasoning.delta'; readonly text: string }
+  | {
+      readonly type: 'tool.called';
+      readonly tool: string;
+      readonly args: unknown;
+      readonly callId: string;
+    }
+  | { readonly type: 'tool.result'; readonly callId: string; readonly result: unknown }
+  | { readonly type: 'step.finished'; readonly usage?: TokenUsageDTO | undefined }
+  | { readonly type: 'plan.proposed'; readonly plan: unknown }
+  | { readonly type: 'artifact'; readonly name: string; readonly data: unknown }
+  | { readonly type: 'usage'; readonly usage: TokenUsageDTO };

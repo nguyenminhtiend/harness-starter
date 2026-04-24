@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import type { Capability, CapabilityEvent, ExecutionContext } from '../domain/capability.ts';
+import type { Capability, ExecutionContext } from '../domain/capability.ts';
 import { ConflictError, NotFoundError } from '../domain/errors.ts';
+import type { StreamEventPayload } from '../domain/session-event.ts';
 import {
   createFakeApprovalStore,
   createFakeClock,
@@ -28,7 +29,7 @@ import { updateSettings } from './update-settings.ts';
 
 function createTestCapability(
   id: string,
-  events: CapabilityEvent[] = [{ type: 'text-delta', text: 'hi' }],
+  events: StreamEventPayload[] = [{ type: 'text.delta', text: 'hi' }],
 ): Capability {
   return {
     id,
@@ -37,7 +38,7 @@ function createTestCapability(
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.unknown(),
     settingsSchema: z.object({}),
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
+    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
       for (const e of events) {
         yield e;
       }

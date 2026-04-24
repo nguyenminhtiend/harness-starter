@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { CapabilityEvent, ExecutionContext } from '../domain/capability.ts';
+import type { ExecutionContext } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
+import type { StreamEventPayload } from '../domain/session-event.ts';
 import type { Span, Tracer } from '../ports/tracer.ts';
 import {
   createFakeClock,
@@ -44,9 +45,9 @@ function createCapturingTracer(): { tracer: Tracer; spans: SpanRecord[] } {
   return { tracer, spans };
 }
 
-function createTestCapability(events: CapabilityEvent[]) {
+function createTestCapability(events: StreamEventPayload[]) {
   return {
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
+    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
       for (const e of events) {
         yield e;
       }
@@ -76,7 +77,7 @@ describe('RunExecutor tracer integration', () => {
     const { tracer, spans } = createCapturingTracer();
     const { executor } = setup(tracer);
     const run = new Run('run-t1', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = createTestCapability([{ type: 'text-delta', text: 'hi' }]);
+    const capability = createTestCapability([{ type: 'text.delta', text: 'hi' }]);
 
     await executor.execute(run, capability, {}, new AbortController().signal);
 
@@ -93,8 +94,8 @@ describe('RunExecutor tracer integration', () => {
     const { executor } = setup(tracer);
     const run = new Run('run-t2', 'test-cap', '2026-04-24T00:00:00.000Z');
     const capability = {
-      async *execute(): AsyncIterable<CapabilityEvent> {
-        yield { type: 'text-delta' as const, text: 'before boom' };
+      async *execute(): AsyncIterable<StreamEventPayload> {
+        yield { type: 'text.delta' as const, text: 'before boom' };
         throw new Error('boom');
       },
     };
@@ -109,7 +110,7 @@ describe('RunExecutor tracer integration', () => {
   it('works without tracer (optional)', async () => {
     const { executor } = setup();
     const run = new Run('run-t3', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = createTestCapability([{ type: 'text-delta', text: 'hi' }]);
+    const capability = createTestCapability([{ type: 'text.delta', text: 'hi' }]);
 
     await executor.execute(run, capability, {}, new AbortController().signal);
     expect(run.status).toBe('completed');
@@ -139,7 +140,7 @@ describe('RunExecutor tracer integration', () => {
     });
 
     const run = new Run('run-t4', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = createTestCapability([{ type: 'text-delta', text: 'hi' }]);
+    const capability = createTestCapability([{ type: 'text.delta', text: 'hi' }]);
 
     await executor.execute(run, capability, {}, new AbortController().signal);
 

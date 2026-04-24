@@ -1,4 +1,4 @@
-import type { Capability, CapabilityEvent, ExecutionContext } from '@harness/core';
+import type { Capability, ExecutionContext, StreamEventPayload } from '@harness/core';
 import type { Mastra } from '@mastra/core';
 import type { z } from 'zod';
 
@@ -27,7 +27,7 @@ export function fromMastraWorkflow<I, O>(config: FromMastraWorkflowConfig<I, O>)
     settingsSchema: config.settingsSchema,
     supportsApproval: config.supportsApproval,
 
-    async *execute(input: I, ctx: ExecutionContext): AsyncIterable<CapabilityEvent> {
+    async *execute(input: I, ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
       const mastra = config.createMastra(ctx.settings);
       const wf = mastra.getWorkflow(config.workflowId);
       const run = await wf.createRun();
@@ -37,8 +37,8 @@ export function fromMastraWorkflow<I, O>(config: FromMastraWorkflowConfig<I, O>)
 
       if (initial.status === 'suspended') {
         const plan = config.extractPlan((initial.steps ?? {}) as Record<string, unknown>);
-        yield { type: 'step-finished' };
-        yield { type: 'plan-proposed', plan };
+        yield { type: 'step.finished' };
+        yield { type: 'plan.proposed', plan };
 
         const decision = await ctx.approvals.request(`${ctx.runId}-approval`, plan);
 

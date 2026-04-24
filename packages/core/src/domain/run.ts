@@ -1,7 +1,6 @@
 import type { ApprovalDecision } from './approval.ts';
-import type { CapabilityEvent } from './capability.ts';
 import { InvalidRunStateError } from './errors.ts';
-import type { ErrorShape, SessionEvent } from './session-event.ts';
+import type { ErrorShape, SessionEvent, StreamEventPayload } from './session-event.ts';
 
 export type RunStatus = 'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled';
 
@@ -60,10 +59,9 @@ export class Run {
     });
   }
 
-  append(event: CapabilityEvent, ts: string): SessionEvent {
+  append(event: StreamEventPayload, ts: string): SessionEvent {
     this.assertStatus('running', 'append');
-    const mapped = mapCapabilityEvent(event);
-    return this.emit(ts, mapped);
+    return this.emit(ts, event as unknown as Record<string, unknown>);
   }
 
   suspendForApproval(approvalId: string, payload: unknown, ts: string): SessionEvent {
@@ -137,28 +135,5 @@ export class Run {
     } as SessionEvent;
     this._seq++;
     return event;
-  }
-}
-
-function mapCapabilityEvent(e: CapabilityEvent): Record<string, unknown> {
-  switch (e.type) {
-    case 'text-delta':
-      return { type: 'text.delta', text: e.text };
-    case 'reasoning-delta':
-      return { type: 'reasoning.delta', text: e.text };
-    case 'tool-called':
-      return { type: 'tool.called', tool: e.tool, args: e.args, callId: e.callId };
-    case 'tool-result':
-      return { type: 'tool.result', callId: e.callId, result: e.result };
-    case 'step-finished':
-      return { type: 'step.finished', usage: e.usage };
-    case 'plan-proposed':
-      return { type: 'plan.proposed', plan: e.plan };
-    case 'artifact':
-      return { type: 'artifact', name: e.name, data: e.data };
-    case 'usage':
-      return { type: 'usage', usage: e.usage };
-    case 'custom':
-      return { type: 'artifact', name: e.kind, data: e.data };
   }
 }

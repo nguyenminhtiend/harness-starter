@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { mockModel } from '@harness/agents/testing';
-import type { CapabilityEvent } from '@harness/core';
+import type { StreamEventPayload } from '@harness/core';
 import { simpleChatCapability } from './capability.ts';
 
 function fakeCtx(overrides?: Partial<Parameters<typeof simpleChatCapability.execute>[1]>) {
@@ -23,8 +23,10 @@ function fakeCtx(overrides?: Partial<Parameters<typeof simpleChatCapability.exec
   };
 }
 
-async function collectEvents(iter: AsyncIterable<CapabilityEvent>): Promise<CapabilityEvent[]> {
-  const events: CapabilityEvent[] = [];
+async function collectEvents(
+  iter: AsyncIterable<StreamEventPayload>,
+): Promise<StreamEventPayload[]> {
+  const events: StreamEventPayload[] = [];
   for await (const e of iter) {
     events.push(e);
   }
@@ -59,20 +61,20 @@ describe('simpleChatCapability', () => {
     expect(result.success).toBe(true);
   });
 
-  test('produces text-delta events from a simple text response', async () => {
+  test('produces text.delta events from a simple text response', async () => {
     const model = mockModel([{ type: 'text', text: 'Hello there!' }]);
 
     const cap = simpleChatCapability.__createWithModel(model);
     const events = await collectEvents(cap.execute({ message: 'hi' }, fakeCtx()));
 
-    const textDeltas = events.filter((e) => e.type === 'text-delta');
+    const textDeltas = events.filter((e) => e.type === 'text.delta');
     expect(textDeltas.length).toBeGreaterThan(0);
 
     const combined = textDeltas.map((e) => (e as { text: string }).text).join('');
     expect(combined).toBe('Hello there!');
   });
 
-  test('produces tool-called and step-finished events for tool use', async () => {
+  test('produces tool.called and step.finished events for tool use', async () => {
     const model = mockModel([
       {
         type: 'tool-call',
@@ -87,7 +89,7 @@ describe('simpleChatCapability', () => {
     const events = await collectEvents(cap.execute({ message: 'What is 2+3?' }, fakeCtx()));
 
     const types = events.map((e) => e.type);
-    expect(types).toContain('tool-called');
-    expect(types).toContain('text-delta');
+    expect(types).toContain('tool.called');
+    expect(types).toContain('text.delta');
   });
 });
