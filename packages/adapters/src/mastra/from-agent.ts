@@ -39,7 +39,11 @@ export function fromMastraAgent<I, O>(config: FromMastraAgentConfig<I, O>): Capa
         maxSteps: config.maxSteps ?? 5,
       });
 
-      const reader = (output as unknown as { fullStream: ReadableStream }).fullStream.getReader();
+      const raw = output as unknown as Record<string, unknown>;
+      if (!raw || typeof raw !== 'object' || !('fullStream' in raw)) {
+        throw new Error('Mastra agent.stream() did not return a fullStream property');
+      }
+      const reader = (raw.fullStream as ReadableStream).getReader();
       try {
         while (true) {
           const { done, value } = await reader.read();

@@ -245,7 +245,7 @@ export function connectSSE(
   onEvent: (event: SessionEvent) => void,
   onDone: () => void,
   onError: (err: Error) => void,
-  options?: { lastEventId?: string },
+  lastEventId?: number,
 ): () => void {
   const url = resolveUrl(`${BASE}/runs/${encodeURIComponent(runId)}/events`);
   const controller = new AbortController();
@@ -263,8 +263,8 @@ export function connectSSE(
   void (async () => {
     try {
       const headers: Record<string, string> = { Accept: 'text/event-stream' };
-      if (options?.lastEventId) {
-        headers['Last-Event-ID'] = options.lastEventId;
+      if (lastEventId != null) {
+        headers['Last-Event-ID'] = String(lastEventId);
       }
       const res = await fetch(url, { signal: controller.signal, headers });
       if (!res.ok) {

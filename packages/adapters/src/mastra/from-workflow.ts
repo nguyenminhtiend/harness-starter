@@ -52,7 +52,10 @@ export function fromMastraWorkflow<I, O>(config: FromMastraWorkflowConfig<I, O>)
 
         const resumed = await run.resume({
           step: config.approveStepId,
-          resumeData: { approved: true },
+          resumeData: {
+            approved: true,
+            ...(decision.editedPlan !== undefined ? { editedPlan: decision.editedPlan } : {}),
+          },
         });
 
         if (resumed.status === 'success') {

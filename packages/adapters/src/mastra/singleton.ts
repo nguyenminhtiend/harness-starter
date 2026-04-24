@@ -7,21 +7,31 @@ export interface MastraSingletonConfig {
   readonly storageUrl?: string;
 }
 
-let instance: Mastra | undefined;
+const instances = new Map<string, Mastra>();
+
+function configKey(config: MastraSingletonConfig): string {
+  const wfKeys = Object.keys(config.workflows).sort().join(',');
+  return `${wfKeys}|${config.storageUrl ?? 'default'}`;
+}
 
 export function getMastraInstance(config: MastraSingletonConfig): Mastra {
-  if (!instance) {
-    instance = new Mastra({
-      workflows: config.workflows,
-      storage: new LibSQLStore({
-        id: 'harness-mastra',
-        url: config.storageUrl ?? 'file:./.mastra/mastra.db',
-      }),
-    });
+  const key = configKey(config);
+  const existing = instances.get(key);
+  if (existing) {
+    return existing;
   }
-  return instance;
+
+  const mastra = new Mastra({
+    workflows: config.workflows,
+    storage: new LibSQLStore({
+      id: 'harness-mastra',
+      url: config.storageUrl ?? 'file:./.mastra/mastra.db',
+    }),
+  });
+  instances.set(key, mastra);
+  return mastra;
 }
 
 export function resetMastraInstance(): void {
-  instance = undefined;
+  instances.clear();
 }

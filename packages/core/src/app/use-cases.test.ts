@@ -70,9 +70,9 @@ describe('startRun', () => {
       new AbortController().signal,
     );
 
-    expect(result.runId).toBe('run-0001');
+    expect(result.runId).toBe('run-000000000001');
     await new Promise((r) => setTimeout(r, 50));
-    const stored = await runStore.get('run-0001');
+    const stored = await runStore.get('run-000000000001');
     expect(stored).toBeDefined();
   });
 

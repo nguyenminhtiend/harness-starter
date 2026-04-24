@@ -40,7 +40,11 @@ export function createFakeRunStore(): RunStore {
       if (filter?.conversationId) {
         result = result.filter((r) => r.conversationId === filter.conversationId);
       }
-      if (filter?.limit) {
+      result.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      if (filter?.offset != null) {
+        result = result.slice(filter.offset);
+      }
+      if (filter?.limit != null) {
         result = result.slice(0, filter.limit);
       }
       return result;
@@ -94,6 +98,10 @@ export function createFakeEventLog(): EventLog {
 export function createFakeEventBus(): EventBus {
   const subscribers = new Map<string, Array<(event: SessionEvent) => void>>();
   const closed = new Set<string>();
+  const DONE: IteratorResult<SessionEvent> = {
+    value: undefined as unknown as SessionEvent,
+    done: true,
+  };
 
   return {
     publish(event) {
@@ -104,12 +112,18 @@ export function createFakeEventBus(): EventBus {
         }
       }
     },
-    subscribe(runId, _fromSeq) {
+    subscribe(runId, fromSeq) {
       const buffer: SessionEvent[] = [];
       let resolve: ((value: IteratorResult<SessionEvent>) => void) | null = null;
       let done = false;
 
       const cb = (event: SessionEvent) => {
+        if (done) {
+          return;
+        }
+        if (fromSeq !== undefined && event.seq < fromSeq) {
+          return;
+        }
         if (resolve) {
           const r = resolve;
           resolve = null;
@@ -128,7 +142,7 @@ export function createFakeEventBus(): EventBus {
           return {
             next(): Promise<IteratorResult<SessionEvent>> {
               if (done) {
-                return Promise.resolve({ value: undefined, done: true });
+                return Promise.resolve(DONE);
               }
               const buffered = buffer.shift();
               if (buffered) {
@@ -136,7 +150,7 @@ export function createFakeEventBus(): EventBus {
               }
               if (closed.has(runId)) {
                 done = true;
-                return Promise.resolve({ value: undefined, done: true });
+                return Promise.resolve(DONE);
               }
               return new Promise<IteratorResult<SessionEvent>>((r) => {
                 resolve = r;
@@ -144,7 +158,12 @@ export function createFakeEventBus(): EventBus {
             },
             return() {
               done = true;
-              return Promise.resolve({ value: undefined, done: true });
+              if (resolve) {
+                const r = resolve;
+                resolve = null;
+                r(DONE);
+              }
+              return Promise.resolve(DONE);
             },
           };
         },
@@ -246,12 +265,12 @@ export function createFakeClock(fixed?: string): Clock {
   };
 }
 
-export function createFakeIdGen(prefix = 'fake'): IdGen {
+export function createFakeIdGen(prefix = '00000000-0000-4000-8000'): IdGen {
   let counter = 0;
   return {
     next() {
       counter++;
-      return `${prefix}-${String(counter).padStart(4, '0')}`;
+      return `${prefix}-${String(counter).padStart(12, '0')}`;
     },
   };
 }

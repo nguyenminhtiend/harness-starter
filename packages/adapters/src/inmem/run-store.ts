@@ -29,10 +29,11 @@ export function createInMemoryRunStore(): RunStore {
       if (filter?.conversationId) {
         result = result.filter((r) => r.conversationId === filter.conversationId);
       }
-      if (filter?.offset) {
+      result.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      if (filter?.offset != null) {
         result = result.slice(filter.offset);
       }
-      if (filter?.limit) {
+      if (filter?.limit != null) {
         result = result.slice(0, filter.limit);
       }
       return result;

@@ -148,7 +148,7 @@ describe('RunExecutor tracer integration', () => {
     expect(startLog?.data?.runId).toBe('run-t4');
     expect(startLog?.data?.capabilityId).toBe('test-cap');
 
-    const completeLog = logs.find((l) => l.msg === 'Run completed');
+    const completeLog = logs.find((l) => l.msg === 'Run finished');
     expect(completeLog).toBeDefined();
     expect(completeLog?.data?.runId).toBe('run-t4');
     expect(typeof completeLog?.data?.durationMs).toBe('number');

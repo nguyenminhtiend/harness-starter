@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.ts';
 
 interface HitlModalState {
@@ -26,10 +26,12 @@ export function useHitlModal(
 } {
   const [hitl, setHitl] = useState<HitlModalState>(CLOSED);
   const prevRunRef = useRef(runId);
-  if (prevRunRef.current !== runId) {
-    prevRunRef.current = runId;
-    setHitl(CLOSED);
-  }
+  useEffect(() => {
+    if (prevRunRef.current !== runId) {
+      prevRunRef.current = runId;
+      setHitl(CLOSED);
+    }
+  }, [runId]);
 
   const onApprovalRequested = useCallback((event: { approvalId: string; payload: unknown }) => {
     setHitl({

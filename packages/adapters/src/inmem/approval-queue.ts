@@ -2,9 +2,18 @@ import type { ApprovalDecision, ApprovalQueue, ApprovalStore } from '@harness/co
 
 export function createInMemoryApprovalQueue(store: ApprovalStore): ApprovalQueue {
   const waiters = new Map<string, (decision: ApprovalDecision) => void>();
+  const earlyDecisions = new Map<string, ApprovalDecision>();
 
   return {
     async request(approvalId, runId, payload, createdAt) {
+      if (waiters.has(approvalId)) {
+        throw new Error(`Duplicate approval request for id '${approvalId}'`);
+      }
+
+      const promise = new Promise<ApprovalDecision>((resolve) => {
+        waiters.set(approvalId, resolve);
+      });
+
       await store.createPending({
         id: approvalId,
         runId,
@@ -13,9 +22,17 @@ export function createInMemoryApprovalQueue(store: ApprovalStore): ApprovalQueue
         createdAt,
       });
 
-      return new Promise<ApprovalDecision>((resolve) => {
-        waiters.set(approvalId, resolve);
-      });
+      const early = earlyDecisions.get(approvalId);
+      if (early) {
+        earlyDecisions.delete(approvalId);
+        const waiter = waiters.get(approvalId);
+        if (waiter) {
+          waiters.delete(approvalId);
+          waiter(early);
+        }
+      }
+
+      return promise;
     },
 
     async resolve(approvalId, decision, resolvedAt) {
@@ -25,6 +42,8 @@ export function createInMemoryApprovalQueue(store: ApprovalStore): ApprovalQueue
       if (waiter) {
         waiters.delete(approvalId);
         waiter(decision);
+      } else {
+        earlyDecisions.set(approvalId, decision);
       }
     },
   };

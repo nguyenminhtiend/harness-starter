@@ -29,11 +29,15 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
       rawStatus && VALID_STATUSES.has(rawStatus) ? (rawStatus as RunStatus) : undefined;
     const capabilityId = c.req.query('capabilityId');
     const limitStr = c.req.query('limit');
-    const limit = limitStr ? Number.parseInt(limitStr, 10) : undefined;
+    const rawLimit = limitStr ? Number.parseInt(limitStr, 10) : undefined;
+    const limit =
+      rawLimit !== undefined && Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(rawLimit, 500)
+        : undefined;
     const runs = await deps.runStore.list({
       ...(status ? { status } : {}),
       ...(capabilityId ? { capabilityId } : {}),
-      ...(limit ? { limit } : {}),
+      ...(limit != null ? { limit } : {}),
     });
     return c.json({ runs });
   });
@@ -81,6 +85,11 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
 
   app.get('/:id/events', async (c) => {
     const runId = c.req.param('id');
+    const run = await deps.runStore.get(runId);
+    if (!run) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Run not found' } }, 404);
+    }
+
     const lastEventId = c.req.header('last-event-id');
     const fromSeq = lastEventId ? Number.parseInt(lastEventId, 10) + 1 : undefined;
 
@@ -96,7 +105,7 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
               controller.enqueue(encoder.encode(data));
             }
           } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Unknown error';
+            const msg = err instanceof Error ? err.message : 'Stream error';
             const errorData = `event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`;
             controller.enqueue(encoder.encode(errorData));
           } finally {

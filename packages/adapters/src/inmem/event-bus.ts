@@ -1,8 +1,11 @@
 import type { EventBus, SessionEvent } from '@harness/core';
 
+const MAX_BUFFER_SIZE = 10_000;
+
 interface Subscriber {
   push(event: SessionEvent): void;
   terminate(): void;
+  readonly dead: boolean;
 }
 
 const ITER_DONE: IteratorResult<SessionEvent> = {
@@ -12,7 +15,20 @@ const ITER_DONE: IteratorResult<SessionEvent> = {
 
 export function createInMemoryEventBus(): EventBus {
   const subscribers = new Map<string, Subscriber[]>();
-  const closed = new Set<string>();
+
+  function removeSub(runId: string, sub: Subscriber): void {
+    const subs = subscribers.get(runId);
+    if (!subs) {
+      return;
+    }
+    const idx = subs.indexOf(sub);
+    if (idx >= 0) {
+      subs.splice(idx, 1);
+    }
+    if (subs.length === 0) {
+      subscribers.delete(runId);
+    }
+  }
 
   return {
     publish(event) {
@@ -35,9 +51,14 @@ export function createInMemoryEventBus(): EventBus {
         r(ITER_DONE);
       }
 
+      let closing = false;
+
       const sub: Subscriber = {
+        get dead() {
+          return done;
+        },
         push(event) {
-          if (done) {
+          if (done || closing) {
             return;
           }
           if (fromSeq !== undefined && event.seq < fromSeq) {
@@ -47,7 +68,7 @@ export function createInMemoryEventBus(): EventBus {
             const r = resolve;
             resolve = null;
             r({ value: event, done: false });
-          } else {
+          } else if (buffer.length < MAX_BUFFER_SIZE) {
             buffer.push(event);
           }
         },
@@ -55,6 +76,7 @@ export function createInMemoryEventBus(): EventBus {
           if (done) {
             return;
           }
+          closing = true;
           if (buffer.length === 0 && resolve) {
             flush(resolve);
           }
@@ -74,9 +96,12 @@ export function createInMemoryEventBus(): EventBus {
               }
               const buffered = buffer.shift();
               if (buffered) {
+                if (closing && buffer.length === 0) {
+                  done = true;
+                }
                 return Promise.resolve({ value: buffered, done: false });
               }
-              if (closed.has(runId)) {
+              if (closing) {
                 done = true;
                 return Promise.resolve(ITER_DONE);
               }
@@ -90,6 +115,7 @@ export function createInMemoryEventBus(): EventBus {
               } else {
                 done = true;
               }
+              removeSub(runId, sub);
               return Promise.resolve(ITER_DONE);
             },
           };
@@ -98,7 +124,6 @@ export function createInMemoryEventBus(): EventBus {
     },
 
     close(runId) {
-      closed.add(runId);
       const subs = subscribers.get(runId);
       if (subs) {
         for (const sub of subs) {

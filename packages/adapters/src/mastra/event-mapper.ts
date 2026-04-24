@@ -54,7 +54,7 @@ export function mapMastraChunk(chunk: MastraStreamChunk): CapabilityEvent | unde
       return undefined;
 
     default:
-      return { type: 'custom', kind: chunk.type, data: p ?? chunk };
+      return { type: 'custom', kind: chunk.type, data: p ?? { type: chunk.type } };
   }
 }
 

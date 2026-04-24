@@ -27,15 +27,24 @@ export async function getConversationMessages(
   }
 
   const runs = await deps.runStore.list({ conversationId });
+  const sorted = [...runs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const messages: ConversationMessage[] = [];
 
-  for (const run of runs) {
+  for (const run of sorted) {
     const events = await deps.eventLog.read(run.id);
     const pair = extractMessages(run.id, events);
     messages.push(...pair);
   }
 
   return messages;
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[unserializable input]';
+  }
 }
 
 function extractMessages(runId: string, events: SessionEvent[]): ConversationMessage[] {
@@ -48,7 +57,7 @@ function extractMessages(runId: string, events: SessionEvent[]): ConversationMes
   for (const event of events) {
     if (event.type === 'run.started') {
       const input = event.input as { message?: string } | null;
-      userContent = typeof input?.message === 'string' ? input.message : JSON.stringify(input);
+      userContent = typeof input?.message === 'string' ? input.message : safeStringify(input);
       userTs = event.ts;
     } else if (event.type === 'text.delta') {
       textParts.push(event.text);

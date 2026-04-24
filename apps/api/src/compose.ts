@@ -53,6 +53,10 @@ export function compose(config: Config): ComposedApp {
 
   const runAbortControllers = new Map<string, AbortController>();
 
+  executor.onComplete((runId) => {
+    runAbortControllers.delete(runId);
+  });
+
   const deps = {
     runStore,
     eventLog,

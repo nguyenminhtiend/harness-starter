@@ -1,5 +1,10 @@
 import type { ApprovalDecision, ApprovalRequester } from '../domain/approval.ts';
-import type { ExecutionContext, Logger, MemoryHandle } from '../domain/capability.ts';
+import type {
+  CapabilityEvent,
+  ExecutionContext,
+  Logger,
+  MemoryHandle,
+} from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
 import type { SessionEvent } from '../domain/session-event.ts';
 import type { ApprovalQueue } from '../ports/approval-queue.ts';
@@ -25,11 +30,10 @@ export interface RunExecutionParams {
 }
 
 interface ExecutableCapability {
-  execute(
-    input: unknown,
-    ctx: ExecutionContext,
-  ): AsyncIterable<import('../domain/capability.ts').CapabilityEvent>;
+  execute(input: unknown, ctx: ExecutionContext): AsyncIterable<CapabilityEvent>;
 }
+
+export type OnRunComplete = (runId: string) => void;
 
 const noopApprovals: ApprovalRequester = {
   request: () => Promise.reject(new Error('Approvals not configured')),
@@ -37,9 +41,20 @@ const noopApprovals: ApprovalRequester = {
 
 export class RunExecutor {
   private readonly deps: RunExecutorDeps;
+  private readonly onCompleteCallbacks: OnRunComplete[] = [];
 
   constructor(deps: RunExecutorDeps) {
     this.deps = deps;
+  }
+
+  onComplete(cb: OnRunComplete): void {
+    this.onCompleteCallbacks.push(cb);
+  }
+
+  private notifyComplete(runId: string): void {
+    for (const cb of this.onCompleteCallbacks) {
+      cb(runId);
+    }
   }
 
   private async emit(event: SessionEvent): Promise<void> {
@@ -52,7 +67,7 @@ export class RunExecutor {
     await this.deps.runStore.updateStatus(run.id, run.status, finishedAt);
   }
 
-  private createApprovalRequester(run: Run): ApprovalRequester {
+  private createApprovalRequester(run: Run, signal: AbortSignal): ApprovalRequester {
     const { approvalQueue, clock } = this.deps;
     if (!approvalQueue) {
       return noopApprovals;
@@ -64,7 +79,20 @@ export class RunExecutor {
         const suspendEvent = run.suspendForApproval(approvalId, payload, suspendTs);
         await this.emitAndSync(suspendEvent, run, suspendTs);
 
-        const decision = await approvalQueue.request(approvalId, run.id, payload, suspendTs);
+        const decision = await Promise.race([
+          approvalQueue.request(approvalId, run.id, payload, suspendTs),
+          new Promise<never>((_resolve, reject) => {
+            if (signal.aborted) {
+              reject(new Error('Run cancelled during approval'));
+              return;
+            }
+            signal.addEventListener(
+              'abort',
+              () => reject(new Error('Run cancelled during approval')),
+              { once: true },
+            );
+          }),
+        ]);
 
         const resumeTs = clock.now();
         const resumeEvent = run.resumeFromApproval(approvalId, decision, resumeTs);
@@ -100,16 +128,14 @@ export class RunExecutor {
       settings: params?.settings ?? {},
       memory: params?.memory ?? null,
       signal,
-      approvals: this.createApprovalRequester(run),
+      approvals: this.createApprovalRequester(run, signal),
       logger: logger.child({ runId: run.id }),
     };
 
     try {
       if (signal.aborted) {
         await this.emitAndSync(run.cancel('Aborted before execution', ts), run, ts);
-        this.deps.eventBus.close(run.id);
         span?.setStatus('ok');
-        span?.end();
         return;
       }
 
@@ -121,18 +147,15 @@ export class RunExecutor {
         await this.emit(run.append(capEvent, clock.now()));
       }
 
+      const finishTs = clock.now();
       if (signal.aborted && run.status === 'running') {
-        await this.emitAndSync(
-          run.cancel('Aborted during execution', clock.now()),
-          run,
-          clock.now(),
-        );
+        await this.emitAndSync(run.cancel('Aborted during execution', finishTs), run, finishTs);
       } else if (run.status === 'running') {
-        await this.emitAndSync(run.complete(null, clock.now()), run, clock.now());
+        await this.emitAndSync(run.complete(null, finishTs), run, finishTs);
       }
 
       const durationMs = Math.round(performance.now() - startTime);
-      logger.info('Run completed', {
+      logger.info('Run finished', {
         runId: run.id,
         capabilityId: run.capabilityId,
         status: run.status,
@@ -149,18 +172,24 @@ export class RunExecutor {
         durationMs,
       });
 
-      if (run.status === 'running') {
-        await this.emitAndSync(
-          run.fail({ code: 'CAPABILITY_EXECUTION_ERROR', message }, clock.now()),
-          run,
-          clock.now(),
-        );
+      if (run.status === 'running' || run.status === 'suspended') {
+        const failTs = clock.now();
+        if (signal.aborted) {
+          await this.emitAndSync(run.cancel('Aborted', failTs), run, failTs);
+        } else {
+          await this.emitAndSync(
+            run.fail({ code: 'CAPABILITY_EXECUTION_ERROR', message }, failTs),
+            run,
+            failTs,
+          );
+        }
       }
 
       span?.setStatus('error');
     } finally {
       span?.end();
       this.deps.eventBus.close(run.id);
+      this.notifyComplete(run.id);
     }
   }
 }

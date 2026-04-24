@@ -11,6 +11,15 @@ export function bodyLimit(maxBytes = DEFAULT_MAX_BYTES) {
         413,
       );
     }
+
+    const te = c.req.header('transfer-encoding');
+    if (te?.includes('chunked')) {
+      return c.json(
+        { error: { code: 'PAYLOAD_TOO_LARGE', message: 'Chunked transfer encoding not accepted' } },
+        413,
+      );
+    }
+
     await next();
   });
 }

@@ -130,6 +130,39 @@ export function buildOpenApiSpec(): OpenApiSpec {
       },
 
       '/runs': {
+        get: {
+          operationId: 'listRuns',
+          summary: 'List runs with optional filters',
+          tags: ['runs'],
+          parameters: [
+            {
+              name: 'status',
+              in: 'query',
+              required: false,
+              schema: {
+                type: 'string',
+                enum: ['pending', 'running', 'suspended', 'completed', 'failed', 'cancelled'],
+              },
+            },
+            { name: 'capabilityId', in: 'query', required: false, schema: { type: 'string' } },
+            {
+              name: 'limit',
+              in: 'query',
+              required: false,
+              schema: { type: 'integer', minimum: 1, maximum: 500 },
+            },
+          ],
+          responses: {
+            '200': jsonResponse(
+              {
+                type: 'object',
+                properties: { runs: { type: 'array', items: RunSchema } },
+                required: ['runs'],
+              },
+              'List of runs',
+            ),
+          },
+        },
         post: {
           operationId: 'startRun',
           summary: 'Start a new capability run',
