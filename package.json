@@ -11,7 +11,6 @@
     "api": "bun run --filter @harness/example-api dev",
     "console": "bun run --filter @harness/example-console dev",
     "web": "bun run api & bun run console",
-    "server": "bun run --filter @harness/example-http-server dev",
     "mastra:dev": "bunx mastra dev --config mastra.config.ts",
     "mastra:build": "bunx mastra build --config mastra.config.ts",
     "build": "bun run --filter '*' build",
