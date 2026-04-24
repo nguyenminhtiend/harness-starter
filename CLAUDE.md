@@ -4,14 +4,14 @@ Guidance for Claude Code when working in this repo.
 
 ## What this starter is
 
-TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems. Hexagonal architecture with event-sourced run execution, pluggable capabilities, and HTTP APIs. Mastra primitives (agents, workflows, tools) are building blocks composed via the `Capability<I, O>` interface.
+TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems. Hexagonal architecture with event-sourced run execution, pluggable capabilities, and HTTP APIs. Mastra primitives (agents, workflows, tools) are building blocks composed via `CapabilityDefinition` records.
 
 **Tech stack:** TypeScript 5.7 strict · Bun workspaces · Mastra v1 (agents, workflows, memory) · Vercel AI SDK v5 · Zod v4 · Hono · pino · @opentelemetry/api · Biome · Lefthook · Commitlint · Changesets · LibSQL.
 
 ## Shape invariants (non-negotiable)
 
-1. **Hexagonal architecture.** Domain and application layers have zero runtime deps beyond `zod`. All I/O lives in adapters behind port interfaces.
-2. **Capability interface.** All agent/workflow access goes through `Capability<I, O>`. Mastra is one adapter (`fromMastraAgent`, `fromMastraWorkflow`), not a hard dependency of the domain.
+1. **Hexagonal architecture.** Domain and application layers depend only on `zod` and `@mastra/core` (type imports for `Agent`/`Workflow` in `CapabilityRunner`). All I/O lives in adapters behind port interfaces.
+2. **CapabilityDefinition.** Capabilities are `CapabilityDefinition`s composed of a `CapabilityRunner` (agent or workflow) plus metadata (schemas, title, description). There is no runtime-swap abstraction — `@mastra/core` types appear directly in `packages/core`.
 3. **Event-sourced runs.** The `Run` aggregate emits `SessionEvent`s. All state mutation goes through `Run`. No route or adapter calls store methods directly.
 4. **Mastra primitives.** Agents use `@mastra/core/agent`, tools use `@mastra/core/tools/createTool`, workflows use `@mastra/core/workflows/createWorkflow`.
 5. **Structured output** uses Zod v4 schemas passed to Mastra agents/steps.
@@ -40,15 +40,15 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 │                  Settings · Conversations                    │
 ├──────────────────────────────────────────────────────────────┤
 │ Domain           Run (aggregate) · SessionEvent (Zod union)  │
-│                  Capability<I,O> · Conversation · Approval   │
+│                  CapabilityDefinition · Conversation · Approval│
 ├──────────────────────────────────────────────────────────────┤
 │ Ports            RunStore · EventLog · EventBus ·            │
 │ (interfaces)     ApprovalStore · MemoryProvider ·            │
 │                  ProviderResolver · CapabilityRegistry ·     │
 │                  Clock · IdGen · Logger · Tracer             │
 ├──────────────────────────────────────────────────────────────┤
-│ Adapters         InMemory stores · Mastra (capabilities) ·   │
-│                  pino (logger) · crypto (id) · system (clock)│
+│ Adapters         InMemory stores · pino (logger) ·            │
+│                  crypto (id) · system (clock)                │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -70,19 +70,19 @@ apps/
   api           (composition root — wires everything)
   console       (React SPA — imports only @harness/http/types)
 
-mastra.config.ts  (Mastra Studio config via buildMastraConfig)
+mastra.config.ts  (Mastra Studio config via buildStudioConfig)
 ```
 
-- **`packages/core/`** — Domain model, port interfaces, use cases. Zero deps outside `zod`.
-- **`packages/adapters/`** — Port implementations: in-memory stores, Mastra bridge, pino, OTel stubs.
-- **`packages/capabilities/`** — Capability definitions (simple-chat, deep-research) + `buildMastraConfig`.
+- **`packages/core/`** — Domain model, port interfaces, use cases. Deps: `zod`, `@mastra/core` (types only for `CapabilityRunner`).
+- **`packages/adapters/`** — Port implementations: in-memory stores, conversation memory, runtime singleton, pino, OTel stubs.
+- **`packages/capabilities/`** — `CapabilityDefinition` exports (simple-chat, deep-research) + `buildStudioConfig`.
 - **`packages/http/`** — Hono routes, middleware, OpenAPI spec, public DTO types.
 - **`packages/tools/`** — Mastra `createTool` implementations (calculator, get-time, fs, fetch).
 - **`packages/agents/`** — Mastra `Agent` definitions (simpleChatAgent) + `mockModel` test helper.
 - **`packages/workflows/`** — Mastra `createWorkflow` compositions (deepResearchWorkflow).
 - **`apps/api/`** — Composition root: config → adapters → capabilities → HTTP server.
 - **`apps/console/`** — React SPA (Vite + TanStack Query). Imports only `@harness/http/types`.
-- **`mastra.config.ts`** — Root Mastra config using `buildMastraConfig()` from `@harness/capabilities`.
+- **`mastra.config.ts`** — Root Mastra Studio config using `buildStudioConfig()` from `@harness/capabilities`.
 
 Layering is enforced by Biome `noRestrictedImports` rules in `biome.json`.
 

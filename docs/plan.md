@@ -1,13 +1,15 @@
 ## Implementation Plan: Platform Redesign (from scratch)
 
-**Status:** Draft · **Owner:** @tien · **Date:** 2026-04-24
+**Status:** Phases 0–8 complete · **Owner:** @tien · **Date:** 2026-04-24
 **Supersedes:** the "Variant A" plan (previous revision of this file). The prior plan migrated the existing structure; this one rebuilds around clean contracts because the current streaming/session/router patterns have inherited anti-patterns that aren't worth preserving.
+
+> **Architecture update (post-implementation):** The `Capability<I, O>` interface described below was replaced by `CapabilityDefinition` + `CapabilityRunner` (see `docs/specs/native-runtime-plan.md`). The `fromMastraAgent`/`fromMastraWorkflow` adapter bridge was deleted. `RunExecutor` now dispatches agent/workflow execution directly based on `runner.kind`. `@mastra/core` types appear directly in `packages/core`.
 
 ---
 
 ## Overview
 
-Rebuild the harness as a hexagonal, event-sourced agentic platform with HTTP APIs, using **in-memory stores** initially. The `Capability` runtime is pluggable (Mastra is one adapter, not a hard dependency). Postgres is the target durable store but deferred to a follow-up phase — the port/adapter split means swapping InMemory → Postgres is mechanical.
+Rebuild the harness as a hexagonal, event-sourced agentic platform with HTTP APIs, using **in-memory stores** initially. Capabilities are `CapabilityDefinition` records with a `CapabilityRunner` that builds agents or workflows directly. Postgres is the target durable store but deferred to a follow-up phase — the port/adapter split means swapping InMemory → Postgres is mechanical.
 
 Simplifications adopted in this revision:
 - **In-memory storage first.** All stores (runs, events, conversations, settings, approvals) are in-memory. Data resets on restart — acceptable for dev. Postgres follow-up adds durability without domain changes.
@@ -28,7 +30,7 @@ The new system is built alongside `apps/web-studio` in new packages. At the cuto
 1. Direction: hexagonal + event-sourced HTTP. **Confirmed.**
 2. Auth/tenancy: **deferred.** Not in this plan. Follow-up adds ports + middleware.
 3. Database: **in-memory first.** Postgres follow-up is planned but not blocking.
-4. Capability runtime: **pluggable**. Mastra lives in `@harness/adapters/mastra`; `Capability<I, O>` has zero Mastra coupling.
+4. Capability runtime: `CapabilityDefinition` records with `CapabilityRunner` (agent or workflow). `@mastra/core` types appear in `packages/core`.
 5. URL versioning: **deferred**. No `/v1` prefix yet.
 6. Primary keys: **`crypto.randomUUID()`** for now. UUIDv7 (time-ordered) when Postgres is added.
 
