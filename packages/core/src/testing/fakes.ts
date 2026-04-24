@@ -1,6 +1,4 @@
 import type { Logger } from '../domain/capability.ts';
-import type { Clock } from '../ports/clock.ts';
-import type { IdGen } from '../ports/id-gen.ts';
 import type { MemoryProvider } from '../ports/memory-provider.ts';
 import { createInMemoryApprovalStore } from '../storage/inmem-approval-store.ts';
 import { createInMemoryConversationStore } from '../storage/inmem-conversation-store.ts';
@@ -8,6 +6,8 @@ import { createInMemoryEventBus } from '../storage/inmem-event-bus.ts';
 import { createInMemoryEventLog } from '../storage/inmem-event-log.ts';
 import { createInMemoryRunStore } from '../storage/inmem-run-store.ts';
 import { createInMemorySettingsStore } from '../storage/inmem-settings-store.ts';
+import type { Clock } from '../time/clock.ts';
+import type { IdGen } from '../time/id-gen.ts';
 
 export const createFakeRunStore = createInMemoryRunStore;
 export const createFakeEventLog = createInMemoryEventLog;

@@ -1,4 +1,6 @@
-import type { Clock } from '@harness/core';
+export interface Clock {
+  now(): string;
+}
 
 export function createSystemClock(): Clock {
   return {

@@ -1,5 +1,5 @@
-import type { ModelEntry, ProviderResolver } from '@harness/core';
 import { knownModels } from './catalog.ts';
+import type { ModelEntry, ProviderResolver } from './types.ts';
 
 function providerForModel(modelId: string): string {
   const idx = modelId.indexOf(':');

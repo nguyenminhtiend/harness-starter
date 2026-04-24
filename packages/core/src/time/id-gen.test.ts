@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createCryptoIdGen } from './crypto-id-gen.ts';
+import { createCryptoIdGen } from './id-gen.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 

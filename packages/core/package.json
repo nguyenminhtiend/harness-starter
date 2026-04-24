@@ -12,6 +12,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
+    "ollama-ai-provider-v2": "3.5.0",
     "pino": "^9.0.0",
     "zod": "^4.0.0"
   },

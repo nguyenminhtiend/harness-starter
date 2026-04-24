@@ -1,6 +1,6 @@
-import { createLanguageModel } from '@harness/adapters';
 import { createSimpleChatAgent } from '@harness/agents';
 import type { CapabilityDefinition } from '@harness/core';
+import { createLanguageModel } from '@harness/core';
 import { withModelOverride } from '../with-model-override.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';

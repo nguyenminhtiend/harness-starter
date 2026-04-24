@@ -1,9 +1,9 @@
 import type { ApprovalDecision } from '../domain/approval.ts';
 import { ConflictError, NotFoundError } from '../domain/errors.ts';
-import type { Clock } from '../ports/clock.ts';
 import type { ApprovalQueue } from '../storage/inmem-approval-queue.ts';
 import type { ApprovalStore } from '../storage/inmem-approval-store.ts';
 import type { RunStore } from '../storage/inmem-run-store.ts';
+import type { Clock } from '../time/clock.ts';
 
 export interface ApproveRunDeps {
   readonly runStore: RunStore;

@@ -1,4 +1,4 @@
-import type { ModelEntry } from '@harness/core';
+import type { ModelEntry } from './types.ts';
 
 export const knownModels: readonly ModelEntry[] = [
   { id: 'google:gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', provider: 'google' },

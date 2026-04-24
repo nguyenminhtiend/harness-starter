@@ -1,4 +1,4 @@
-import type { ProviderKeys } from '@harness/core';
+import type { ProviderKeys } from './types.ts';
 
 const ENV_MAP: ReadonlyArray<[string, string]> = [
   ['google', 'GOOGLE_GENERATIVE_AI_API_KEY'],

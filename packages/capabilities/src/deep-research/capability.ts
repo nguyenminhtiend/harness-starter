@@ -1,5 +1,5 @@
-import { createLanguageModel } from '@harness/adapters';
 import type { CapabilityDefinition } from '@harness/core';
+import { createLanguageModel } from '@harness/core';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';

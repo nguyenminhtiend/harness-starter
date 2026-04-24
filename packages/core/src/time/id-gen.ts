@@ -1,4 +1,6 @@
-import type { IdGen } from '@harness/core';
+export interface IdGen {
+  next(): string;
+}
 
 export function createCryptoIdGen(): IdGen {
   return {

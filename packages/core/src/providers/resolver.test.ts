@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { ProviderKeys } from '@harness/core';
 import { createProviderResolver } from './resolver.ts';
+import type { ProviderKeys } from './types.ts';
 
 describe('createProviderResolver', () => {
   const resolver = createProviderResolver();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createSystemClock } from './system-clock.ts';
+import { createSystemClock } from './clock.ts';
 
 describe('SystemClock', () => {
   it('returns an ISO8601 datetime string', () => {
