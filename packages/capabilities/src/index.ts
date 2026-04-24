@@ -6,6 +6,8 @@ export {
 } from './deep-research/input.ts';
 export type { DeepResearchSettings } from './deep-research/settings.ts';
 export { DeepResearchSettings as DeepResearchSettingsSchema } from './deep-research/settings.ts';
+export type { BuildMastraConfigOptions } from './mastra-config.ts';
+export { buildMastraConfig } from './mastra-config.ts';
 export { createCapabilityRegistry } from './registry.ts';
 export { simpleChatCapability } from './simple-chat/capability.ts';
 export type { SimpleChatInput } from './simple-chat/input.ts';

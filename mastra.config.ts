@@ -1,5 +1,4 @@
-import { createSimpleChatAgent } from '@harness/agents';
-import { createDeepResearchWorkflow } from '@harness/workflows';
+import { buildMastraConfig } from '@harness/capabilities';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
 
@@ -10,12 +9,10 @@ const storage = new LibSQLStore({
   url: process.env.MASTRA_DB_URL ?? 'file:./.mastra/mastra.db',
 });
 
-const simpleChatAgent = createSimpleChatAgent({ model });
-
-const deepResearchWorkflow = createDeepResearchWorkflow({ model });
+const { agents, workflows } = buildMastraConfig({ model });
 
 export const mastra = new Mastra({
-  agents: { simpleChatAgent },
-  workflows: { deepResearchWorkflow },
+  agents,
+  workflows,
   storage,
 });
