@@ -95,6 +95,137 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/adapters": "core must not import adapters (DAG violation)",
+                  "@harness/http": "core must not import http (DAG violation)",
+                  "@harness/capabilities": "core must not import capabilities (DAG violation)"
+                },
+                "patterns": [
+                  {
+                    "group": ["@harness/adapters/*", "@harness/http/*", "@harness/capabilities/*"],
+                    "message": "core must not import adapters/http/capabilities (DAG violation)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/adapters/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/http": "adapters must not import http (DAG violation)",
+                  "@harness/capabilities": "adapters must not import capabilities (DAG violation)"
+                },
+                "patterns": [
+                  {
+                    "group": ["@harness/http/*", "@harness/capabilities/*"],
+                    "message": "adapters must not import http/capabilities (DAG violation)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/capabilities/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/http": "capabilities must not import http (DAG violation)"
+                },
+                "patterns": [
+                  {
+                    "group": ["@harness/http/*"],
+                    "message": "capabilities must not import http (DAG violation)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/http/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/capabilities": "http must not import capabilities (DAG violation)",
+                  "@harness/adapters": "http must not import adapters (DAG violation)"
+                },
+                "patterns": [
+                  {
+                    "group": ["@harness/capabilities/*", "@harness/adapters/*"],
+                    "message": "http must not import capabilities/adapters (DAG violation)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/console/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/core": "console may only import from @harness/http (DAG violation)",
+                  "@harness/adapters": "console may only import from @harness/http (DAG violation)",
+                  "@harness/capabilities": "console may only import from @harness/http (DAG violation)",
+                  "@harness/agents": "console may only import from @harness/http (DAG violation)",
+                  "@harness/workflows": "console may only import from @harness/http (DAG violation)",
+                  "@harness/tools": "console may only import from @harness/http (DAG violation)"
+                },
+                "patterns": [
+                  {
+                    "group": [
+                      "@harness/core/*",
+                      "@harness/adapters/*",
+                      "@harness/capabilities/*",
+                      "@harness/agents/*",
+                      "@harness/workflows/*",
+                      "@harness/tools/*"
+                    ],
+                    "message": "console may only import from @harness/http (DAG violation)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

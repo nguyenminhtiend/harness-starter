@@ -1,0 +1,25 @@
+{
+  "name": "@harness/capabilities",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@harness/adapters": "workspace:*",
+    "@harness/agents": "workspace:*",
+    "@harness/core": "workspace:*",
+    "@harness/tools": "workspace:*",
+    "@harness/workflows": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@harness/example-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@harness/adapters": "workspace:*",
+    "@harness/capabilities": "workspace:*",
+    "@harness/core": "workspace:*",
+    "@harness/http": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
