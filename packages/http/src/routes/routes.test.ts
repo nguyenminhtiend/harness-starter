@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { Capability, ExecutionContext, ModelEntry, StreamEventPayload } from '@harness/core';
+import type { CapabilityDefinition, ModelEntry } from '@harness/core';
 import {
   createFakeApprovalStore,
   createFakeConversationStore,
@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { createHttpApp } from '../app.ts';
 import { createFakeHttpDeps } from '../testing.ts';
 
-function fakeCapability(id = 'test-cap'): Capability {
+function fakeCapability(id = 'test-cap'): CapabilityDefinition {
   return {
     id,
     title: 'Test Capability',
@@ -17,8 +17,20 @@ function fakeCapability(id = 'test-cap'): Capability {
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.object({ text: z.string() }),
     settingsSchema: z.object({ model: z.string() }),
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
-      yield { type: 'text.delta', text: 'hello' };
+    runner: {
+      kind: 'agent',
+      build: () =>
+        ({
+          stream: async () => ({
+            fullStream: new ReadableStream({
+              start(controller) {
+                controller.enqueue({ type: 'text-delta', payload: { text: 'hello' } });
+                controller.close();
+              },
+            }),
+          }),
+        }) as never,
+      extractPrompt: () => 'test',
     },
   };
 }
@@ -384,14 +396,14 @@ describe('GET /settings', () => {
     const settingsStore = createFakeSettingsStore();
     await settingsStore.set('global', 'model', 'gpt-4');
     await settingsStore.set('simple-chat', 'model', 'claude');
-    const fakeCap = {
+    const fakeCap: CapabilityDefinition = {
       id: 'simple-chat',
       title: 'Chat',
       description: '',
       inputSchema: {} as never,
       outputSchema: {} as never,
       settingsSchema: {} as never,
-      execute: async function* () {},
+      runner: { kind: 'agent', build: () => ({}) as never, extractPrompt: () => '' },
     };
     const deps = createFakeHttpDeps({
       settingsStore,

@@ -1,5 +1,4 @@
 import { createLanguageModel, fromMastraWorkflow } from '@harness/adapters';
-import type { Capability } from '@harness/core';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
@@ -16,9 +15,7 @@ function resolveModel(raw: unknown): WorkflowModel {
   return raw as WorkflowModel;
 }
 
-function buildCapability(
-  modelOverride?: unknown,
-): Capability<DeepResearchInput, DeepResearchOutput> {
+function buildCapability(modelOverride?: unknown) {
   return fromMastraWorkflow<DeepResearchInput, DeepResearchOutput>({
     id: 'deep-research',
     title: 'Deep Research',

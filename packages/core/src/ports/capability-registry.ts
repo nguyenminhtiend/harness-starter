@@ -1,6 +1,6 @@
-import type { Capability } from '../domain/capability.ts';
+import type { CapabilityDefinition } from '../domain/capability.ts';
 
 export interface CapabilityRegistry {
-  list(): Capability[];
-  get(id: string): Capability | undefined;
+  list(): CapabilityDefinition[];
+  get(id: string): CapabilityDefinition | undefined;
 }

@@ -2,7 +2,8 @@ export type { ApprovalRequester, ApprovalStatus, PendingApproval } from './appro
 
 export { ApprovalDecision } from './approval.ts';
 export type {
-  Capability,
+  CapabilityDefinition,
+  CapabilityRunner,
   ExecutionContext,
   Logger,
   MemoryHandle,

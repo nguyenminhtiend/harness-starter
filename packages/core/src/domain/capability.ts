@@ -1,6 +1,7 @@
+import type { Agent } from '@mastra/core/agent';
+import type { Workflow } from '@mastra/core/workflows';
 import type { z } from 'zod';
 import type { ApprovalRequester } from './approval.ts';
-import type { StreamEventPayload } from './session-event.ts';
 
 export interface Logger {
   debug(msg: string, data?: Record<string, unknown>): void;
@@ -23,13 +24,28 @@ export interface ExecutionContext {
   readonly logger: Logger;
 }
 
-export interface Capability<I = unknown, O = unknown> {
+export type CapabilityRunner =
+  | {
+      readonly kind: 'agent';
+      readonly build: (settings: unknown) => Agent;
+      readonly extractPrompt: (input: unknown) => string;
+      readonly maxSteps?: number;
+    }
+  | {
+      readonly kind: 'workflow';
+      readonly build: (settings: unknown) => Workflow;
+      readonly extractInput: (input: unknown) => Record<string, unknown>;
+      readonly approveStepId?: string;
+      readonly extractPlan?: (steps: Record<string, unknown>) => unknown;
+    };
+
+export interface CapabilityDefinition<I = unknown, O = unknown, S = unknown> {
   readonly id: string;
   readonly title: string;
   readonly description: string;
   readonly inputSchema: z.ZodType<I>;
   readonly outputSchema: z.ZodType<O>;
-  readonly settingsSchema: z.ZodType;
-  readonly supportsApproval?: boolean | undefined;
-  execute(input: I, ctx: ExecutionContext): AsyncIterable<StreamEventPayload>;
+  readonly settingsSchema: z.ZodType<S>;
+  readonly supportsApproval?: boolean;
+  readonly runner: CapabilityRunner;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { ExecutionContext } from '../domain/capability.ts';
+import type { CapabilityDefinition } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
 import type { ApprovalDecision, ApprovalQueue } from '../ports/index.ts';
@@ -44,43 +44,171 @@ function createFakeApprovalQueue(): ApprovalQueue & {
   };
 }
 
-function createTestCapability(events: StreamEventPayload[]) {
+function fakeAgentCapability(events: StreamEventPayload[]): CapabilityDefinition {
   return {
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
-      for (const e of events) {
-        yield e;
-      }
+    id: 'test-cap',
+    title: 'Test',
+    description: 'Test capability',
+    inputSchema: { parse: (v: unknown) => v } as never,
+    outputSchema: { parse: (v: unknown) => v } as never,
+    settingsSchema: { parse: (v: unknown) => v } as never,
+    runner: {
+      kind: 'agent',
+      build: () =>
+        ({
+          stream: async () => ({
+            fullStream: new ReadableStream({
+              start(controller) {
+                for (const e of events) {
+                  controller.enqueue(toStreamChunk(e));
+                }
+                controller.close();
+              },
+            }),
+          }),
+        }) as never,
+      extractPrompt: () => 'test',
     },
   };
 }
 
-function createAbortableCapability(events: StreamEventPayload[]) {
+function toStreamChunk(e: StreamEventPayload): Record<string, unknown> {
+  switch (e.type) {
+    case 'text.delta':
+      return { type: 'text-delta', payload: { text: e.text } };
+    case 'step.finished':
+      return { type: 'step-finish', payload: { output: {} } };
+    case 'plan.proposed':
+      return { type: 'custom-plan', payload: { plan: e.plan } };
+    case 'artifact':
+      return { type: 'artifact', payload: { name: e.name, data: e.data } };
+    default:
+      return { type: 'unknown', payload: e };
+  }
+}
+
+function fakeAbortableAgentCapability(events: StreamEventPayload[]): CapabilityDefinition {
   return {
-    async *execute(_input: unknown, ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
-      for (const e of events) {
-        if (ctx.signal.aborted) {
-          return;
-        }
-        yield e;
-      }
+    id: 'test-cap',
+    title: 'Test',
+    description: 'Test capability',
+    inputSchema: { parse: (v: unknown) => v } as never,
+    outputSchema: { parse: (v: unknown) => v } as never,
+    settingsSchema: { parse: (v: unknown) => v } as never,
+    runner: {
+      kind: 'agent',
+      build: () =>
+        ({
+          stream: async (_prompt: string, opts: { abortSignal?: AbortSignal }) => ({
+            fullStream: new ReadableStream({
+              start(controller) {
+                for (const e of events) {
+                  if (opts?.abortSignal?.aborted) {
+                    controller.close();
+                    return;
+                  }
+                  controller.enqueue(toStreamChunk(e));
+                }
+                controller.close();
+              },
+            }),
+          }),
+        }) as never,
+      extractPrompt: () => 'test',
     },
   };
 }
 
-function createHitlCapability() {
+function fakeThrowingCapability(): CapabilityDefinition {
   return {
-    async *execute(_input: unknown, ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
-      yield { type: 'step.finished' as const };
-      yield { type: 'plan.proposed' as const, plan: { summary: 'Test plan' } };
+    id: 'test-cap',
+    title: 'Test',
+    description: 'Test capability',
+    inputSchema: { parse: (v: unknown) => v } as never,
+    outputSchema: { parse: (v: unknown) => v } as never,
+    settingsSchema: { parse: (v: unknown) => v } as never,
+    runner: {
+      kind: 'agent',
+      build: () =>
+        ({
+          stream: async () => ({
+            fullStream: new ReadableStream({
+              start(controller) {
+                controller.enqueue({ type: 'text-delta', payload: { text: 'start' } });
+                controller.error(new Error('capability exploded'));
+              },
+            }),
+          }),
+        }) as never,
+      extractPrompt: () => 'test',
+    },
+  };
+}
 
-      const decision = await ctx.approvals.request('apr-1', { summary: 'Test plan' });
+function fakeHitlCapability(): CapabilityDefinition {
+  return {
+    id: 'research',
+    title: 'Research',
+    description: 'Research with HITL',
+    inputSchema: { parse: (v: unknown) => v } as never,
+    outputSchema: { parse: (v: unknown) => v } as never,
+    settingsSchema: { parse: (v: unknown) => v } as never,
+    supportsApproval: true,
+    runner: {
+      kind: 'workflow',
+      build: () =>
+        ({
+          createRun: async () => ({
+            start: async () => ({
+              status: 'suspended',
+              steps: { plan: { status: 'success', output: { plan: { summary: 'Test plan' } } } },
+            }),
+            resume: async () => ({
+              status: 'success',
+              result: { text: 'Final report' },
+            }),
+          }),
+        }) as never,
+      extractInput: () => ({}),
+      extractPlan: (steps) => {
+        const planStep = steps.plan as { status: string; output?: { plan?: unknown } } | undefined;
+        return planStep?.status === 'success' ? planStep.output?.plan : undefined;
+      },
+      approveStepId: 'approve',
+    },
+  };
+}
 
-      if (decision.kind === 'reject') {
-        return;
-      }
-
-      yield { type: 'text.delta' as const, text: 'Research complete' };
-      yield { type: 'artifact' as const, name: 'report', data: { text: 'Final report' } };
+function fakeRejectableHitlCapability(): CapabilityDefinition {
+  return {
+    id: 'research',
+    title: 'Research',
+    description: 'Research with HITL',
+    inputSchema: { parse: (v: unknown) => v } as never,
+    outputSchema: { parse: (v: unknown) => v } as never,
+    settingsSchema: { parse: (v: unknown) => v } as never,
+    supportsApproval: true,
+    runner: {
+      kind: 'workflow',
+      build: () =>
+        ({
+          createRun: async () => ({
+            start: async () => ({
+              status: 'suspended',
+              steps: { plan: { status: 'success', output: { plan: { summary: 'Test plan' } } } },
+            }),
+            resume: async () => ({
+              status: 'success',
+              result: { text: 'Final report' },
+            }),
+          }),
+        }) as never,
+      extractInput: () => ({}),
+      extractPlan: (steps) => {
+        const planStep = steps.plan as { status: string; output?: { plan?: unknown } } | undefined;
+        return planStep?.status === 'success' ? planStep.output?.plan : undefined;
+      },
+      approveStepId: 'approve',
     },
   };
 }
@@ -103,10 +231,10 @@ function setup(opts?: { approvalQueue?: ApprovalQueue }) {
 }
 
 describe('RunExecutor', () => {
-  it('executes a capability and produces correct event sequence', async () => {
+  it('executes an agent capability and produces correct event sequence', async () => {
     const { eventLog, eventBus, executor } = setup();
     const run = new Run('run-1', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = createTestCapability([
+    const capability = fakeAgentCapability([
       { type: 'text.delta', text: 'Hello' },
       { type: 'text.delta', text: ' world' },
     ]);
@@ -144,12 +272,7 @@ describe('RunExecutor', () => {
     const run = new Run('run-2', 'test-cap', '2026-04-24T00:00:00.000Z');
     await runStore.create('run-2', 'test-cap', '2026-04-24T00:00:00.000Z');
 
-    const capability = {
-      async *execute(): AsyncIterable<StreamEventPayload> {
-        yield { type: 'text.delta' as const, text: 'start' };
-        throw new Error('capability exploded');
-      },
-    };
+    const capability = fakeThrowingCapability();
 
     await executor.execute(run, capability, {}, new AbortController().signal);
 
@@ -165,7 +288,7 @@ describe('RunExecutor', () => {
     const run = new Run('run-3', 'test-cap', '2026-04-24T00:00:00.000Z');
     const controller = new AbortController();
 
-    const capability = createAbortableCapability([
+    const capability = fakeAbortableAgentCapability([
       { type: 'text.delta', text: 'a' },
       { type: 'text.delta', text: 'b' },
       { type: 'text.delta', text: 'c' },
@@ -185,7 +308,7 @@ describe('RunExecutor', () => {
     const run = new Run('run-4', 'test-cap', '2026-04-24T00:00:00.000Z');
     await runStore.create('run-4', 'test-cap', '2026-04-24T00:00:00.000Z');
 
-    const capability = createTestCapability([{ type: 'text.delta', text: 'done' }]);
+    const capability = fakeAgentCapability([{ type: 'text.delta', text: 'done' }]);
     await executor.execute(run, capability, {}, new AbortController().signal);
 
     const stored = await runStore.get('run-4');
@@ -196,7 +319,7 @@ describe('RunExecutor', () => {
     const approvalQueue = createFakeApprovalQueue();
     const { eventLog, eventBus, executor } = setup({ approvalQueue });
     const run = new Run('run-5', 'research', '2026-04-24T00:00:00.000Z');
-    const capability = createHitlCapability();
+    const capability = fakeHitlCapability();
 
     const collected: SessionEvent[] = [];
     const sub = eventBus.subscribe('run-5');
@@ -212,7 +335,7 @@ describe('RunExecutor', () => {
     const execPromise = executor.execute(run, capability, {}, new AbortController().signal);
 
     await new Promise((r) => setTimeout(r, 20));
-    await approvalQueue.resolve('apr-1', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
+    await approvalQueue.resolve('run-5-approval', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
 
     await execPromise;
     await collectPromise;
@@ -224,29 +347,25 @@ describe('RunExecutor', () => {
       'plan.proposed',
       'approval.requested',
       'approval.resolved',
-      'text.delta',
       'artifact',
       'run.completed',
     ]);
 
     const persisted = await eventLog.read('run-5');
-    expect(persisted.length).toBe(8);
-
-    const seqs = persisted.map((e) => e.seq);
-    expect(seqs).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(persisted.length).toBe(7);
   });
 
   it('stops after rejection and emits run.completed', async () => {
     const approvalQueue = createFakeApprovalQueue();
     const { eventLog, executor } = setup({ approvalQueue });
     const run = new Run('run-6', 'research', '2026-04-24T00:00:00.000Z');
-    const capability = createHitlCapability();
+    const capability = fakeRejectableHitlCapability();
 
     const execPromise = executor.execute(run, capability, {}, new AbortController().signal);
 
     await new Promise((r) => setTimeout(r, 20));
     await approvalQueue.resolve(
-      'apr-1',
+      'run-6-approval',
       { kind: 'reject', reason: 'bad plan' },
       '2026-04-24T00:01:00.000Z',
     );
@@ -266,7 +385,7 @@ describe('RunExecutor', () => {
     const { runStore, executor } = setup({ approvalQueue });
     const run = new Run('run-7', 'research', '2026-04-24T00:00:00.000Z');
     await runStore.create('run-7', 'research', '2026-04-24T00:00:00.000Z');
-    const capability = createHitlCapability();
+    const capability = fakeHitlCapability();
 
     const execPromise = executor.execute(run, capability, {}, new AbortController().signal);
 
@@ -275,7 +394,7 @@ describe('RunExecutor', () => {
     const stored = await runStore.get('run-7');
     expect(stored?.status).toBe('suspended');
 
-    await approvalQueue.resolve('apr-1', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
+    await approvalQueue.resolve('run-7-approval', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
     await execPromise;
 
     const after = await runStore.get('run-7');

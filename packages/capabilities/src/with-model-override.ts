@@ -1,11 +1,11 @@
-import type { Capability } from '@harness/core';
+import type { CapabilityDefinition } from '@harness/core';
 
-export type CapabilityWithModelOverride<I, O> = Capability<I, O> & {
-  __createWithModel: (model: unknown) => Capability<I, O>;
+export type CapabilityWithModelOverride<I, O> = CapabilityDefinition<I, O> & {
+  __createWithModel: (model: unknown) => CapabilityDefinition<I, O>;
 };
 
 export function withModelOverride<I, O>(
-  build: (modelOverride?: unknown) => Capability<I, O>,
+  build: (modelOverride?: unknown) => CapabilityDefinition<I, O>,
 ): CapabilityWithModelOverride<I, O> {
   const base = build();
   return {

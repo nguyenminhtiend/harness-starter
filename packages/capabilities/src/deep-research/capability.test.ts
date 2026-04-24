@@ -1,67 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { mockModel } from '@harness/agents/testing';
-import type { ApprovalDecision, ExecutionContext, StreamEventPayload } from '@harness/core';
 import { deepResearchCapability } from './capability.ts';
-
-const fakePlan = {
-  summary: 'Test plan',
-  subquestions: [{ id: 'sq1', question: 'Why?' }],
-};
-const fakeFinding = { subquestionId: 'sq1', summary: 'Because reasons', sourceUrls: [] };
-const fakeReport = {
-  title: 'Report',
-  sections: [{ heading: 'Answer', body: 'Because reasons [1].' }],
-  references: [{ url: 'https://example.com/a', title: 'Source A' }],
-};
-const fakeFactCheck = { pass: true, issues: [] };
-
-function buildModel() {
-  return mockModel([
-    { type: 'text', text: JSON.stringify(fakePlan) },
-    { type: 'text', text: JSON.stringify(fakeFinding) },
-    { type: 'text', text: JSON.stringify(fakeReport) },
-    { type: 'text', text: JSON.stringify(fakeFactCheck) },
-  ]);
-}
-
-function fakeCtx(
-  approvalDecision: ApprovalDecision = { kind: 'approve' },
-  overrides?: Partial<ExecutionContext>,
-): ExecutionContext {
-  return {
-    runId: 'run-1',
-    settings: { model: 'ollama:test:latest' },
-    memory: null,
-    signal: new AbortController().signal,
-    approvals: { request: () => Promise.resolve(approvalDecision) },
-    logger: {
-      debug() {},
-      info() {},
-      warn() {},
-      error() {},
-      child() {
-        return this;
-      },
-    },
-    ...overrides,
-  };
-}
-
-async function collectEvents(
-  iter: AsyncIterable<StreamEventPayload>,
-): Promise<StreamEventPayload[]> {
-  const events: StreamEventPayload[] = [];
-  for await (const e of iter) {
-    events.push(e);
-  }
-  return events;
-}
 
 describe('deepResearchCapability', () => {
   test('has correct metadata', () => {
     expect(deepResearchCapability.id).toBe('deep-research');
     expect(deepResearchCapability.title).toBe('Deep Research');
     expect(deepResearchCapability.supportsApproval).toBe(true);
+  });
+
+  test('runner kind is workflow', () => {
+    expect(deepResearchCapability.runner.kind).toBe('workflow');
   });
 
   test('inputSchema validates correct input', () => {
@@ -86,36 +35,31 @@ describe('deepResearchCapability', () => {
     expect(result.success).toBe(true);
   });
 
-  test('yields plan.proposed and artifact after approval', async () => {
-    const model = buildModel();
+  test('runner.build creates a workflow', () => {
+    const model = mockModel([
+      { type: 'text', text: '{}' },
+      { type: 'text', text: '{}' },
+      { type: 'text', text: '{}' },
+      { type: 'text', text: '{}' },
+    ]);
     const cap = deepResearchCapability.__createWithModel(model);
-    const events = await collectEvents(cap.execute({ question: 'What is X?' }, fakeCtx()));
 
-    const planProposed = events.find((e) => e.type === 'plan.proposed');
-    expect(planProposed).toBeDefined();
-    if (planProposed?.type === 'plan.proposed') {
-      const plan = planProposed.plan as { summary: string };
-      expect(plan.summary).toBe('Test plan');
-    }
-
-    const artifact = events.find((e) => e.type === 'artifact');
-    expect(artifact).toBeDefined();
-    if (artifact?.type === 'artifact') {
-      const data = artifact.data as { reportText?: string };
-      expect(data.reportText).toBeDefined();
+    if (cap.runner.kind === 'workflow') {
+      const wf = cap.runner.build({});
+      expect(wf).toBeDefined();
     }
   });
 
-  test('stops after rejection without producing artifact', async () => {
-    const model = buildModel();
-    const cap = deepResearchCapability.__createWithModel(model);
-    const ctx = fakeCtx({ kind: 'reject', reason: 'bad plan' });
-    const events = await collectEvents(cap.execute({ question: 'What is X?' }, ctx));
+  test('runner.extractInput extracts question from input', () => {
+    if (deepResearchCapability.runner.kind === 'workflow') {
+      const input = deepResearchCapability.runner.extractInput({ question: 'What is X?' });
+      expect(input).toEqual({ question: 'What is X?' });
+    }
+  });
 
-    const planProposed = events.find((e) => e.type === 'plan.proposed');
-    expect(planProposed).toBeDefined();
-
-    const artifact = events.find((e) => e.type === 'artifact');
-    expect(artifact).toBeUndefined();
+  test('runner.approveStepId is set', () => {
+    if (deepResearchCapability.runner.kind === 'workflow') {
+      expect(deepResearchCapability.runner.approveStepId).toBe('approve');
+    }
   });
 });

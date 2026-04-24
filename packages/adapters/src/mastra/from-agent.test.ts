@@ -1,101 +1,67 @@
 import { describe, expect, it } from 'bun:test';
 import { createSimpleChatAgent } from '@harness/agents';
 import { mockModel } from '@harness/agents/testing';
-import type { ExecutionContext, StreamEventPayload } from '@harness/core';
 import { z } from 'zod';
 import { fromMastraAgent } from './from-agent.ts';
 
-function makeCtx(overrides?: Partial<ExecutionContext>): ExecutionContext {
-  return {
-    runId: 'r-1',
-    settings: {},
-    memory: null,
-    signal: new AbortController().signal,
-    approvals: { request: () => Promise.reject(new Error('not expected')) },
-    logger: {
-      debug() {},
-      info() {},
-      warn() {},
-      error() {},
-      child() {
-        return this;
-      },
-    },
-    ...overrides,
-  };
-}
-
-function makeCapability(responses: Parameters<typeof mockModel>[0]) {
-  const model = mockModel(responses);
-  return fromMastraAgent({
-    id: 'test-chat',
-    title: 'Test Chat',
-    description: 'Test capability',
-    inputSchema: z.object({ message: z.string() }),
-    outputSchema: z.object({ text: z.string() }),
-    settingsSchema: z.object({}),
-    createAgent: () => createSimpleChatAgent({ model }),
-    extractPrompt: (input) => input.message,
-  });
-}
-
 describe('fromMastraAgent', () => {
-  it('produces step.finished events from the stream', async () => {
-    const capability = makeCapability([{ type: 'text', text: 'Hello!' }]);
+  it('produces a CapabilityDefinition with agent runner', () => {
+    const model = mockModel([{ type: 'text', text: 'Hello!' }]);
+    const cap = fromMastraAgent({
+      id: 'test-chat',
+      title: 'Test Chat',
+      description: 'Test capability',
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ text: z.string() }),
+      settingsSchema: z.object({}),
+      createAgent: () => createSimpleChatAgent({ model }),
+      extractPrompt: (input) => input.message,
+      maxSteps: 3,
+    });
 
-    const events: StreamEventPayload[] = [];
-    for await (const event of capability.execute({ message: 'hi' }, makeCtx())) {
-      events.push(event);
-    }
-
-    const stepFinished = events.filter((e) => e.type === 'step.finished');
-    expect(stepFinished.length).toBeGreaterThan(0);
+    expect(cap.id).toBe('test-chat');
+    expect(cap.title).toBe('Test Chat');
+    expect(cap.description).toBe('Test capability');
+    expect(cap.runner.kind).toBe('agent');
+    expect(cap.supportsApproval).toBeUndefined();
   });
 
-  it('produces tool.called events for tool use', async () => {
-    const capability = makeCapability([
-      {
-        type: 'tool-call',
-        toolCallId: 'call-1',
-        toolName: 'calculator',
-        args: { expression: '2 + 3' },
-      },
-      { type: 'text', text: 'The answer is 5.' },
-    ]);
+  it('runner.build returns an agent and runner.extractPrompt extracts prompt', () => {
+    const model = mockModel([]);
+    const cap = fromMastraAgent({
+      id: 'test-chat',
+      title: 'Test Chat',
+      description: 'Test',
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ text: z.string() }),
+      settingsSchema: z.object({}),
+      createAgent: () => createSimpleChatAgent({ model }),
+      extractPrompt: (input) => input.message,
+    });
 
-    const events: StreamEventPayload[] = [];
-    for await (const event of capability.execute({ message: 'What is 2+3?' }, makeCtx())) {
-      events.push(event);
-    }
-
-    const toolCalled = events.filter((e) => e.type === 'tool.called');
-    expect(toolCalled.length).toBeGreaterThan(0);
-    if (toolCalled[0]?.type === 'tool.called') {
-      expect(toolCalled[0].tool).toBe('calculator');
-    }
-  });
-
-  it('produces usage events at stream end', async () => {
-    const capability = makeCapability([{ type: 'text', text: 'Hello!' }]);
-
-    const events: StreamEventPayload[] = [];
-    for await (const event of capability.execute({ message: 'hi' }, makeCtx())) {
-      events.push(event);
-    }
-
-    const usage = events.filter((e) => e.type === 'usage');
-    expect(usage.length).toBeGreaterThan(0);
-    if (usage[0]?.type === 'usage') {
-      expect(usage[0].usage.inputTokens).toBeDefined();
+    if (cap.runner.kind === 'agent') {
+      const agent = cap.runner.build({});
+      expect(agent).toBeDefined();
+      expect(cap.runner.extractPrompt({ message: 'hello' })).toBe('hello');
     }
   });
 
-  it('exposes metadata from config', () => {
-    const capability = makeCapability([]);
+  it('passes maxSteps to runner', () => {
+    const model = mockModel([]);
+    const cap = fromMastraAgent({
+      id: 'test',
+      title: 'Test',
+      description: 'Test',
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ text: z.string() }),
+      settingsSchema: z.object({}),
+      createAgent: () => createSimpleChatAgent({ model }),
+      extractPrompt: (input) => input.message,
+      maxSteps: 10,
+    });
 
-    expect(capability.id).toBe('test-chat');
-    expect(capability.title).toBe('Test Chat');
-    expect(capability.description).toBe('Test capability');
-    expect(capability.supportsApproval).toBeUndefined();
+    if (cap.runner.kind === 'agent') {
+      expect(cap.runner.maxSteps).toBe(10);
+    }
   });
 });

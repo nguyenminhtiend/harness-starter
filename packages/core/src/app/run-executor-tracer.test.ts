@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { ExecutionContext } from '../domain/capability.ts';
+import type { CapabilityDefinition } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
 import type { StreamEventPayload } from '../domain/session-event.ts';
 import type { Span, Tracer } from '../ports/tracer.ts';
@@ -45,12 +45,58 @@ function createCapturingTracer(): { tracer: Tracer; spans: SpanRecord[] } {
   return { tracer, spans };
 }
 
-function createTestCapability(events: StreamEventPayload[]) {
+function fakeAgentCapability(events: StreamEventPayload[]): CapabilityDefinition {
   return {
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
-      for (const e of events) {
-        yield e;
-      }
+    id: 'test-cap',
+    title: 'Test',
+    description: 'Test capability',
+    inputSchema: { parse: (v: unknown) => v } as never,
+    outputSchema: { parse: (v: unknown) => v } as never,
+    settingsSchema: { parse: (v: unknown) => v } as never,
+    runner: {
+      kind: 'agent',
+      build: () =>
+        ({
+          stream: async () => ({
+            fullStream: new ReadableStream({
+              start(controller) {
+                for (const e of events) {
+                  if (e.type === 'text.delta') {
+                    controller.enqueue({ type: 'text-delta', payload: { text: e.text } });
+                  }
+                }
+                controller.close();
+              },
+            }),
+          }),
+        }) as never,
+      extractPrompt: () => 'test',
+    },
+  };
+}
+
+function fakeThrowingAgentCapability(): CapabilityDefinition {
+  return {
+    id: 'test-cap',
+    title: 'Test',
+    description: 'Test capability',
+    inputSchema: { parse: (v: unknown) => v } as never,
+    outputSchema: { parse: (v: unknown) => v } as never,
+    settingsSchema: { parse: (v: unknown) => v } as never,
+    runner: {
+      kind: 'agent',
+      build: () =>
+        ({
+          stream: async () => ({
+            fullStream: new ReadableStream({
+              start(controller) {
+                controller.enqueue({ type: 'text-delta', payload: { text: 'before boom' } });
+                controller.error(new Error('boom'));
+              },
+            }),
+          }),
+        }) as never,
+      extractPrompt: () => 'test',
     },
   };
 }
@@ -77,7 +123,7 @@ describe('RunExecutor tracer integration', () => {
     const { tracer, spans } = createCapturingTracer();
     const { executor } = setup(tracer);
     const run = new Run('run-t1', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = createTestCapability([{ type: 'text.delta', text: 'hi' }]);
+    const capability = fakeAgentCapability([{ type: 'text.delta', text: 'hi' }]);
 
     await executor.execute(run, capability, {}, new AbortController().signal);
 
@@ -93,12 +139,7 @@ describe('RunExecutor tracer integration', () => {
     const { tracer, spans } = createCapturingTracer();
     const { executor } = setup(tracer);
     const run = new Run('run-t2', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = {
-      async *execute(): AsyncIterable<StreamEventPayload> {
-        yield { type: 'text.delta' as const, text: 'before boom' };
-        throw new Error('boom');
-      },
-    };
+    const capability = fakeThrowingAgentCapability();
 
     await executor.execute(run, capability, {}, new AbortController().signal);
 
@@ -110,7 +151,7 @@ describe('RunExecutor tracer integration', () => {
   it('works without tracer (optional)', async () => {
     const { executor } = setup();
     const run = new Run('run-t3', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = createTestCapability([{ type: 'text.delta', text: 'hi' }]);
+    const capability = fakeAgentCapability([{ type: 'text.delta', text: 'hi' }]);
 
     await executor.execute(run, capability, {}, new AbortController().signal);
     expect(run.status).toBe('completed');
@@ -140,7 +181,7 @@ describe('RunExecutor tracer integration', () => {
     });
 
     const run = new Run('run-t4', 'test-cap', '2026-04-24T00:00:00.000Z');
-    const capability = createTestCapability([{ type: 'text.delta', text: 'hi' }]);
+    const capability = fakeAgentCapability([{ type: 'text.delta', text: 'hi' }]);
 
     await executor.execute(run, capability, {}, new AbortController().signal);
 

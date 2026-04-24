@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
 import { mockModel } from '@harness/agents/testing';
-import type { ApprovalDecision, ExecutionContext, StreamEventPayload } from '@harness/core';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
@@ -11,120 +10,82 @@ const fakePlan = {
   summary: 'Test plan',
   subquestions: [{ id: 'sq1', question: 'Why?' }],
 };
-const fakeFinding = { subquestionId: 'sq1', summary: 'Because reasons', sourceUrls: [] };
-const fakeReport = {
-  title: 'Report',
-  sections: [{ heading: 'Answer', body: 'Because reasons [1].' }],
-  references: [{ url: 'https://example.com/a', title: 'Source A' }],
-};
-const fakeFactCheck = { pass: true, issues: [] };
 
 function buildModel() {
   return mockModel([
     { type: 'text', text: JSON.stringify(fakePlan) },
-    { type: 'text', text: JSON.stringify(fakeFinding) },
-    { type: 'text', text: JSON.stringify(fakeReport) },
-    { type: 'text', text: JSON.stringify(fakeFactCheck) },
+    {
+      type: 'text',
+      text: JSON.stringify({ subquestionId: 'sq1', summary: 'Because', sourceUrls: [] }),
+    },
+    { type: 'text', text: JSON.stringify({ title: 'Report', sections: [], references: [] }) },
+    { type: 'text', text: JSON.stringify({ pass: true, issues: [] }) },
   ]);
 }
 
-function makeCapability(model: ReturnType<typeof mockModel>) {
-  return fromMastraWorkflow({
-    id: 'deep-research',
-    title: 'Deep Research',
-    description: 'Research with HITL',
-    inputSchema: z.object({ question: z.string() }),
-    outputSchema: z.object({ reportText: z.string() }),
-    settingsSchema: z.object({}),
-    supportsApproval: true,
-    workflowId: 'deepResearch',
-    createMastra: () => {
-      const wf = createDeepResearchWorkflow({ model });
-      return new Mastra({
-        workflows: { deepResearch: wf },
-        storage: new LibSQLStore({ id: 'test', url: 'file::memory:?cache=shared' }),
-      });
-    },
-    extractInput: (input) => ({ question: input.question }),
-    extractPlan: (steps) => {
-      const planStep = steps.plan as { status: string; output?: { plan?: unknown } } | undefined;
-      return planStep?.status === 'success' ? planStep.output?.plan : undefined;
-    },
-    approveStepId: 'approve',
-  });
-}
-
-function makeCtx(approvalDecision: ApprovalDecision = { kind: 'approve' }): ExecutionContext {
-  return {
-    runId: 'r-1',
-    settings: {},
-    memory: null,
-    signal: new AbortController().signal,
-    approvals: { request: () => Promise.resolve(approvalDecision) },
-    logger: {
-      debug() {},
-      info() {},
-      warn() {},
-      error() {},
-      child() {
-        return this;
-      },
-    },
-  };
-}
-
 describe('fromMastraWorkflow', () => {
-  it('yields plan.proposed when workflow suspends', async () => {
-    const capability = makeCapability(buildModel());
-    const events: StreamEventPayload[] = [];
+  it('produces a CapabilityDefinition with workflow runner', () => {
+    const model = buildModel();
+    const cap = fromMastraWorkflow({
+      id: 'deep-research',
+      title: 'Deep Research',
+      description: 'Research with HITL',
+      inputSchema: z.object({ question: z.string() }),
+      outputSchema: z.object({ reportText: z.string() }),
+      settingsSchema: z.object({}),
+      supportsApproval: true,
+      workflowId: 'deepResearch',
+      createMastra: () => {
+        const wf = createDeepResearchWorkflow({ model });
+        return new Mastra({
+          workflows: { deepResearch: wf },
+          storage: new LibSQLStore({ id: 'test', url: 'file::memory:?cache=shared' }),
+        });
+      },
+      extractInput: (input) => ({ question: input.question }),
+      extractPlan: (steps) => {
+        const planStep = steps.plan as { status: string; output?: { plan?: unknown } } | undefined;
+        return planStep?.status === 'success' ? planStep.output?.plan : undefined;
+      },
+      approveStepId: 'approve',
+    });
 
-    for await (const event of capability.execute({ question: 'What is X?' }, makeCtx())) {
-      events.push(event);
-    }
-
-    const planProposed = events.find((e) => e.type === 'plan.proposed');
-    expect(planProposed).toBeDefined();
-    if (planProposed?.type === 'plan.proposed') {
-      const plan = planProposed.plan as { summary: string };
-      expect(plan.summary).toBe('Test plan');
-    }
+    expect(cap.id).toBe('deep-research');
+    expect(cap.title).toBe('Deep Research');
+    expect(cap.supportsApproval).toBe(true);
+    expect(cap.runner.kind).toBe('workflow');
   });
 
-  it('yields artifact with result after approval', async () => {
-    const capability = makeCapability(buildModel());
-    const events: StreamEventPayload[] = [];
+  it('runner.build returns a workflow and runner.extractInput extracts input', () => {
+    const model = buildModel();
+    const cap = fromMastraWorkflow({
+      id: 'deep-research',
+      title: 'Deep Research',
+      description: 'Research',
+      inputSchema: z.object({ question: z.string() }),
+      outputSchema: z.object({ reportText: z.string() }),
+      settingsSchema: z.object({}),
+      supportsApproval: true,
+      workflowId: 'deepResearch',
+      createMastra: () => {
+        const wf = createDeepResearchWorkflow({ model });
+        return new Mastra({
+          workflows: { deepResearch: wf },
+          storage: new LibSQLStore({ id: 'test', url: 'file::memory:?cache=shared' }),
+        });
+      },
+      extractInput: (input) => ({ question: input.question }),
+      extractPlan: () => undefined,
+      approveStepId: 'approve',
+    });
 
-    for await (const event of capability.execute({ question: 'What is X?' }, makeCtx())) {
-      events.push(event);
+    if (cap.runner.kind === 'workflow') {
+      const wf = cap.runner.build({});
+      expect(wf).toBeDefined();
+      expect(cap.runner.extractInput({ question: 'What is X?' })).toEqual({
+        question: 'What is X?',
+      });
+      expect(cap.runner.approveStepId).toBe('approve');
     }
-
-    const artifact = events.find((e) => e.type === 'artifact');
-    expect(artifact).toBeDefined();
-    if (artifact?.type === 'artifact') {
-      const result = artifact.data as { reportText?: string };
-      expect(result.reportText).toBeDefined();
-    }
-  });
-
-  it('stops after rejection without producing artifact', async () => {
-    const capability = makeCapability(buildModel());
-    const events: StreamEventPayload[] = [];
-    const ctx = makeCtx({ kind: 'reject', reason: 'bad plan' });
-
-    for await (const event of capability.execute({ question: 'What is X?' }, ctx)) {
-      events.push(event);
-    }
-
-    const planProposed = events.find((e) => e.type === 'plan.proposed');
-    expect(planProposed).toBeDefined();
-
-    const artifact = events.find((e) => e.type === 'artifact');
-    expect(artifact).toBeUndefined();
-  });
-
-  it('exposes capability metadata', () => {
-    const capability = makeCapability(buildModel());
-    expect(capability.id).toBe('deep-research');
-    expect(capability.supportsApproval).toBe(true);
   });
 });

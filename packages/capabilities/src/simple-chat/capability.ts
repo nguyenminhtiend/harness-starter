@@ -1,6 +1,5 @@
 import { createLanguageModel, fromMastraAgent } from '@harness/adapters';
 import { createSimpleChatAgent } from '@harness/agents';
-import type { Capability } from '@harness/core';
 import { withModelOverride } from '../with-model-override.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
@@ -14,7 +13,7 @@ function resolveModel(raw: unknown): AgentModel {
   return raw as AgentModel;
 }
 
-function buildCapability(modelOverride?: unknown): Capability<SimpleChatInput, SimpleChatOutput> {
+function buildCapability(modelOverride?: unknown) {
   return fromMastraAgent<SimpleChatInput, SimpleChatOutput>({
     id: 'simple-chat',
     title: 'Simple Chat',

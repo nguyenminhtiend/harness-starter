@@ -15,6 +15,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@mastra/core": "1.27.0",
     "@types/bun": "latest",
     "typescript": "^5.7.0"
   }

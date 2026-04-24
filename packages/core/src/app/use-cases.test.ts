@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import type { Capability, ExecutionContext } from '../domain/capability.ts';
+import type { CapabilityDefinition } from '../domain/capability.ts';
 import { ConflictError, NotFoundError } from '../domain/errors.ts';
-import type { StreamEventPayload } from '../domain/session-event.ts';
 import {
   createFakeApprovalStore,
   createFakeClock,
@@ -27,10 +26,7 @@ import { startRun } from './start-run.ts';
 import { streamRunEvents } from './stream-run-events.ts';
 import { updateSettings } from './update-settings.ts';
 
-function createTestCapability(
-  id: string,
-  events: StreamEventPayload[] = [{ type: 'text.delta', text: 'hi' }],
-): Capability {
+function createTestCapability(id: string): CapabilityDefinition {
   return {
     id,
     title: id,
@@ -38,15 +34,25 @@ function createTestCapability(
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.unknown(),
     settingsSchema: z.object({}),
-    async *execute(_input: unknown, _ctx: ExecutionContext): AsyncIterable<StreamEventPayload> {
-      for (const e of events) {
-        yield e;
-      }
+    runner: {
+      kind: 'agent',
+      build: () =>
+        ({
+          stream: async () => ({
+            fullStream: new ReadableStream({
+              start(controller) {
+                controller.enqueue({ type: 'text-delta', payload: { text: 'hi' } });
+                controller.close();
+              },
+            }),
+          }),
+        }) as never,
+      extractPrompt: () => 'test',
     },
   };
 }
 
-function createRegistry(caps: Capability[]) {
+function createRegistry(caps: CapabilityDefinition[]) {
   return {
     list: () => caps,
     get: (id: string) => caps.find((c) => c.id === id),

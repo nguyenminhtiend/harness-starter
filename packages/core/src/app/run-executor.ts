@@ -1,5 +1,10 @@
 import type { ApprovalDecision, ApprovalRequester } from '../domain/approval.ts';
-import type { ExecutionContext, Logger, MemoryHandle } from '../domain/capability.ts';
+import type {
+  CapabilityDefinition,
+  ExecutionContext,
+  Logger,
+  MemoryHandle,
+} from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
 import type { ApprovalQueue } from '../ports/approval-queue.ts';
@@ -8,6 +13,8 @@ import type { EventBus } from '../ports/event-bus.ts';
 import type { EventLog } from '../ports/event-log.ts';
 import type { RunStore } from '../ports/run-store.ts';
 import type { Tracer } from '../ports/tracer.ts';
+import type { RuntimeStreamChunk } from './event-mapper.ts';
+import { mapStreamChunk } from './event-mapper.ts';
 
 export interface RunExecutorDeps {
   readonly runStore: RunStore;
@@ -22,10 +29,6 @@ export interface RunExecutorDeps {
 export interface RunExecutionParams {
   readonly settings?: unknown;
   readonly memory?: MemoryHandle | null;
-}
-
-interface ExecutableCapability {
-  execute(input: unknown, ctx: ExecutionContext): AsyncIterable<StreamEventPayload>;
 }
 
 export type OnRunComplete = (runId: string) => void;
@@ -98,9 +101,93 @@ export class RunExecutor {
     };
   }
 
+  private async *executeRunner(
+    capability: CapabilityDefinition,
+    input: unknown,
+    ctx: ExecutionContext,
+  ): AsyncIterable<StreamEventPayload> {
+    const { runner } = capability;
+
+    if (runner.kind === 'agent') {
+      const agent = runner.build(ctx.settings);
+      const prompt = runner.extractPrompt(input);
+
+      const memoryOpt = ctx.memory
+        ? { memory: { thread: ctx.memory.conversationId, resource: 'harness' } }
+        : {};
+
+      const output = await agent.stream(prompt, {
+        ...memoryOpt,
+        abortSignal: ctx.signal,
+        maxSteps: runner.maxSteps ?? 5,
+      });
+
+      const raw = output as unknown as Record<string, unknown>;
+      if (!raw || typeof raw !== 'object' || !('fullStream' in raw)) {
+        throw new Error('agent.stream() did not return a fullStream property');
+      }
+      const reader = (raw.fullStream as ReadableStream).getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          const event = mapStreamChunk(value as RuntimeStreamChunk);
+          if (event) {
+            yield event;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } else {
+      const workflow = runner.build(ctx.settings);
+      const wfRun = await workflow.createRun();
+      const inputData = runner.extractInput(input);
+      const initial = await wfRun.start({ inputData });
+
+      if (initial.status === 'suspended') {
+        const plan = runner.extractPlan
+          ? runner.extractPlan((initial.steps ?? {}) as Record<string, unknown>)
+          : undefined;
+        yield { type: 'step.finished' };
+        yield { type: 'plan.proposed', plan };
+
+        const decision = await ctx.approvals.request(`${ctx.runId}-approval`, plan);
+
+        if (decision.kind === 'reject') {
+          return;
+        }
+
+        if (ctx.signal.aborted) {
+          return;
+        }
+
+        const resumed = await wfRun.resume({
+          step: runner.approveStepId ?? 'approve',
+          resumeData: {
+            approved: true,
+            ...(decision.editedPlan !== undefined ? { editedPlan: decision.editedPlan } : {}),
+          },
+        });
+
+        if (resumed.status === 'success') {
+          yield { type: 'artifact', name: 'result', data: resumed.result };
+        } else {
+          throw new Error(`Workflow failed after resume with status: ${resumed.status}`);
+        }
+      } else if (initial.status === 'success') {
+        yield { type: 'artifact', name: 'result', data: initial.result };
+      } else {
+        throw new Error(`Workflow failed with status: ${initial.status}`);
+      }
+    }
+  }
+
   async execute(
     run: Run,
-    capability: ExecutableCapability,
+    capability: CapabilityDefinition,
     input: unknown,
     signal: AbortSignal,
     params?: RunExecutionParams,
@@ -134,12 +221,12 @@ export class RunExecutor {
         return;
       }
 
-      const stream = capability.execute(input, ctx);
-      for await (const capEvent of stream) {
+      const stream = this.executeRunner(capability, input, ctx);
+      for await (const payload of stream) {
         if (signal.aborted) {
           break;
         }
-        await this.emit(run.append(capEvent, clock.now()));
+        await this.emit(run.append(payload, clock.now()));
       }
 
       const finishTs = clock.now();
