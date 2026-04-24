@@ -1,3 +1,4 @@
+export type { ApprovalQueue } from './approval-queue.ts';
 export type { ApprovalStore } from './approval-store.ts';
 export type { CapabilityRegistry } from './capability-registry.ts';
 export type { Clock } from './clock.ts';

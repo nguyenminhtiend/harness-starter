@@ -1,5 +1,4 @@
 export { createCryptoIdGen, createSystemClock } from './identity/index.ts';
-export type { ApprovalQueue } from './inmem/index.ts';
 export {
   createInMemoryApprovalQueue,
   createInMemoryApprovalStore,

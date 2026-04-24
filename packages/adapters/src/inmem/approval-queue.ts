@@ -1,14 +1,4 @@
-import type { ApprovalDecision, ApprovalStore } from '@harness/core';
-
-export interface ApprovalQueue {
-  request(
-    approvalId: string,
-    runId: string,
-    payload: unknown,
-    createdAt: string,
-  ): Promise<ApprovalDecision>;
-  resolve(approvalId: string, decision: ApprovalDecision, resolvedAt: string): Promise<void>;
-}
+import type { ApprovalDecision, ApprovalQueue, ApprovalStore } from '@harness/core';
 
 export function createInMemoryApprovalQueue(store: ApprovalStore): ApprovalQueue {
   const waiters = new Map<string, (decision: ApprovalDecision) => void>();

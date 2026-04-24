@@ -1,5 +1,7 @@
+import type { ApprovalDecision, ApprovalRequester } from '../domain/approval.ts';
 import type { ExecutionContext, Logger, MemoryHandle } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
+import type { ApprovalQueue } from '../ports/approval-queue.ts';
 import type { Clock } from '../ports/clock.ts';
 import type { EventBus } from '../ports/event-bus.ts';
 import type { EventLog } from '../ports/event-log.ts';
@@ -11,6 +13,7 @@ export interface RunExecutorDeps {
   readonly eventBus: EventBus;
   readonly clock: Clock;
   readonly logger: Logger;
+  readonly approvalQueue?: ApprovalQueue | undefined;
 }
 
 export interface RunExecutionParams {
@@ -25,7 +28,7 @@ interface ExecutableCapability {
   ): AsyncIterable<import('../domain/capability.ts').CapabilityEvent>;
 }
 
-const noopApprovals = {
+const noopApprovals: ApprovalRequester = {
   request: () => Promise.reject(new Error('Approvals not configured')),
 };
 
@@ -34,6 +37,33 @@ export class RunExecutor {
 
   constructor(deps: RunExecutorDeps) {
     this.deps = deps;
+  }
+
+  private createApprovalRequester(run: Run): ApprovalRequester {
+    const { approvalQueue, eventLog, eventBus, runStore, clock } = this.deps;
+    if (!approvalQueue) {
+      return noopApprovals;
+    }
+
+    return {
+      async request(approvalId: string, payload: unknown): Promise<ApprovalDecision> {
+        const suspendTs = clock.now();
+        const suspendEvent = run.suspendForApproval(approvalId, payload, suspendTs);
+        await eventLog.append(suspendEvent);
+        eventBus.publish(suspendEvent);
+        await runStore.updateStatus(run.id, run.status, suspendTs);
+
+        const decision = await approvalQueue.request(approvalId, run.id, payload, suspendTs);
+
+        const resumeTs = clock.now();
+        const resumeEvent = run.resumeFromApproval(approvalId, decision, resumeTs);
+        await eventLog.append(resumeEvent);
+        eventBus.publish(resumeEvent);
+        await runStore.updateStatus(run.id, run.status);
+
+        return decision;
+      },
+    };
   }
 
   async execute(
@@ -56,7 +86,7 @@ export class RunExecutor {
       settings: params?.settings ?? {},
       memory: params?.memory ?? null,
       signal,
-      approvals: noopApprovals,
+      approvals: this.createApprovalRequester(run),
       logger: logger.child({ runId: run.id }),
     };
 

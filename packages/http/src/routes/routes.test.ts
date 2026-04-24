@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CapabilityEvent, ExecutionContext } from '@harness/core';
+import { createFakeApprovalStore } from '@harness/core/testing';
 import { z } from 'zod';
 import { createHttpApp } from '../app.ts';
 import { createFakeHttpDeps } from '../testing.ts';
@@ -234,5 +235,129 @@ describe('GET /runs/:id/events (SSE)', () => {
       const seq = Number.parseInt(line.replace('id: ', ''), 10);
       expect(seq).toBeGreaterThanOrEqual(4);
     }
+  });
+});
+
+describe('POST /runs/:id/approve', () => {
+  test('returns 404 for unknown run', async () => {
+    const app = createHttpApp(createFakeHttpDeps());
+    const res = await app.request('/runs/nonexistent/approve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approvalId: 'apr-1' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test('returns 404 when no pending approval', async () => {
+    const deps = depsWithCapability();
+    const app = createHttpApp(deps);
+
+    await deps.runStore.create('run-1', 'simple-chat', '2026-04-24T00:00:00.000Z');
+
+    const res = await app.request('/runs/run-1/approve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approvalId: 'apr-1' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test('resolves pending approval and returns 200', async () => {
+    const approvalStore = createFakeApprovalStore();
+    const deps = createFakeHttpDeps({
+      ...depsWithCapability(),
+      approvalStore,
+    });
+    const app = createHttpApp(deps);
+
+    await deps.runStore.create('run-1', 'simple-chat', '2026-04-24T00:00:00.000Z');
+    await approvalStore.createPending({
+      id: 'apr-1',
+      runId: 'run-1',
+      payload: { plan: 'test' },
+      status: 'pending',
+      createdAt: '2026-04-24T00:00:00.000Z',
+    });
+
+    const res = await app.request('/runs/run-1/approve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approvalId: 'apr-1' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    const resolved = await approvalStore.get('apr-1');
+    expect(resolved?.status).toBe('resolved');
+    expect(resolved?.decision?.kind).toBe('approve');
+  });
+
+  test('returns 409 for already resolved approval', async () => {
+    const approvalStore = createFakeApprovalStore();
+    const deps = createFakeHttpDeps({
+      ...depsWithCapability(),
+      approvalStore,
+    });
+    const app = createHttpApp(deps);
+
+    await deps.runStore.create('run-1', 'simple-chat', '2026-04-24T00:00:00.000Z');
+    await approvalStore.createPending({
+      id: 'apr-1',
+      runId: 'run-1',
+      payload: {},
+      status: 'pending',
+      createdAt: '2026-04-24T00:00:00.000Z',
+    });
+    await approvalStore.resolve('apr-1', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
+
+    const res = await app.request('/runs/run-1/approve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approvalId: 'apr-1' }),
+    });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('POST /runs/:id/reject', () => {
+  test('returns 404 for unknown run', async () => {
+    const app = createHttpApp(createFakeHttpDeps());
+    const res = await app.request('/runs/nonexistent/reject', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approvalId: 'apr-1' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test('resolves pending approval with reject decision', async () => {
+    const approvalStore = createFakeApprovalStore();
+    const deps = createFakeHttpDeps({
+      ...depsWithCapability(),
+      approvalStore,
+    });
+    const app = createHttpApp(deps);
+
+    await deps.runStore.create('run-1', 'simple-chat', '2026-04-24T00:00:00.000Z');
+    await approvalStore.createPending({
+      id: 'apr-1',
+      runId: 'run-1',
+      payload: { plan: 'test' },
+      status: 'pending',
+      createdAt: '2026-04-24T00:00:00.000Z',
+    });
+
+    const res = await app.request('/runs/run-1/reject', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approvalId: 'apr-1', reason: 'bad plan' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    const resolved = await approvalStore.get('apr-1');
+    expect(resolved?.status).toBe('resolved');
+    expect(resolved?.decision?.kind).toBe('reject');
   });
 });

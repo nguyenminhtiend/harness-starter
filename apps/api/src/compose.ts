@@ -1,5 +1,6 @@
 import {
   createCryptoIdGen,
+  createInMemoryApprovalQueue,
   createInMemoryApprovalStore,
   createInMemoryConversationStore,
   createInMemoryEventBus,
@@ -29,11 +30,19 @@ export function compose(config: Config): ComposedApp {
   const eventLog = createInMemoryEventLog();
   const eventBus = createInMemoryEventBus();
   const approvalStore = createInMemoryApprovalStore();
+  const approvalQueue = createInMemoryApprovalQueue(approvalStore);
   const conversationStore = createInMemoryConversationStore();
   const settingsStore = createInMemorySettingsStore();
   const capabilityRegistry = createCapabilityRegistry();
 
-  const executor = new RunExecutor({ runStore, eventLog, eventBus, clock, logger });
+  const executor = new RunExecutor({
+    runStore,
+    eventLog,
+    eventBus,
+    clock,
+    logger,
+    approvalQueue,
+  });
 
   const runAbortControllers = new Map<string, AbortController>();
 
@@ -42,6 +51,7 @@ export function compose(config: Config): ComposedApp {
     eventLog,
     eventBus,
     approvalStore,
+    approvalQueue,
     conversationStore,
     settingsStore,
     capabilityRegistry,

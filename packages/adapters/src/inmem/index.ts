@@ -1,4 +1,3 @@
-export type { ApprovalQueue } from './approval-queue.ts';
 export { createInMemoryApprovalQueue } from './approval-queue.ts';
 export { createInMemoryApprovalStore } from './approval-store.ts';
 export { createInMemoryConversationStore } from './conversation-store.ts';
