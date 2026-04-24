@@ -2,8 +2,15 @@ export type { ApproveRunDeps } from './approve-run.ts';
 export { approveRun } from './approve-run.ts';
 export type { CancelRunDeps } from './cancel-run.ts';
 export { cancelRun } from './cancel-run.ts';
+export type { DeleteConversationDeps } from './delete-conversation.ts';
+export { deleteConversation } from './delete-conversation.ts';
 export type { GetCapabilityDeps } from './get-capability.ts';
 export { getCapability } from './get-capability.ts';
+export type {
+  ConversationMessage,
+  GetConversationMessagesDeps,
+} from './get-conversation-messages.ts';
+export { getConversationMessages } from './get-conversation-messages.ts';
 export type { GetSettingsDeps } from './get-settings.ts';
 export { getSettings } from './get-settings.ts';
 export type { ListCapabilitiesDeps } from './list-capabilities.ts';

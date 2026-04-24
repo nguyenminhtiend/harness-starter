@@ -30,5 +30,9 @@ export function createInMemoryEventLog(): EventLog {
       }
       return list[list.length - 1]?.seq;
     },
+
+    async deleteByRunId(runId) {
+      events.delete(runId);
+    },
   };
 }

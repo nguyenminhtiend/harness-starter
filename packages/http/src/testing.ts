@@ -30,6 +30,8 @@ export function createFakeHttpDeps(overrides?: Partial<HttpAppDeps>): HttpAppDep
     conversationStore: createFakeConversationStore(),
     settingsStore: createFakeSettingsStore(),
     capabilityRegistry: { list: () => [], get: () => undefined },
+    providerResolver: { resolve: () => undefined, list: () => [] },
+    providerKeys: {},
     clock,
     idGen,
     logger,

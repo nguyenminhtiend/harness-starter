@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import type { CapabilityEvent, ExecutionContext } from '@harness/core';
-import { createFakeApprovalStore } from '@harness/core/testing';
+import type { CapabilityEvent, ExecutionContext, ModelEntry } from '@harness/core';
+import {
+  createFakeApprovalStore,
+  createFakeConversationStore,
+  createFakeSettingsStore,
+} from '@harness/core/testing';
 import { z } from 'zod';
 import { createHttpApp } from '../app.ts';
 import { createFakeHttpDeps } from '../testing.ts';
@@ -359,5 +363,199 @@ describe('POST /runs/:id/reject', () => {
     const resolved = await approvalStore.get('apr-1');
     expect(resolved?.status).toBe('resolved');
     expect(resolved?.decision?.kind).toBe('reject');
+  });
+});
+
+describe('GET /settings', () => {
+  test('returns global settings by default', async () => {
+    const settingsStore = createFakeSettingsStore();
+    await settingsStore.set('global', 'model', 'gpt-4');
+    const deps = createFakeHttpDeps({ settingsStore });
+    const app = createHttpApp(deps);
+
+    const res = await app.request('/settings');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ model: 'gpt-4' });
+  });
+
+  test('returns scoped settings merged with global', async () => {
+    const settingsStore = createFakeSettingsStore();
+    await settingsStore.set('global', 'model', 'gpt-4');
+    await settingsStore.set('simple-chat', 'model', 'claude');
+    const deps = createFakeHttpDeps({ settingsStore });
+    const app = createHttpApp(deps);
+
+    const res = await app.request('/settings?scope=simple-chat');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ model: 'claude' });
+  });
+});
+
+describe('PUT /settings', () => {
+  test('updates settings and returns merged result', async () => {
+    const settingsStore = createFakeSettingsStore();
+    const deps = createFakeHttpDeps({ settingsStore });
+    const app = createHttpApp(deps);
+
+    const res = await app.request('/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scope: 'global', settings: { model: 'gpt-4', temp: 0.7 } }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.model).toBe('gpt-4');
+    expect(body.temp).toBe(0.7);
+  });
+});
+
+describe('GET /conversations', () => {
+  test('returns all conversations', async () => {
+    const conversationStore = createFakeConversationStore();
+    await conversationStore.create({
+      id: 'c1',
+      capabilityId: 'chat',
+      createdAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2026-01-01T00:00:00Z',
+    });
+    const deps = createFakeHttpDeps({ conversationStore });
+    const app = createHttpApp(deps);
+
+    const res = await app.request('/conversations');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].id).toBe('c1');
+  });
+
+  test('filters by capabilityId', async () => {
+    const conversationStore = createFakeConversationStore();
+    await conversationStore.create({
+      id: 'c1',
+      capabilityId: 'chat',
+      createdAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2026-01-01T00:00:00Z',
+    });
+    await conversationStore.create({
+      id: 'c2',
+      capabilityId: 'research',
+      createdAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2026-01-01T00:00:00Z',
+    });
+    const deps = createFakeHttpDeps({ conversationStore });
+    const app = createHttpApp(deps);
+
+    const res = await app.request('/conversations?capabilityId=chat');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].capabilityId).toBe('chat');
+  });
+});
+
+describe('GET /conversations/:id/messages', () => {
+  test('returns messages rebuilt from events', async () => {
+    const deps = createFakeHttpDeps();
+    const app = createHttpApp(deps);
+
+    await deps.conversationStore.create({
+      id: 'c1',
+      capabilityId: 'chat',
+      createdAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2026-01-01T00:00:00Z',
+    });
+    await deps.runStore.create('r1', 'chat', '2026-01-01T00:00:00Z', 'c1');
+    await deps.eventLog.append({
+      runId: 'r1',
+      seq: 0,
+      ts: '2026-01-01T00:00:00Z',
+      type: 'run.started',
+      capabilityId: 'chat',
+      input: { message: 'Hello' },
+    });
+    await deps.eventLog.append({
+      runId: 'r1',
+      seq: 1,
+      ts: '2026-01-01T00:00:01Z',
+      type: 'text.delta',
+      text: 'Hi there!',
+    });
+    await deps.eventLog.append({
+      runId: 'r1',
+      seq: 2,
+      ts: '2026-01-01T00:00:02Z',
+      type: 'run.completed',
+      output: null,
+    });
+
+    const res = await app.request('/conversations/c1/messages');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(2);
+    expect(body[0].role).toBe('user');
+    expect(body[0].content).toBe('Hello');
+    expect(body[1].role).toBe('assistant');
+    expect(body[1].content).toBe('Hi there!');
+  });
+
+  test('returns 404 for unknown conversation', async () => {
+    const app = createHttpApp(createFakeHttpDeps());
+    const res = await app.request('/conversations/unknown/messages');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /conversations/:id', () => {
+  test('cascade deletes and returns 204', async () => {
+    const deps = createFakeHttpDeps();
+    const app = createHttpApp(deps);
+
+    await deps.conversationStore.create({
+      id: 'c1',
+      capabilityId: 'chat',
+      createdAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2026-01-01T00:00:00Z',
+    });
+    await deps.runStore.create('r1', 'chat', '2026-01-01T00:00:00Z', 'c1');
+
+    const res = await app.request('/conversations/c1', { method: 'DELETE' });
+    expect(res.status).toBe(204);
+
+    const check = await deps.conversationStore.get('c1');
+    expect(check).toBeUndefined();
+  });
+
+  test('returns 404 for unknown conversation', async () => {
+    const app = createHttpApp(createFakeHttpDeps());
+    const res = await app.request('/conversations/unknown', { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /models', () => {
+  test('returns models from provider resolver', async () => {
+    const fakeModels: ModelEntry[] = [
+      { id: 'ollama:llama3', provider: 'ollama', displayName: 'Llama 3' },
+    ];
+    const deps = createFakeHttpDeps({
+      providerResolver: {
+        resolve: () => undefined,
+        list: () => fakeModels,
+      },
+    });
+    const app = createHttpApp(deps);
+
+    const res = await app.request('/models');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].id).toBe('ollama:llama3');
+  });
+
+  test('returns empty array when no providers configured', async () => {
+    const app = createHttpApp(createFakeHttpDeps());
+    const res = await app.request('/models');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
   });
 });

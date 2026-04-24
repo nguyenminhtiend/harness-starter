@@ -8,7 +8,9 @@ import {
   createInMemoryRunStore,
   createInMemorySettingsStore,
   createPinoLogger,
+  createProviderResolver,
   createSystemClock,
+  loadProviderKeysFromEnv,
 } from '@harness/adapters';
 import { createCapabilityRegistry } from '@harness/capabilities';
 import { RunExecutor } from '@harness/core';
@@ -34,6 +36,8 @@ export function compose(config: Config): ComposedApp {
   const conversationStore = createInMemoryConversationStore();
   const settingsStore = createInMemorySettingsStore();
   const capabilityRegistry = createCapabilityRegistry();
+  const providerResolver = createProviderResolver();
+  const providerKeys = loadProviderKeysFromEnv();
 
   const executor = new RunExecutor({
     runStore,
@@ -55,6 +59,8 @@ export function compose(config: Config): ComposedApp {
     conversationStore,
     settingsStore,
     capabilityRegistry,
+    providerResolver,
+    providerKeys,
     clock,
     idGen,
     logger,
