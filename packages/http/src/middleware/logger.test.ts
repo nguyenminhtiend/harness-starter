@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { Writable } from 'node:stream';
 import { Hono } from 'hono';
 import pino from 'pino';
 import { accessLogger } from './logger.ts';
@@ -11,7 +12,7 @@ interface LogEntry {
 
 function createCapturingLogger(): { logger: pino.Logger; entries: LogEntry[] } {
   const entries: LogEntry[] = [];
-  const dest = new (require('node:stream').Writable)({
+  const dest = new Writable({
     write(chunk: Buffer, _encoding: string, cb: () => void) {
       entries.push(JSON.parse(chunk.toString()));
       cb();

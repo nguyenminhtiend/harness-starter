@@ -3,12 +3,15 @@ import { Hono } from 'hono';
 import { openApi } from 'hono-zod-openapi';
 import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
-import { ApproveBody, ListRunsQuery, RejectBody, StartRunBody } from './runs.schemas.ts';
+import {
+  ApproveBody,
+  ErrorResponse,
+  ListRunsQuery,
+  OkResponse,
+  RejectBody,
+  StartRunBody,
+} from './runs.schemas.ts';
 
-const OkResponse = z.object({ ok: z.boolean() });
-const ErrorResponse = z.object({
-  error: z.object({ code: z.string(), message: z.string() }),
-});
 const RunIdResponse = z.object({ runId: z.string() });
 
 export function runsRoutes(deps: HttpAppDeps): Hono {

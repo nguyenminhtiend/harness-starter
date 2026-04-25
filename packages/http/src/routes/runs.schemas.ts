@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 const RunStatus = z.enum(['pending', 'running', 'suspended', 'completed', 'failed', 'cancelled']);
 
+export const ErrorResponse = z.object({
+  error: z.object({ code: z.string(), message: z.string() }),
+});
+
+export const OkResponse = z.object({ ok: z.boolean() });
+
 export const ListRunsQuery = z.object({
   status: RunStatus.optional(),
   capabilityId: z.string().min(1).optional(),

@@ -416,10 +416,8 @@ describe('RunExecutor', () => {
       inputSchema: { parse: (v: unknown) => v } as never,
       outputSchema: { parse: (v: unknown) => v } as never,
       settingsSchema: z.object({ model: z.string() }),
-      runner: {
-        kind: 'agent',
-        build: () => ({ stream: async () => ({ fullStream: new ReadableStream() }) }) as never,
-        extractPrompt: () => 'test',
+      runner: async function* () {
+        yield { type: 'text.delta' as const, text: 'should not reach' };
       },
     };
 

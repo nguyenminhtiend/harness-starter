@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { openApi } from 'hono-zod-openapi';
 import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
+import { ErrorResponse } from './runs.schemas.ts';
 
 const Conversation = z.object({
   id: z.string(),
@@ -14,10 +15,6 @@ const Conversation = z.object({
 const Message = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string(),
-});
-
-const ErrorResponse = z.object({
-  error: z.object({ code: z.string(), message: z.string() }),
 });
 
 export function conversationsRoutes(deps: HttpAppDeps): Hono {

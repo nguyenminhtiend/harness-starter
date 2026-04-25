@@ -22,17 +22,17 @@ export const deepResearchCapability: CapabilityDefinition<DeepResearchInput, Dee
   supportsApproval: true,
   runner: workflowRunner({
     build: (settings) => {
-      const s = settings as Record<string, unknown>;
+      const s = settings as DeepResearchSettings;
       const model = resolveModel(s.model) as WorkflowModel;
       const wf = createDeepResearchWorkflow({
         model,
-        ...(s.depth ? { depth: s.depth as string } : {}),
+        ...(s.depth ? { depth: s.depth } : {}),
         ...(s.maxFactCheckRetries !== undefined
-          ? { maxFactCheckRetries: s.maxFactCheckRetries as number }
+          ? { maxFactCheckRetries: s.maxFactCheckRetries }
           : {}),
-        ...(s.plannerPrompt ? { plannerPrompt: s.plannerPrompt as string } : {}),
-        ...(s.writerPrompt ? { writerPrompt: s.writerPrompt as string } : {}),
-        ...(s.factCheckerPrompt ? { factCheckerPrompt: s.factCheckerPrompt as string } : {}),
+        ...(s.plannerPrompt ? { plannerPrompt: s.plannerPrompt } : {}),
+        ...(s.writerPrompt ? { writerPrompt: s.writerPrompt } : {}),
+        ...(s.factCheckerPrompt ? { factCheckerPrompt: s.factCheckerPrompt } : {}),
       });
       const mastra = new Mastra({
         workflows: { deepResearch: wf },

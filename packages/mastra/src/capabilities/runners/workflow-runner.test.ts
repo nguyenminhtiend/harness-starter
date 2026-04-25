@@ -1,18 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { ExecutionContext, StreamEventPayload } from '@harness/core';
+import type { StreamEventPayload } from '@harness/core';
+import { fakeCtx } from './testing.ts';
 import { workflowRunner } from './workflow-runner.ts';
-
-function fakeCtx(overrides?: Partial<ExecutionContext>): ExecutionContext {
-  return {
-    runId: 'r1',
-    settings: {},
-    memory: null,
-    signal: new AbortController().signal,
-    approvals: { request: () => Promise.reject(new Error('not configured')) },
-    logger: { info() {}, debug() {}, error() {}, warn() {}, child: () => ({}) } as never,
-    ...overrides,
-  };
-}
 
 describe('workflowRunner', () => {
   it('yields artifact when workflow succeeds without suspension', async () => {

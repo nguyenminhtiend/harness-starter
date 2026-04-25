@@ -4,8 +4,15 @@ import { openApi } from 'hono-zod-openapi';
 import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
 
+const jsonSchemaCache = new WeakMap<z.ZodType, Record<string, unknown>>();
+
 function schemaToJson(schema: z.ZodType): Record<string, unknown> {
+  const cached = jsonSchemaCache.get(schema);
+  if (cached) {
+    return cached;
+  }
   const { $schema: _, ...rest } = z.toJSONSchema(schema);
+  jsonSchemaCache.set(schema, rest);
   return rest;
 }
 

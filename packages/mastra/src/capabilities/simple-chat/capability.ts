@@ -16,9 +16,9 @@ export const simpleChatCapability: CapabilityDefinition<SimpleChatInput, SimpleC
   settingsSchema: SimpleChatSettings,
   runner: agentRunner({
     build: (settings) => {
-      const { model } = settings as { model: string };
+      const s = settings as SimpleChatSettings;
       return createSimpleChatAgent({
-        model: resolveModel(model) as AgentModel,
+        model: resolveModel(s.model) as AgentModel,
       });
     },
     extractPrompt: (input) => (input as SimpleChatInput).message,
