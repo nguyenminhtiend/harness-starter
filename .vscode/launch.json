@@ -2,28 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug cli-chat",
-      "type": "bun",
-      "request": "launch",
-      "program": "${workspaceFolder}/apps/cli-chat/src/index.ts",
-      "cwd": "${workspaceFolder}",
-      "stopOnEntry": false,
-      "watchMode": false,
-      "internalConsoleOptions": "neverOpen",
-      "env": {}
-    },
-    {
-      "name": "Debug cli-chat (stop on entry)",
-      "type": "bun",
-      "request": "launch",
-      "program": "${workspaceFolder}/apps/cli-chat/src/index.ts",
-      "cwd": "${workspaceFolder}",
-      "stopOnEntry": true,
-      "watchMode": false,
-      "internalConsoleOptions": "neverOpen",
-      "env": {}
-    },
-    {
       "name": "Debug API server",
       "type": "bun",
       "request": "launch",
