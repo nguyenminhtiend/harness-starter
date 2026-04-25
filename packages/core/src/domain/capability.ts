@@ -1,8 +1,7 @@
-import type { Agent } from '@mastra/core/agent';
-import type { Workflow } from '@mastra/core/workflows';
 import type { z } from 'zod';
 import type { Logger } from '../observability/logger.ts';
 import type { ApprovalRequester } from './approval.ts';
+import type { StreamEventPayload } from './session-event.ts';
 
 export type { Logger } from '../observability/logger.ts';
 
@@ -19,20 +18,10 @@ export interface ExecutionContext {
   readonly logger: Logger;
 }
 
-export type CapabilityRunner =
-  | {
-      readonly kind: 'agent';
-      readonly build: (settings: unknown) => Agent;
-      readonly extractPrompt: (input: unknown) => string;
-      readonly maxSteps?: number;
-    }
-  | {
-      readonly kind: 'workflow';
-      readonly build: (settings: unknown) => Workflow;
-      readonly extractInput: (input: unknown) => Record<string, unknown>;
-      readonly approveStepId?: string;
-      readonly extractPlan?: (steps: Record<string, unknown>) => unknown;
-    };
+export type CapabilityRunner = (
+  input: unknown,
+  ctx: ExecutionContext,
+) => AsyncIterable<StreamEventPayload>;
 
 export interface CapabilityDefinition<I = unknown, O = unknown, S = unknown> {
   readonly id: string;

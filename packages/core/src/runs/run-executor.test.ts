@@ -55,48 +55,12 @@ function fakeAgentCapability(events: StreamEventPayload[]): CapabilityDefinition
     inputSchema: { parse: (v: unknown) => v } as never,
     outputSchema: { parse: (v: unknown) => v } as never,
     settingsSchema: { parse: (v: unknown) => v } as never,
-    runner: {
-      kind: 'agent',
-      build: () =>
-        ({
-          stream: async () => ({
-            fullStream: new ReadableStream({
-              start(controller) {
-                for (const e of events) {
-                  controller.enqueue(toStreamChunk(e));
-                }
-                controller.close();
-              },
-            }),
-          }),
-        }) as never,
-      extractPrompt: () => 'test',
+    runner: async function* () {
+      for (const e of events) {
+        yield e;
+      }
     },
   };
-}
-
-function toStreamChunk(e: StreamEventPayload): Record<string, unknown> {
-  switch (e.type) {
-    case 'text.delta':
-      return { type: 'text-delta', payload: { text: e.text } };
-    case 'reasoning.delta':
-      return { type: 'reasoning-delta', payload: { text: e.text } };
-    case 'tool.called':
-      return {
-        type: 'tool-call',
-        payload: { toolName: e.tool, args: e.args, toolCallId: e.callId },
-      };
-    case 'tool.result':
-      return { type: 'tool-result', payload: { toolCallId: e.callId, result: e.result } };
-    case 'step.finished':
-      return { type: 'step-finish', payload: { output: {} } };
-    case 'plan.proposed':
-      return { type: 'custom-plan', payload: { plan: e.plan } };
-    case 'artifact':
-      return { type: 'artifact', payload: { name: e.name, data: e.data } };
-    default:
-      return { type: 'unknown', payload: e };
-  }
 }
 
 function fakeAbortableAgentCapability(events: StreamEventPayload[]): CapabilityDefinition {
@@ -107,26 +71,13 @@ function fakeAbortableAgentCapability(events: StreamEventPayload[]): CapabilityD
     inputSchema: { parse: (v: unknown) => v } as never,
     outputSchema: { parse: (v: unknown) => v } as never,
     settingsSchema: { parse: (v: unknown) => v } as never,
-    runner: {
-      kind: 'agent',
-      build: () =>
-        ({
-          stream: async (_prompt: string, opts: { abortSignal?: AbortSignal }) => ({
-            fullStream: new ReadableStream({
-              start(controller) {
-                for (const e of events) {
-                  if (opts?.abortSignal?.aborted) {
-                    controller.close();
-                    return;
-                  }
-                  controller.enqueue(toStreamChunk(e));
-                }
-                controller.close();
-              },
-            }),
-          }),
-        }) as never,
-      extractPrompt: () => 'test',
+    runner: async function* (_input, ctx) {
+      for (const e of events) {
+        if (ctx.signal.aborted) {
+          return;
+        }
+        yield e;
+      }
     },
   };
 }
@@ -139,20 +90,9 @@ function fakeThrowingCapability(): CapabilityDefinition {
     inputSchema: { parse: (v: unknown) => v } as never,
     outputSchema: { parse: (v: unknown) => v } as never,
     settingsSchema: { parse: (v: unknown) => v } as never,
-    runner: {
-      kind: 'agent',
-      build: () =>
-        ({
-          stream: async () => ({
-            fullStream: new ReadableStream({
-              start(controller) {
-                controller.enqueue({ type: 'text-delta', payload: { text: 'start' } });
-                controller.error(new Error('capability exploded'));
-              },
-            }),
-          }),
-        }) as never,
-      extractPrompt: () => 'test',
+    runner: async function* () {
+      yield { type: 'text.delta' as const, text: 'start' };
+      throw new Error('capability exploded');
     },
   };
 }
@@ -166,27 +106,17 @@ function fakeHitlCapability(): CapabilityDefinition {
     outputSchema: { parse: (v: unknown) => v } as never,
     settingsSchema: { parse: (v: unknown) => v } as never,
     supportsApproval: true,
-    runner: {
-      kind: 'workflow',
-      build: () =>
-        ({
-          createRun: async () => ({
-            start: async () => ({
-              status: 'suspended',
-              steps: { plan: { status: 'success', output: { plan: { summary: 'Test plan' } } } },
-            }),
-            resume: async () => ({
-              status: 'success',
-              result: { text: 'Final report' },
-            }),
-          }),
-        }) as never,
-      extractInput: () => ({}),
-      extractPlan: (steps) => {
-        const planStep = steps.plan as { status: string; output?: { plan?: unknown } } | undefined;
-        return planStep?.status === 'success' ? planStep.output?.plan : undefined;
-      },
-      approveStepId: 'approve',
+    runner: async function* (_input, ctx) {
+      yield { type: 'step.finished' as const };
+      yield { type: 'plan.proposed' as const, plan: { summary: 'Test plan' } };
+
+      const decision = await ctx.approvals.request(`${ctx.runId}-approval`, {
+        summary: 'Test plan',
+      });
+      if (decision.kind === 'reject') {
+        return;
+      }
+      yield { type: 'artifact' as const, name: 'result', data: { text: 'Final report' } };
     },
   };
 }
@@ -200,27 +130,17 @@ function fakeRejectableHitlCapability(): CapabilityDefinition {
     outputSchema: { parse: (v: unknown) => v } as never,
     settingsSchema: { parse: (v: unknown) => v } as never,
     supportsApproval: true,
-    runner: {
-      kind: 'workflow',
-      build: () =>
-        ({
-          createRun: async () => ({
-            start: async () => ({
-              status: 'suspended',
-              steps: { plan: { status: 'success', output: { plan: { summary: 'Test plan' } } } },
-            }),
-            resume: async () => ({
-              status: 'success',
-              result: { text: 'Final report' },
-            }),
-          }),
-        }) as never,
-      extractInput: () => ({}),
-      extractPlan: (steps) => {
-        const planStep = steps.plan as { status: string; output?: { plan?: unknown } } | undefined;
-        return planStep?.status === 'success' ? planStep.output?.plan : undefined;
-      },
-      approveStepId: 'approve',
+    runner: async function* (_input, ctx) {
+      yield { type: 'step.finished' as const };
+      yield { type: 'plan.proposed' as const, plan: { summary: 'Test plan' } };
+
+      const decision = await ctx.approvals.request(`${ctx.runId}-approval`, {
+        summary: 'Test plan',
+      });
+      if (decision.kind === 'reject') {
+        return;
+      }
+      yield { type: 'artifact' as const, name: 'result', data: { text: 'Final report' } };
     },
   };
 }
@@ -413,7 +333,7 @@ describe('RunExecutor', () => {
     expect(after?.status).toBe('completed');
   });
 
-  it('passes settings to runner.build and memory to agent.stream', async () => {
+  it('passes settings via ctx and memory via ctx to runner', async () => {
     let receivedSettings: unknown;
     let receivedMemory: unknown;
     const capability: CapabilityDefinition = {
@@ -423,24 +343,10 @@ describe('RunExecutor', () => {
       inputSchema: { parse: (v: unknown) => v } as never,
       outputSchema: { parse: (v: unknown) => v } as never,
       settingsSchema: { parse: (v: unknown) => v } as never,
-      runner: {
-        kind: 'agent',
-        build: (settings) => {
-          receivedSettings = settings;
-          return {
-            stream: async (_p: string, opts: Record<string, unknown>) => {
-              receivedMemory = opts.memory;
-              return {
-                fullStream: new ReadableStream({
-                  start(c) {
-                    c.close();
-                  },
-                }),
-              };
-            },
-          } as never;
-        },
-        extractPrompt: () => 'test',
+      runner: async function* (_input, ctx) {
+        receivedSettings = ctx.settings;
+        receivedMemory = ctx.memory;
+        yield { type: 'text.delta' as const, text: '' };
       },
     };
 
@@ -452,63 +358,21 @@ describe('RunExecutor', () => {
     });
 
     expect(receivedSettings).toEqual({ model: 'gpt-4o' });
-    expect(receivedMemory).toEqual({ thread: 'conv-1', resource: 'harness' });
+    expect(receivedMemory).toEqual({ conversationId: 'conv-1' });
     expect(run.status).toBe('completed');
   });
 
-  it('passes maxSteps from runner config to agent.stream', async () => {
-    let receivedMaxSteps: unknown;
-    const capability: CapabilityDefinition = {
-      id: 'test-cap',
-      title: 'Test',
-      description: 'Test',
-      inputSchema: { parse: (v: unknown) => v } as never,
-      outputSchema: { parse: (v: unknown) => v } as never,
-      settingsSchema: { parse: (v: unknown) => v } as never,
-      runner: {
-        kind: 'agent',
-        build: () =>
-          ({
-            stream: async (_p: string, opts: Record<string, unknown>) => {
-              receivedMaxSteps = opts.maxSteps;
-              return {
-                fullStream: new ReadableStream({
-                  start(c) {
-                    c.close();
-                  },
-                }),
-              };
-            },
-          }) as never,
-        extractPrompt: () => 'test',
-        maxSteps: 10,
-      },
-    };
-
-    const { executor } = setup();
-    const run = new Run('run-9', 'test-cap', '2026-04-24T00:00:00.000Z');
-    await executor.execute(run, capability, {}, new AbortController().signal);
-
-    expect(receivedMaxSteps).toBe(10);
-  });
-
-  it('fails when workflow returns unexpected status', async () => {
+  it('fails when runner throws', async () => {
     const capability: CapabilityDefinition = {
       id: 'wf-fail',
       title: 'Fail WF',
-      description: 'Failing workflow',
+      description: 'Failing runner',
       inputSchema: { parse: (v: unknown) => v } as never,
       outputSchema: { parse: (v: unknown) => v } as never,
       settingsSchema: { parse: (v: unknown) => v } as never,
-      runner: {
-        kind: 'workflow',
-        build: () =>
-          ({
-            createRun: async () => ({
-              start: async () => ({ status: 'failed', error: 'boom' }),
-            }),
-          }) as never,
-        extractInput: () => ({}),
+      runner: async function* () {
+        yield { type: 'text.delta' as const, text: 'before-fail' };
+        throw new Error('Workflow failed with status: failed');
       },
     };
 
@@ -521,23 +385,16 @@ describe('RunExecutor', () => {
     expect(events.map((e) => e.type)).toContain('run.failed');
   });
 
-  it('yields artifact for workflow that succeeds without suspension', async () => {
+  it('yields artifact for runner that succeeds without suspension', async () => {
     const capability: CapabilityDefinition = {
       id: 'wf-direct',
       title: 'Direct WF',
-      description: 'Workflow succeeds immediately',
+      description: 'Runner succeeds immediately',
       inputSchema: { parse: (v: unknown) => v } as never,
       outputSchema: { parse: (v: unknown) => v } as never,
       settingsSchema: { parse: (v: unknown) => v } as never,
-      runner: {
-        kind: 'workflow',
-        build: () =>
-          ({
-            createRun: async () => ({
-              start: async () => ({ status: 'success', result: { answer: 42 } }),
-            }),
-          }) as never,
-        extractInput: () => ({}),
+      runner: async function* () {
+        yield { type: 'artifact' as const, name: 'result', data: { answer: 42 } };
       },
     };
 

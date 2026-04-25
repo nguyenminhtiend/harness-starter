@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { mockModel } from '../../agents/testing.ts';
 import { simpleChatCapability } from './capability.ts';
 
 describe('simpleChatCapability', () => {
@@ -9,8 +8,8 @@ describe('simpleChatCapability', () => {
     expect(simpleChatCapability.supportsApproval).toBeFalsy();
   });
 
-  test('runner kind is agent', () => {
-    expect(simpleChatCapability.runner.kind).toBe('agent');
+  test('runner is a function', () => {
+    expect(typeof simpleChatCapability.runner).toBe('function');
   });
 
   test('inputSchema validates correct input', () => {
@@ -32,21 +31,5 @@ describe('simpleChatCapability', () => {
       model: 'ollama:qwen2.5:3b',
     });
     expect(result.success).toBe(true);
-  });
-
-  test('runner.build creates an agent with the given model', () => {
-    const model = mockModel([{ type: 'text', text: 'Hello there!' }]);
-
-    if (simpleChatCapability.runner.kind === 'agent') {
-      const agent = simpleChatCapability.runner.build({ model });
-      expect(agent).toBeDefined();
-    }
-  });
-
-  test('runner.extractPrompt extracts message from input', () => {
-    if (simpleChatCapability.runner.kind === 'agent') {
-      const prompt = simpleChatCapability.runner.extractPrompt({ message: 'hi there' });
-      expect(prompt).toBe('hi there');
-    }
   });
 });

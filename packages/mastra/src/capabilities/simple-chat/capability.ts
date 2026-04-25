@@ -1,6 +1,7 @@
 import type { CapabilityDefinition } from '@harness/core';
 import { resolveModel } from '@harness/core';
 import { createSimpleChatAgent } from '../../agents/index.ts';
+import { agentRunner } from '../runners/index.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
 
@@ -13,8 +14,7 @@ export const simpleChatCapability: CapabilityDefinition<SimpleChatInput, SimpleC
   inputSchema: SimpleChatInput,
   outputSchema: SimpleChatOutput,
   settingsSchema: SimpleChatSettings,
-  runner: {
-    kind: 'agent',
+  runner: agentRunner({
     build: (settings) => {
       const { model } = settings as { model: string };
       return createSimpleChatAgent({
@@ -23,5 +23,5 @@ export const simpleChatCapability: CapabilityDefinition<SimpleChatInput, SimpleC
     },
     extractPrompt: (input) => (input as SimpleChatInput).message,
     maxSteps: 5,
-  },
+  }),
 };

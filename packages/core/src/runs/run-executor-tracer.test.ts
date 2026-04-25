@@ -53,24 +53,10 @@ function fakeAgentCapability(events: StreamEventPayload[]): CapabilityDefinition
     inputSchema: { parse: (v: unknown) => v } as never,
     outputSchema: { parse: (v: unknown) => v } as never,
     settingsSchema: { parse: (v: unknown) => v } as never,
-    runner: {
-      kind: 'agent',
-      build: () =>
-        ({
-          stream: async () => ({
-            fullStream: new ReadableStream({
-              start(controller) {
-                for (const e of events) {
-                  if (e.type === 'text.delta') {
-                    controller.enqueue({ type: 'text-delta', payload: { text: e.text } });
-                  }
-                }
-                controller.close();
-              },
-            }),
-          }),
-        }) as never,
-      extractPrompt: () => 'test',
+    runner: async function* () {
+      for (const e of events) {
+        yield e;
+      }
     },
   };
 }
@@ -83,20 +69,9 @@ function fakeThrowingAgentCapability(): CapabilityDefinition {
     inputSchema: { parse: (v: unknown) => v } as never,
     outputSchema: { parse: (v: unknown) => v } as never,
     settingsSchema: { parse: (v: unknown) => v } as never,
-    runner: {
-      kind: 'agent',
-      build: () =>
-        ({
-          stream: async () => ({
-            fullStream: new ReadableStream({
-              start(controller) {
-                controller.enqueue({ type: 'text-delta', payload: { text: 'before boom' } });
-                controller.error(new Error('boom'));
-              },
-            }),
-          }),
-        }) as never,
-      extractPrompt: () => 'test',
+    runner: async function* () {
+      yield { type: 'text.delta' as const, text: 'before boom' };
+      throw new Error('boom');
     },
   };
 }

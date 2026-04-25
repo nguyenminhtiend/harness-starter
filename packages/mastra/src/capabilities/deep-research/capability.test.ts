@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { mockModel } from '../../agents/testing.ts';
 import { deepResearchCapability } from './capability.ts';
 
 describe('deepResearchCapability', () => {
@@ -9,8 +8,8 @@ describe('deepResearchCapability', () => {
     expect(deepResearchCapability.supportsApproval).toBe(true);
   });
 
-  test('runner kind is workflow', () => {
-    expect(deepResearchCapability.runner.kind).toBe('workflow');
+  test('runner is a function', () => {
+    expect(typeof deepResearchCapability.runner).toBe('function');
   });
 
   test('inputSchema validates correct input', () => {
@@ -33,32 +32,5 @@ describe('deepResearchCapability', () => {
       depth: 'basic',
     });
     expect(result.success).toBe(true);
-  });
-
-  test('runner.build creates a workflow', () => {
-    const model = mockModel([
-      { type: 'text', text: '{}' },
-      { type: 'text', text: '{}' },
-      { type: 'text', text: '{}' },
-      { type: 'text', text: '{}' },
-    ]);
-
-    if (deepResearchCapability.runner.kind === 'workflow') {
-      const wf = deepResearchCapability.runner.build({ model });
-      expect(wf).toBeDefined();
-    }
-  });
-
-  test('runner.extractInput extracts question from input', () => {
-    if (deepResearchCapability.runner.kind === 'workflow') {
-      const input = deepResearchCapability.runner.extractInput({ question: 'What is X?' });
-      expect(input).toEqual({ question: 'What is X?' });
-    }
-  });
-
-  test('runner.approveStepId is set', () => {
-    if (deepResearchCapability.runner.kind === 'workflow') {
-      expect(deepResearchCapability.runner.approveStepId).toBe('approve');
-    }
   });
 });
