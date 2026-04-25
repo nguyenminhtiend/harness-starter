@@ -9,6 +9,8 @@ import { DeepResearchSettings } from './settings.ts';
 
 type WorkflowModel = Parameters<typeof createDeepResearchWorkflow>[0]['model'];
 
+const sharedStorage = new LibSQLStore({ id: 'harness-wf', url: 'file::memory:?cache=shared' });
+
 export const deepResearchCapability: CapabilityDefinition<DeepResearchInput, DeepResearchOutput> = {
   id: 'deep-research',
   title: 'Deep Research',
@@ -34,7 +36,7 @@ export const deepResearchCapability: CapabilityDefinition<DeepResearchInput, Dee
       });
       const mastra = new Mastra({
         workflows: { deepResearch: wf },
-        storage: new LibSQLStore({ id: 'harness-wf', url: 'file::memory:?cache=shared' }),
+        storage: sharedStorage,
       });
       return mastra.getWorkflow('deepResearch');
     },
