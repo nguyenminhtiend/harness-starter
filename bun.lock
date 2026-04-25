@@ -36,6 +36,18 @@
         "typescript": "^5.7.0",
       },
     },
+    "apps/cli": {
+      "name": "@harness/example-cli",
+      "version": "0.0.0",
+      "dependencies": {
+        "@harness/bootstrap": "workspace:*",
+        "@harness/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
     "apps/console": {
       "name": "@harness/example-console",
       "version": "0.0.0",
@@ -353,6 +365,8 @@
     "@harness/core": ["@harness/core@workspace:packages/core"],
 
     "@harness/example-api": ["@harness/example-api@workspace:apps/api"],
+
+    "@harness/example-cli": ["@harness/example-cli@workspace:apps/cli"],
 
     "@harness/example-console": ["@harness/example-console@workspace:apps/console"],
 
