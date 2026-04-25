@@ -11,8 +11,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@harness/core": "workspace:*",
-    "@harness/mastra": "workspace:*"
+    "@harness/core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

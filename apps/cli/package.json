@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@harness/bootstrap": "workspace:*",
-    "@harness/core": "workspace:*"
+    "@harness/core": "workspace:*",
+    "@harness/mastra": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

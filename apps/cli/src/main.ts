@@ -1,5 +1,6 @@
 import { composeHarness } from '@harness/bootstrap';
 import { startRun } from '@harness/core';
+import { createCapabilityRegistry } from '@harness/mastra/capabilities';
 
 const message = process.argv[2];
 if (!message) {
@@ -7,7 +8,10 @@ if (!message) {
   process.exit(1);
 }
 
-const { deps, shutdown } = composeHarness({ logLevel: 'error' });
+const { deps, shutdown } = composeHarness({
+  capabilityRegistry: createCapabilityRegistry(),
+  logLevel: 'error',
+});
 const controller = new AbortController();
 
 deps.runAbortControllers.set('cli', controller);

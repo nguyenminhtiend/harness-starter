@@ -1,5 +1,6 @@
 import { composeHarness } from '@harness/bootstrap';
 import { createHttpApp } from '@harness/http';
+import { createCapabilityRegistry } from '@harness/mastra/capabilities';
 import type { Hono } from 'hono';
 import type { Config } from './config.ts';
 
@@ -9,6 +10,9 @@ export interface ComposedApp {
 }
 
 export function compose(config: Config): ComposedApp {
-  const { deps, shutdown } = composeHarness({ logLevel: config.logLevel });
+  const { deps, shutdown } = composeHarness({
+    capabilityRegistry: createCapabilityRegistry(),
+    logLevel: config.logLevel,
+  });
   return { app: createHttpApp(deps), shutdown };
 }

@@ -15,9 +15,9 @@ import {
   loadProviderKeysFromEnv,
   RunExecutor,
 } from '@harness/core';
-import { createCapabilityRegistry } from '@harness/mastra/capabilities';
 
 export interface HarnessConfig {
+  capabilityRegistry: CapabilityRegistry;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
 }
 
@@ -44,8 +44,8 @@ export interface ComposedHarness {
   readonly shutdown: () => Promise<void>;
 }
 
-export function composeHarness(config?: HarnessConfig): ComposedHarness {
-  const logger = createPinoLogger({ level: config?.logLevel ?? 'info' });
+export function composeHarness(config: HarnessConfig): ComposedHarness {
+  const logger = createPinoLogger({ level: config.logLevel ?? 'info' });
   const clock = createSystemClock();
   const idGen = createCryptoIdGen();
   const tracer = createNoOpTracer();
@@ -57,7 +57,7 @@ export function composeHarness(config?: HarnessConfig): ComposedHarness {
   const approvalQueue = createInMemoryApprovalQueue(approvalStore);
   const conversationStore = createInMemoryConversationStore();
   const settingsStore = createInMemorySettingsStore();
-  const capabilityRegistry = createCapabilityRegistry();
+  const { capabilityRegistry } = config;
   const providerResolver = createProviderResolver();
   const providerKeys = loadProviderKeysFromEnv();
 

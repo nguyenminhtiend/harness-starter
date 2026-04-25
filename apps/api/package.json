@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@harness/bootstrap": "workspace:*",
-    "@harness/http": "workspace:*"
+    "@harness/http": "workspace:*",
+    "@harness/mastra": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",
