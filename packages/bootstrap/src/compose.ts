@@ -1,5 +1,9 @@
 import {
+  type ApprovalQueue,
+  type ApprovalStore,
   type CapabilityRegistry,
+  type Clock,
+  type ConversationStore,
   createCryptoIdGen,
   createInMemoryApprovalQueue,
   createInMemoryApprovalStore,
@@ -12,8 +16,16 @@ import {
   createPinoLogger,
   createProviderResolver,
   createSystemClock,
+  type EventBus,
+  type EventLog,
+  type IdGen,
+  type Logger,
   loadProviderKeysFromEnv,
+  type ProviderKeys,
+  type ProviderResolver,
   RunExecutor,
+  type RunStore,
+  type SettingsStore,
 } from '@harness/core';
 
 export interface HarnessConfig {
@@ -22,19 +34,19 @@ export interface HarnessConfig {
 }
 
 export interface HarnessDeps {
-  readonly runStore: ReturnType<typeof createInMemoryRunStore>;
-  readonly eventLog: ReturnType<typeof createInMemoryEventLog>;
-  readonly eventBus: ReturnType<typeof createInMemoryEventBus>;
-  readonly approvalStore: ReturnType<typeof createInMemoryApprovalStore>;
-  readonly approvalQueue: ReturnType<typeof createInMemoryApprovalQueue>;
-  readonly conversationStore: ReturnType<typeof createInMemoryConversationStore>;
-  readonly settingsStore: ReturnType<typeof createInMemorySettingsStore>;
+  readonly runStore: RunStore;
+  readonly eventLog: EventLog;
+  readonly eventBus: EventBus;
+  readonly approvalStore: ApprovalStore;
+  readonly approvalQueue: ApprovalQueue;
+  readonly conversationStore: ConversationStore;
+  readonly settingsStore: SettingsStore;
   readonly capabilityRegistry: CapabilityRegistry;
-  readonly providerResolver: ReturnType<typeof createProviderResolver>;
-  readonly providerKeys: ReturnType<typeof loadProviderKeysFromEnv>;
-  readonly clock: ReturnType<typeof createSystemClock>;
-  readonly idGen: ReturnType<typeof createCryptoIdGen>;
-  readonly logger: ReturnType<typeof createPinoLogger>;
+  readonly providerResolver: ProviderResolver;
+  readonly providerKeys: ProviderKeys;
+  readonly clock: Clock;
+  readonly idGen: IdGen;
+  readonly logger: Logger;
   readonly executor: RunExecutor;
   readonly runAbortControllers: Map<string, AbortController>;
 }
