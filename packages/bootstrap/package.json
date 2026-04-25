@@ -11,7 +11,8 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@harness/core": "workspace:*"
+    "@harness/core": "workspace:*",
+    "@mastra/loggers": "1.1.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -18,16 +18,19 @@ import {
   type IdGen,
   type Logger,
   loadProviderKeysFromEnv,
+  type MastraLogger,
   type ProviderKeys,
   type ProviderResolver,
   RunExecutor,
   type RunStore,
   type SettingsStore,
 } from '@harness/core';
+import { PinoLogger } from '@mastra/loggers';
 
 export interface HarnessConfig {
   capabilityRegistry: CapabilityRegistry;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  pretty?: boolean;
 }
 
 export interface HarnessDeps {
@@ -43,6 +46,7 @@ export interface HarnessDeps {
   readonly clock: Clock;
   readonly idGen: IdGen;
   readonly logger: Logger;
+  readonly mastraLogger: MastraLogger;
   readonly executor: RunExecutor;
 }
 
@@ -52,7 +56,10 @@ export interface ComposedHarness {
 }
 
 export function composeHarness(config: HarnessConfig): ComposedHarness {
-  const logger = createPinoLogger({ level: config.logLevel ?? 'info' });
+  const level = config.logLevel ?? 'info';
+  const pretty = config.pretty ?? false;
+  const logger = createPinoLogger({ level, pretty });
+  const mastraLogger = new PinoLogger({ level, prettyPrint: pretty });
   const clock = createSystemClock();
   const idGen = createCryptoIdGen();
 
@@ -88,6 +95,7 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
     clock,
     idGen,
     logger,
+    mastraLogger,
     executor,
   };
 
