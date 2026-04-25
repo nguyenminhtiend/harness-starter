@@ -1,4 +1,5 @@
 import { listCapabilities, updateSettings } from '@harness/core';
+import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
@@ -45,8 +46,8 @@ export function settingsRoutes(deps: HttpAppDeps): Hono {
     return c.json(result);
   });
 
-  app.put('/', async (c) => {
-    const body = UpdateBody.parse(await c.req.json());
+  app.put('/', zValidator('json', UpdateBody), async (c) => {
+    const body = c.req.valid('json');
     await updateSettings(deps, body.scope, body.settings);
     const updated = await buildSettingsResponse(deps);
     return c.json(updated);

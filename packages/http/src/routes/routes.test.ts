@@ -153,6 +153,16 @@ describe('POST /runs', () => {
     expect(typeof body.runId).toBe('string');
   });
 
+  test('returns 400 for missing capabilityId', async () => {
+    const app = createHttpApp(createFakeHttpDeps());
+    const res = await app.request('/runs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input: { message: 'hi' } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   test('returns 404 for unknown capability', async () => {
     const deps = depsWithCapability();
     const app = createHttpApp(deps);
@@ -483,6 +493,16 @@ describe('PUT /settings', () => {
     const body = await res.json();
     expect(body.global.model).toBe('gpt-4');
     expect(body.global.temp).toBe(0.7);
+  });
+
+  test('returns 400 for invalid body', async () => {
+    const app = createHttpApp(createFakeHttpDeps());
+    const res = await app.request('/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { model: 'gpt-4' } }),
+    });
+    expect(res.status).toBe(400);
   });
 });
 
