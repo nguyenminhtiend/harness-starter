@@ -158,18 +158,16 @@ describe('RunExecutor tracer integration', () => {
   });
 
   it('logs run start and completion with durationMs', async () => {
-    const logs: Array<{ msg: string; data?: Record<string, unknown> }> = [];
-    const capturingLogger = {
-      debug() {},
-      info(msg: string, data?: Record<string, unknown>) {
-        logs.push({ msg, data });
+    const entries: Array<Record<string, unknown>> = [];
+    const { Writable } = require('node:stream');
+    const dest = new Writable({
+      write(chunk: Buffer, _encoding: string, cb: () => void) {
+        entries.push(JSON.parse(chunk.toString()));
+        cb();
       },
-      warn() {},
-      error() {},
-      child() {
-        return capturingLogger;
-      },
-    };
+    });
+    const pino = require('pino');
+    const capturingLogger = pino({ level: 'debug' }, dest);
 
     const { runStore, eventLog, eventBus, clock } = setup();
     const executor = new RunExecutor({
@@ -185,14 +183,14 @@ describe('RunExecutor tracer integration', () => {
 
     await executor.execute(run, capability, {}, new AbortController().signal);
 
-    const startLog = logs.find((l) => l.msg === 'Run started');
+    const startLog = entries.find((l) => l.msg === 'Run started');
     expect(startLog).toBeDefined();
-    expect(startLog?.data?.runId).toBe('run-t4');
-    expect(startLog?.data?.capabilityId).toBe('test-cap');
+    expect(startLog?.runId).toBe('run-t4');
+    expect(startLog?.capabilityId).toBe('test-cap');
 
-    const completeLog = logs.find((l) => l.msg === 'Run finished');
+    const completeLog = entries.find((l) => l.msg === 'Run finished');
     expect(completeLog).toBeDefined();
-    expect(completeLog?.data?.runId).toBe('run-t4');
-    expect(typeof completeLog?.data?.durationMs).toBe('number');
+    expect(completeLog?.runId).toBe('run-t4');
+    expect(typeof completeLog?.durationMs).toBe('number');
   });
 });

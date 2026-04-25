@@ -201,7 +201,7 @@ export class RunExecutor {
       capabilityId: run.capabilityId,
     });
 
-    logger.info('Run started', { runId: run.id, capabilityId: run.capabilityId });
+    logger.info({ runId: run.id, capabilityId: run.capabilityId }, 'Run started');
 
     await this.emitAndSync(run.start(input, ts), run);
 
@@ -237,22 +237,18 @@ export class RunExecutor {
       }
 
       const durationMs = Math.round(performance.now() - startTime);
-      logger.info('Run finished', {
-        runId: run.id,
-        capabilityId: run.capabilityId,
-        status: run.status,
-        durationMs,
-      });
+      logger.info(
+        { runId: run.id, capabilityId: run.capabilityId, status: run.status, durationMs },
+        'Run finished',
+      );
       span?.setStatus('ok');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       const durationMs = Math.round(performance.now() - startTime);
-      logger.error('Run failed', {
-        runId: run.id,
-        capabilityId: run.capabilityId,
-        error: message,
-        durationMs,
-      });
+      logger.error(
+        { runId: run.id, capabilityId: run.capabilityId, error: message, durationMs },
+        'Run failed',
+      );
 
       if (run.status === 'running' || run.status === 'suspended') {
         const failTs = clock.now();

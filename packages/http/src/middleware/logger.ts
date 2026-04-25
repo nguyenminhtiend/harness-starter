@@ -21,11 +21,11 @@ export function accessLogger(logger: Logger) {
     }
 
     if (status >= 500) {
-      logger.error('request', data);
+      logger.error(data, 'request');
     } else if (status >= 400) {
-      logger.warn('request', data);
+      logger.warn(data, 'request');
     } else {
-      logger.info('request', data);
+      logger.info(data, 'request');
     }
   });
 }

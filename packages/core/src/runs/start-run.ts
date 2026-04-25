@@ -71,10 +71,10 @@ export async function startRun(
       memory,
     })
     .catch((err) => {
-      deps.logger.error('RunExecutor unhandled error', {
-        runId,
-        error: err instanceof Error ? err.message : 'unknown',
-      });
+      deps.logger.error(
+        { runId, error: err instanceof Error ? err.message : 'unknown' },
+        'RunExecutor unhandled error',
+      );
     });
 
   return { runId };

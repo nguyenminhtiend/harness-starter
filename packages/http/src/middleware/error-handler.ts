@@ -19,13 +19,16 @@ export function errorHandler(logger?: Logger): ErrorHandler {
 
     if (err instanceof AppError) {
       if (logger && err.statusCode >= 500) {
-        logger.error('server error', {
-          path: c.req.path,
-          method: c.req.method,
-          code: err.code,
-          error: err.message,
-          stack: err.stack,
-        });
+        logger.error(
+          {
+            path: c.req.path,
+            method: c.req.method,
+            code: err.code,
+            error: err.message,
+            stack: err.stack,
+          },
+          'server error',
+        );
       }
 
       const message =
@@ -36,12 +39,10 @@ export function errorHandler(logger?: Logger): ErrorHandler {
     }
 
     if (logger) {
-      logger.error('unhandled error', {
-        path: c.req.path,
-        method: c.req.method,
-        error: err.message,
-        stack: err.stack,
-      });
+      logger.error(
+        { path: c.req.path, method: c.req.method, error: err.message, stack: err.stack },
+        'unhandled error',
+      );
     }
 
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);

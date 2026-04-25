@@ -1,5 +1,5 @@
-import type { Logger } from '../domain/capability.ts';
 import type { MemoryProvider } from '../memory/conversation-memory.ts';
+import { createPinoLogger } from '../observability/logger.ts';
 import { createInMemoryApprovalStore } from '../storage/inmem-approval-store.ts';
 import { createInMemoryConversationStore } from '../storage/inmem-conversation-store.ts';
 import { createInMemoryEventBus } from '../storage/inmem-event-bus.ts';
@@ -35,16 +35,8 @@ export function createFakeIdGen(prefix = '00000000-0000-4000-8000'): IdGen {
   };
 }
 
-export function createFakeLogger(): Logger {
-  return {
-    debug() {},
-    info() {},
-    warn() {},
-    error() {},
-    child() {
-      return createFakeLogger();
-    },
-  };
+export function createFakeLogger() {
+  return createPinoLogger({ level: 'silent' });
 }
 
 export function createFakeMemoryProvider(): MemoryProvider {

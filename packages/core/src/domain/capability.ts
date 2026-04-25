@@ -1,15 +1,10 @@
 import type { Agent } from '@mastra/core/agent';
 import type { Workflow } from '@mastra/core/workflows';
 import type { z } from 'zod';
+import type { Logger } from '../observability/logger.ts';
 import type { ApprovalRequester } from './approval.ts';
 
-export interface Logger {
-  debug(msg: string, data?: Record<string, unknown>): void;
-  info(msg: string, data?: Record<string, unknown>): void;
-  warn(msg: string, data?: Record<string, unknown>): void;
-  error(msg: string, data?: Record<string, unknown>): void;
-  child(bindings: Record<string, unknown>): Logger;
-}
+export type { Logger } from '../observability/logger.ts';
 
 export interface MemoryHandle {
   readonly conversationId: string;
