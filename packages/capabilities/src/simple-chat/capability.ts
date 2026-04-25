@@ -1,17 +1,10 @@
 import { createSimpleChatAgent } from '@harness/agents';
 import type { CapabilityDefinition } from '@harness/core';
-import { createLanguageModel } from '@harness/core';
+import { resolveModel } from '@harness/core';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
 
 type AgentModel = Parameters<typeof createSimpleChatAgent>[0]['model'];
-
-function resolveModel(raw: unknown): AgentModel {
-  if (typeof raw === 'string') {
-    return createLanguageModel(raw) as AgentModel;
-  }
-  return raw as AgentModel;
-}
 
 export const simpleChatCapability: CapabilityDefinition<SimpleChatInput, SimpleChatOutput> = {
   id: 'simple-chat',
@@ -25,7 +18,7 @@ export const simpleChatCapability: CapabilityDefinition<SimpleChatInput, SimpleC
     build: (settings) => {
       const s = settings as SimpleChatSettings;
       return createSimpleChatAgent({
-        model: resolveModel(s.model),
+        model: resolveModel(s.model) as AgentModel,
       });
     },
     extractPrompt: (input) => (input as SimpleChatInput).message,

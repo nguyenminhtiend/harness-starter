@@ -1,5 +1,5 @@
 import type { CapabilityDefinition } from '@harness/core';
-import { createLanguageModel } from '@harness/core';
+import { resolveModel } from '@harness/core';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
@@ -7,13 +7,6 @@ import { DeepResearchInput, DeepResearchOutput } from './input.ts';
 import { DeepResearchSettings } from './settings.ts';
 
 type WorkflowModel = Parameters<typeof createDeepResearchWorkflow>[0]['model'];
-
-function resolveModel(raw: unknown): WorkflowModel {
-  if (typeof raw === 'string') {
-    return createLanguageModel(raw) as WorkflowModel;
-  }
-  return raw as WorkflowModel;
-}
 
 export const deepResearchCapability: CapabilityDefinition<DeepResearchInput, DeepResearchOutput> = {
   id: 'deep-research',
@@ -28,7 +21,7 @@ export const deepResearchCapability: CapabilityDefinition<DeepResearchInput, Dee
     kind: 'workflow',
     build: (settings) => {
       const s = settings as DeepResearchSettings;
-      const model = resolveModel(s.model);
+      const model = resolveModel(s.model) as WorkflowModel;
       const wf = createDeepResearchWorkflow({
         model,
         ...(s.depth ? { depth: s.depth } : {}),
