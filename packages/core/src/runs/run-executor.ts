@@ -8,7 +8,6 @@ import type {
 } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
-import type { Tracer } from '../observability/tracer.ts';
 import type { ApprovalQueue } from '../storage/memory/approval-queue.ts';
 import type { EventBus } from '../storage/memory/event-bus.ts';
 import type { EventLog } from '../storage/memory/event-log.ts';
@@ -22,7 +21,6 @@ export interface RunExecutorDeps {
   readonly clock: Clock;
   readonly logger: Logger;
   readonly approvalQueue?: ApprovalQueue | undefined;
-  readonly tracer?: Tracer | undefined;
 }
 
 export interface RunExecutionParams {
@@ -172,14 +170,9 @@ export class RunExecutor {
     signal: AbortSignal,
     params?: RunExecutionParams,
   ): Promise<void> {
-    const { clock, logger, tracer } = this.deps;
+    const { clock, logger } = this.deps;
     const ts = clock.now();
     const startTime = performance.now();
-
-    const span = tracer?.startSpan('run.execute', {
-      runId: run.id,
-      capabilityId: run.capabilityId,
-    });
 
     logger.info({ runId: run.id, capabilityId: run.capabilityId }, 'Run started');
 
@@ -199,8 +192,6 @@ export class RunExecutor {
           run,
           failTs,
         );
-        span?.setStatus('error');
-        span?.end();
         this.deps.eventBus.close(run.id);
         this.notifyComplete(run.id);
         return;
@@ -220,7 +211,6 @@ export class RunExecutor {
     try {
       if (signal.aborted) {
         await this.emitAndSync(run.cancel('Aborted before execution', ts), run, ts);
-        span?.setStatus('ok');
         return;
       }
 
@@ -245,7 +235,6 @@ export class RunExecutor {
         { runId: run.id, capabilityId: run.capabilityId, status: run.status, durationMs },
         'Run finished',
       );
-      span?.setStatus('ok');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       const durationMs = Math.round(performance.now() - startTime);
@@ -266,10 +255,7 @@ export class RunExecutor {
           );
         }
       }
-
-      span?.setStatus('error');
     } finally {
-      span?.end();
       this.deps.eventBus.close(run.id);
       this.notifyComplete(run.id);
     }

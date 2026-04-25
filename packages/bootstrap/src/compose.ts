@@ -12,7 +12,6 @@ import {
   createInMemoryEventLog,
   createInMemoryRunStore,
   createInMemorySettingsStore,
-  createNoOpTracer,
   createPinoLogger,
   createProviderResolver,
   createSystemClock,
@@ -59,7 +58,6 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
   const logger = createPinoLogger({ level: config.logLevel ?? 'info' });
   const clock = createSystemClock();
   const idGen = createCryptoIdGen();
-  const tracer = createNoOpTracer();
 
   const runStore = createInMemoryRunStore();
   const eventLog = createInMemoryEventLog();
@@ -79,7 +77,6 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
     clock,
     logger,
     approvalQueue,
-    tracer,
   });
 
   const deps: HarnessDeps = {
