@@ -1,5 +1,6 @@
 import { approveRun, cancelRun, deleteRun, startRun, streamRunEvents } from '@harness/core';
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { openApi } from 'hono-zod-openapi';
 import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
@@ -119,31 +120,24 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
     const parsed = lastEventId ? Number.parseInt(lastEventId, 10) : undefined;
     const fromSeq = parsed !== undefined && Number.isFinite(parsed) ? parsed + 1 : undefined;
 
-    const stream = streamRunEvents(deps, runId, fromSeq);
+    const events = streamRunEvents(deps, runId, fromSeq);
 
-    return new Response(
-      new ReadableStream({
-        async start(controller) {
-          const encoder = new TextEncoder();
-          try {
-            for await (const event of stream) {
-              const data = `event: session\nid: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`;
-              controller.enqueue(encoder.encode(data));
-            }
-          } catch (_err) {
-            const errorData = `event: error\ndata: ${JSON.stringify({ message: 'Stream interrupted' })}\n\n`;
-            controller.enqueue(encoder.encode(errorData));
-          } finally {
-            controller.close();
-          }
-        },
-      }),
-      {
-        headers: {
-          'content-type': 'text/event-stream',
-          'cache-control': 'no-cache',
-          connection: 'keep-alive',
-        },
+    return streamSSE(
+      c,
+      async (stream) => {
+        for await (const event of events) {
+          await stream.writeSSE({
+            event: 'session',
+            id: String(event.seq),
+            data: JSON.stringify(event),
+          });
+        }
+      },
+      async (_err, stream) => {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ message: 'Stream interrupted' }),
+        });
       },
     );
   });
