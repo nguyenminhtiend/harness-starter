@@ -2,6 +2,8 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import type { StepLogger } from '../lib/logged-step.ts';
+import { startStepLog } from '../lib/logged-step.ts';
 import { extractJson } from './json.ts';
 import { ResearchPlan } from './schemas.ts';
 
@@ -60,6 +62,7 @@ export interface CreatePlanStepOptions {
   model: MastraModelConfig;
   depth?: string;
   systemPrompt?: string;
+  logger?: StepLogger | undefined;
 }
 
 const planInputSchema = z.object({
@@ -79,14 +82,21 @@ export function createPlanStep(opts: CreatePlanStepOptions) {
     inputSchema: planInputSchema,
     outputSchema: planOutputSchema,
     execute: async ({ inputData }) => {
-      const depth = inputData.depth ?? opts.depth;
-      const plan = await generatePlan({
-        model: opts.model,
-        question: inputData.question,
-        ...(depth ? { depth } : {}),
-        ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
-      });
-      return { question: inputData.question, plan };
+      const timer = startStepLog(opts.logger, 'plan');
+      try {
+        const depth = inputData.depth ?? opts.depth;
+        const plan = await generatePlan({
+          model: opts.model,
+          question: inputData.question,
+          ...(depth ? { depth } : {}),
+          ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+        });
+        timer.end('success');
+        return { question: inputData.question, plan };
+      } catch (err) {
+        timer.end('error');
+        throw err;
+      }
     },
   });
 }

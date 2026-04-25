@@ -2,6 +2,8 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import type { StepLogger } from '../lib/logged-step.ts';
+import { startStepLog } from '../lib/logged-step.ts';
 import { extractJson } from './json.ts';
 import { Finding, ResearchPlan } from './schemas.ts';
 
@@ -85,6 +87,7 @@ export async function generateReport(opts: GenerateReportOptions): Promise<strin
 export interface CreateReportStepOptions {
   model: MastraModelConfig;
   systemPrompt?: string;
+  logger?: StepLogger | undefined;
 }
 
 const inputSchema = z.object({
@@ -108,18 +111,25 @@ export function createReportStep(opts: CreateReportStepOptions) {
     inputSchema,
     outputSchema,
     execute: async ({ inputData }) => {
-      const reportText = await generateReport({
-        model: opts.model,
-        findings: inputData.findings,
-        ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
-        ...(inputData.factCheckIssues ? { factCheckIssues: inputData.factCheckIssues } : {}),
-      });
-      return {
-        question: inputData.question,
-        plan: inputData.plan,
-        findings: inputData.findings,
-        reportText,
-      };
+      const timer = startStepLog(opts.logger, 'report');
+      try {
+        const reportText = await generateReport({
+          model: opts.model,
+          findings: inputData.findings,
+          ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+          ...(inputData.factCheckIssues ? { factCheckIssues: inputData.factCheckIssues } : {}),
+        });
+        timer.end('success');
+        return {
+          question: inputData.question,
+          plan: inputData.plan,
+          findings: inputData.findings,
+          reportText,
+        };
+      } catch (err) {
+        timer.end('error');
+        throw err;
+      }
     },
   });
 }

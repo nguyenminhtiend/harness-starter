@@ -2,6 +2,8 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import type { StepLogger } from '../lib/logged-step.ts';
+import { startStepLog } from '../lib/logged-step.ts';
 import { extractJson } from './json.ts';
 import { Finding, ResearchPlan } from './schemas.ts';
 
@@ -72,6 +74,7 @@ export async function checkFacts(opts: CheckFactsOptions): Promise<FactCheckResu
 export interface CreateFactCheckStepOptions {
   model: MastraModelConfig;
   systemPrompt?: string;
+  logger?: StepLogger | undefined;
 }
 
 const factCheckInputSchema = z.object({
@@ -97,20 +100,27 @@ export function createFactCheckStep(opts: CreateFactCheckStepOptions) {
     inputSchema: factCheckInputSchema,
     outputSchema: factCheckOutputSchema,
     execute: async ({ inputData }) => {
-      const result = await checkFacts({
-        model: opts.model,
-        reportText: inputData.reportText,
-        findings: inputData.findings,
-        ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
-      });
-      return {
-        question: inputData.question,
-        plan: inputData.plan,
-        findings: inputData.findings,
-        reportText: inputData.reportText,
-        factCheckPassed: result.pass,
-        factCheckIssues: result.issues,
-      };
+      const timer = startStepLog(opts.logger, 'fact-check');
+      try {
+        const result = await checkFacts({
+          model: opts.model,
+          reportText: inputData.reportText,
+          findings: inputData.findings,
+          ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+        });
+        timer.end('success');
+        return {
+          question: inputData.question,
+          plan: inputData.plan,
+          findings: inputData.findings,
+          reportText: inputData.reportText,
+          factCheckPassed: result.pass,
+          factCheckIssues: result.issues,
+        };
+      } catch (err) {
+        timer.end('error');
+        throw err;
+      }
     },
   });
 }

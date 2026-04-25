@@ -3,6 +3,8 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import type { StepLogger } from '../lib/logged-step.ts';
+import { startStepLog } from '../lib/logged-step.ts';
 import { extractJson } from './json.ts';
 import { Finding, ResearchPlan, type Subquestion } from './schemas.ts';
 
@@ -62,6 +64,7 @@ export interface CreateResearchStepOptions {
   model: MastraModelConfig;
   concurrency?: number;
   systemPrompt?: string;
+  logger?: StepLogger | undefined;
 }
 
 const researchInputSchema = z.object({
@@ -82,16 +85,23 @@ export function createResearchStep(opts: CreateResearchStepOptions) {
     inputSchema: researchInputSchema,
     outputSchema: researchOutputSchema,
     execute: async ({ inputData }) => {
-      const findings = await Promise.all(
-        inputData.plan.subquestions.map((sq) =>
-          researchSubquestion({
-            model: opts.model,
-            subquestion: sq,
-            ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
-          }),
-        ),
-      );
-      return { question: inputData.question, plan: inputData.plan, findings };
+      const timer = startStepLog(opts.logger, 'research');
+      try {
+        const findings = await Promise.all(
+          inputData.plan.subquestions.map((sq) =>
+            researchSubquestion({
+              model: opts.model,
+              subquestion: sq,
+              ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+            }),
+          ),
+        );
+        timer.end('success');
+        return { question: inputData.question, plan: inputData.plan, findings };
+      } catch (err) {
+        timer.end('error');
+        throw err;
+      }
     },
   });
 }
