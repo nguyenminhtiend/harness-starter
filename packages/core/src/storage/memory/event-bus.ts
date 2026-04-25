@@ -1,4 +1,4 @@
-import type { SessionEvent } from '../domain/session-event.ts';
+import type { SessionEvent } from '../../domain/session-event.ts';
 
 export interface EventBus {
   publish(event: SessionEvent): void;

@@ -4,7 +4,7 @@ import type { ApprovalDecision } from '../domain/approval.ts';
 import type { CapabilityDefinition } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
-import type { ApprovalQueue } from '../storage/inmem-approval-queue.ts';
+import type { ApprovalQueue } from '../storage/memory/approval-queue.ts';
 import {
   createFakeApprovalStore,
   createFakeClock,

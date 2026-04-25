@@ -1,8 +1,8 @@
 import { NotFoundError } from '../domain/errors.ts';
 import type { SessionEvent } from '../domain/session-event.ts';
-import type { ConversationStore } from '../storage/inmem-conversation-store.ts';
-import type { EventLog } from '../storage/inmem-event-log.ts';
-import type { RunStore } from '../storage/inmem-run-store.ts';
+import type { ConversationStore } from '../storage/memory/conversation-store.ts';
+import type { EventLog } from '../storage/memory/event-log.ts';
+import type { RunStore } from '../storage/memory/run-store.ts';
 
 export interface GetConversationMessagesDeps {
   readonly conversationStore: ConversationStore;

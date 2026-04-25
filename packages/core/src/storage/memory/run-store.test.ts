@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { RunStore } from './inmem-run-store.ts';
-import { createInMemoryRunStore } from './inmem-run-store.ts';
+import type { RunStore } from './run-store.ts';
+import { createInMemoryRunStore } from './run-store.ts';
 
 function makeStore(): RunStore {
   return createInMemoryRunStore();

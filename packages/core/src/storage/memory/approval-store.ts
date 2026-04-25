@@ -1,4 +1,4 @@
-import type { ApprovalDecision, PendingApproval } from '../domain/approval.ts';
+import type { ApprovalDecision, PendingApproval } from '../../domain/approval.ts';
 
 export interface ApprovalStore {
   createPending(approval: PendingApproval): Promise<void>;

@@ -1,5 +1,5 @@
 import type { Conversation } from '../domain/conversation.ts';
-import type { ConversationStore } from '../storage/inmem-conversation-store.ts';
+import type { ConversationStore } from '../storage/memory/conversation-store.ts';
 
 export interface ListConversationsDeps {
   readonly conversationStore: ConversationStore;

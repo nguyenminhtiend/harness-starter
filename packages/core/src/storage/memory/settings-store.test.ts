@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { SettingsStore } from './inmem-settings-store.ts';
-import { createInMemorySettingsStore } from './inmem-settings-store.ts';
+import type { SettingsStore } from './settings-store.ts';
+import { createInMemorySettingsStore } from './settings-store.ts';
 
 function makeStore(): SettingsStore {
   return createInMemorySettingsStore();

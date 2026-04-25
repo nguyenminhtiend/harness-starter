@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { Conversation } from '../domain/conversation.ts';
-import type { ConversationStore } from './inmem-conversation-store.ts';
-import { createInMemoryConversationStore } from './inmem-conversation-store.ts';
+import type { Conversation } from '../../domain/conversation.ts';
+import type { ConversationStore } from './conversation-store.ts';
+import { createInMemoryConversationStore } from './conversation-store.ts';
 
 function makeStore(): ConversationStore {
   return createInMemoryConversationStore();

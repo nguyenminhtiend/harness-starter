@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { SessionEvent } from '../domain/session-event.ts';
-import type { EventLog } from './inmem-event-log.ts';
-import { createInMemoryEventLog } from './inmem-event-log.ts';
+import type { SessionEvent } from '../../domain/session-event.ts';
+import type { EventLog } from './event-log.ts';
+import { createInMemoryEventLog } from './event-log.ts';
 
 function makeEvent(runId: string, seq: number, type = 'text.delta' as const): SessionEvent {
   return {

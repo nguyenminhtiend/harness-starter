@@ -9,10 +9,10 @@ import type {
 import type { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
 import type { Tracer } from '../observability/tracer.ts';
-import type { ApprovalQueue } from '../storage/inmem-approval-queue.ts';
-import type { EventBus } from '../storage/inmem-event-bus.ts';
-import type { EventLog } from '../storage/inmem-event-log.ts';
-import type { RunStore } from '../storage/inmem-run-store.ts';
+import type { ApprovalQueue } from '../storage/memory/approval-queue.ts';
+import type { EventBus } from '../storage/memory/event-bus.ts';
+import type { EventLog } from '../storage/memory/event-log.ts';
+import type { RunStore } from '../storage/memory/run-store.ts';
 import type { Clock } from '../time/clock.ts';
 import type { RuntimeStreamChunk } from './event-mapper.ts';
 import { mapStreamChunk } from './event-mapper.ts';

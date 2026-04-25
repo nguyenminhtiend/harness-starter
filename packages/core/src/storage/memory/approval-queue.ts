@@ -1,5 +1,5 @@
-import type { ApprovalDecision } from '../domain/approval.ts';
-import type { ApprovalStore } from './inmem-approval-store.ts';
+import type { ApprovalDecision } from '../../domain/approval.ts';
+import type { ApprovalStore } from './approval-store.ts';
 
 export interface ApprovalQueue {
   request(

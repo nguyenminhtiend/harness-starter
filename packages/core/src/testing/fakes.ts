@@ -1,11 +1,11 @@
 import type { MemoryProvider } from '../memory/conversation-memory.ts';
 import { createPinoLogger } from '../observability/logger.ts';
-import { createInMemoryApprovalStore } from '../storage/inmem-approval-store.ts';
-import { createInMemoryConversationStore } from '../storage/inmem-conversation-store.ts';
-import { createInMemoryEventBus } from '../storage/inmem-event-bus.ts';
-import { createInMemoryEventLog } from '../storage/inmem-event-log.ts';
-import { createInMemoryRunStore } from '../storage/inmem-run-store.ts';
-import { createInMemorySettingsStore } from '../storage/inmem-settings-store.ts';
+import { createInMemoryApprovalStore } from '../storage/memory/approval-store.ts';
+import { createInMemoryConversationStore } from '../storage/memory/conversation-store.ts';
+import { createInMemoryEventBus } from '../storage/memory/event-bus.ts';
+import { createInMemoryEventLog } from '../storage/memory/event-log.ts';
+import { createInMemoryRunStore } from '../storage/memory/run-store.ts';
+import { createInMemorySettingsStore } from '../storage/memory/settings-store.ts';
 import type { Clock } from '../time/clock.ts';
 import type { IdGen } from '../time/id-gen.ts';
 
