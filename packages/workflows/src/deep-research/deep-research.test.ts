@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mockModel } from '@harness/agents/testing';
+import { mockModel } from '@harness/mastra/testing';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
 import { createDeepResearchWorkflow } from './index.ts';

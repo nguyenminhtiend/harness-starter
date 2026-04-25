@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mockModel } from '@harness/agents/testing';
+import { mockModel } from '@harness/mastra/testing';
 import { researchSubquestion } from './research-step.ts';
 
 describe('researchSubquestion', () => {

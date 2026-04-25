@@ -1,4 +1,4 @@
-import { createSimpleChatAgent } from '@harness/agents';
+import { createSimpleChatAgent } from '@harness/mastra';
 import { createDeepResearchWorkflow } from '@harness/workflows';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';

@@ -57,27 +57,10 @@
         "vite": "^6.0.0",
       },
     },
-    "packages/agents": {
-      "name": "@harness/agents",
-      "version": "0.0.0",
-      "dependencies": {
-        "@harness/mastra": "workspace:*",
-        "@mastra/core": "1.27.0",
-        "@mastra/libsql": "1.9.0",
-        "@mastra/memory": "1.17.0",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-        "ai": "6.0.168",
-        "typescript": "^5.7.0",
-      },
-    },
     "packages/capabilities": {
       "name": "@harness/capabilities",
       "version": "0.0.0",
       "dependencies": {
-        "@harness/agents": "workspace:*",
         "@harness/core": "workspace:*",
         "@harness/mastra": "workspace:*",
         "@harness/workflows": "workspace:*",
@@ -124,11 +107,14 @@
       "version": "0.0.0",
       "dependencies": {
         "@mastra/core": "1.27.0",
+        "@mastra/libsql": "1.9.0",
+        "@mastra/memory": "1.17.0",
         "zod": "^4.0.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
         "@types/node": "^22.0.0",
+        "ai": "6.0.168",
         "typescript": "^5.7.0",
       },
     },
@@ -136,7 +122,6 @@
       "name": "@harness/workflows",
       "version": "0.0.0",
       "dependencies": {
-        "@harness/agents": "workspace:*",
         "@harness/mastra": "workspace:*",
         "@mastra/core": "1.27.0",
         "zod": "^4.0.0",
@@ -379,8 +364,6 @@
     "@expo/devcert": ["@expo/devcert@1.2.1", "", { "dependencies": { "@expo/sudo-prompt": "^9.3.1", "debug": "^3.1.0" } }, "sha512-qC4eaxmKMTmJC2ahwyui6ud8f3W60Ss7pMkpBq40Hu3zyiAaugPXnZ24145U7K36qO9UHdZUVxsCvIpz2RYYCA=="],
 
     "@expo/sudo-prompt": ["@expo/sudo-prompt@9.3.2", "", {}, "sha512-HHQigo3rQWKMDzYDLkubN5WQOYXJJE2eNqIQC2axC2iO3mHdwnIR7FgZVvHWtBwAdzBgAP0ECp8KqS8TiMKvgw=="],
-
-    "@harness/agents": ["@harness/agents@workspace:packages/agents"],
 
     "@harness/capabilities": ["@harness/capabilities@workspace:packages/capabilities"],
 

@@ -1,7 +1,7 @@
-import { calculatorTool, getTimeTool } from '@harness/mastra';
 import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import type { MastraMemory } from '@mastra/core/memory';
+import { calculatorTool, getTimeTool } from '../tools/index.ts';
 
 export interface SimpleChatAgentOptions {
   model: MastraModelConfig;

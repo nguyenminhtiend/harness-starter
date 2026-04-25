@@ -183,9 +183,8 @@
                 "paths": {
                   "@harness/core": "console may only import from @harness/http (DAG violation)",
                   "@harness/capabilities": "console may only import from @harness/http (DAG violation)",
-                  "@harness/agents": "console may only import from @harness/http (DAG violation)",
-                  "@harness/workflows": "console may only import from @harness/http (DAG violation)",
                   "@harness/mastra": "console may only import from @harness/http (DAG violation)",
+                  "@harness/workflows": "console may only import from @harness/http (DAG violation)",
                   "@mastra/core": "console may only import from @harness/http (DAG violation)",
                   "@mastra/libsql": "console may only import from @harness/http (DAG violation)"
                 },
@@ -194,9 +193,8 @@
                     "group": [
                       "@harness/core/*",
                       "@harness/capabilities/*",
-                      "@harness/agents/*",
-                      "@harness/workflows/*",
                       "@harness/mastra/*",
+                      "@harness/workflows/*",
                       "@mastra/core/*",
                       "@mastra/libsql",
                       "@mastra/libsql/*"

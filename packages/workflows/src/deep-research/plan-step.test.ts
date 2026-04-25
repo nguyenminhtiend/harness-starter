@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mockModel } from '@harness/agents/testing';
+import { mockModel } from '@harness/mastra/testing';
 import type { StepLogger } from '../lib/logged-step.ts';
 import { generatePlan } from './plan-step.ts';
 
