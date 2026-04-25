@@ -102,6 +102,40 @@ export class RunExecutor {
     };
   }
 
+  private logStreamEvent(payload: StreamEventPayload, runId: string): void {
+    const { logger } = this.deps;
+    if (payload.type === 'text.delta' || payload.type === 'reasoning.delta') {
+      logger.debug({ runId, type: payload.type, chars: payload.text.length }, 'event');
+      return;
+    }
+    switch (payload.type) {
+      case 'tool.called':
+        logger.info(
+          { runId, type: payload.type, tool: payload.tool, callId: payload.callId },
+          'event',
+        );
+        return;
+      case 'tool.result':
+        logger.info({ runId, type: payload.type, callId: payload.callId }, 'event');
+        return;
+      case 'step.finished':
+        logger.info(
+          { runId, type: payload.type, ...(payload.usage ? { usage: payload.usage } : {}) },
+          'event',
+        );
+        return;
+      case 'artifact':
+        logger.info({ runId, type: payload.type, name: payload.name }, 'event');
+        return;
+      case 'plan.proposed':
+        logger.info({ runId, type: payload.type }, 'event');
+        return;
+      case 'usage':
+        logger.info({ runId, type: payload.type, usage: payload.usage }, 'event');
+        return;
+    }
+  }
+
   private async *executeRunner(
     capability: CapabilityDefinition,
     input: unknown,
@@ -251,6 +285,7 @@ export class RunExecutor {
           break;
         }
         await this.emit(run.append(payload, clock.now()));
+        this.logStreamEvent(payload, run.id);
       }
 
       const finishTs = clock.now();

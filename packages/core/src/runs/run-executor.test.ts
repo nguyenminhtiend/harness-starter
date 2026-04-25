@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import pino from 'pino';
 import { z } from 'zod';
 import type { ApprovalDecision } from '../domain/approval.ts';
 import type { CapabilityDefinition } from '../domain/capability.ts';
@@ -78,6 +79,15 @@ function toStreamChunk(e: StreamEventPayload): Record<string, unknown> {
   switch (e.type) {
     case 'text.delta':
       return { type: 'text-delta', payload: { text: e.text } };
+    case 'reasoning.delta':
+      return { type: 'reasoning-delta', payload: { text: e.text } };
+    case 'tool.called':
+      return {
+        type: 'tool-call',
+        payload: { toolName: e.tool, args: e.args, toolCallId: e.callId },
+      };
+    case 'tool.result':
+      return { type: 'tool-result', payload: { toolCallId: e.callId, result: e.result } };
     case 'step.finished':
       return { type: 'step-finish', payload: { output: {} } };
     case 'plan.proposed':
@@ -568,5 +578,67 @@ describe('RunExecutor', () => {
     const failEvent = events.find((e) => e.type === 'run.failed');
     expect(failEvent).toBeDefined();
     expect((failEvent as { error: { code: string } }).error.code).toBe('INVALID_SETTINGS');
+  });
+
+  it('logs stream events with correct levels and summaries', async () => {
+    const entries: Record<string, unknown>[] = [];
+    const dest: pino.DestinationStream = {
+      write(msg: string) {
+        entries.push(JSON.parse(msg));
+      },
+    };
+    const capturingLogger = pino({ level: 'debug' }, dest);
+
+    const runStore = createFakeRunStore();
+    const eventLog = createFakeEventLog();
+    const eventBus = createFakeEventBus();
+    const clock = createFakeClock();
+    const executor = new RunExecutor({
+      runStore,
+      eventLog,
+      eventBus,
+      clock,
+      logger: capturingLogger,
+    });
+
+    const capability = fakeAgentCapability([
+      { type: 'text.delta', text: 'Hello' },
+      { type: 'tool.called', tool: 'calc', args: { x: 1 }, callId: 'c1' },
+      { type: 'tool.result', callId: 'c1', result: 42 },
+      { type: 'text.delta', text: ' world' },
+      { type: 'step.finished' },
+    ]);
+
+    const run = new Run('run-log', 'test-cap', '2026-04-24T00:00:00.000Z');
+    await runStore.create('run-log', 'test-cap', '2026-04-24T00:00:00.000Z');
+
+    await executor.execute(run, capability, { message: 'hi' }, new AbortController().signal);
+
+    const eventLogs = entries.filter((e) => e.msg === 'event');
+    const types = eventLogs.map((e) => e.type);
+
+    expect(types).toEqual([
+      'text.delta',
+      'tool.called',
+      'tool.result',
+      'text.delta',
+      'step.finished',
+    ]);
+
+    const deltaLogs = eventLogs.filter((e) => e.type === 'text.delta');
+    for (const entry of deltaLogs) {
+      expect(entry.level).toBe(20);
+    }
+    expect(deltaLogs[0]).toMatchObject({ chars: 5 });
+    expect(deltaLogs[1]).toMatchObject({ chars: 6 });
+
+    const toolCalledLog = eventLogs.find((e) => e.type === 'tool.called');
+    expect(toolCalledLog).toMatchObject({ level: 30, tool: 'calc', callId: 'c1' });
+
+    const toolResultLog = eventLogs.find((e) => e.type === 'tool.result');
+    expect(toolResultLog).toMatchObject({ level: 30, callId: 'c1' });
+
+    const stepLog = eventLogs.find((e) => e.type === 'step.finished');
+    expect(stepLog).toMatchObject({ level: 30 });
   });
 });
