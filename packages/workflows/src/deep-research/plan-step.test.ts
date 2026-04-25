@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { mockModel } from '@harness/agents/testing';
+import type { StepLogger } from '../lib/logged-step.ts';
 import { generatePlan } from './plan-step.ts';
 
 describe('generatePlan', () => {
@@ -77,5 +78,33 @@ describe('generatePlan', () => {
     const model = mockModel([{ type: 'text', text: planJson }]);
     const plan = await generatePlan({ model, question: 'test', depth: 'deep' });
     expect(plan.subquestions.length).toBeGreaterThanOrEqual(5);
+  });
+
+  test('emits agent.start and agent.finish when logger is provided', async () => {
+    const planJson = JSON.stringify({
+      summary: 'ok',
+      subquestions: [{ id: 'sq1', question: 'why?' }],
+    });
+    const model = mockModel([{ type: 'text', text: planJson }]);
+
+    const entries: { obj: Record<string, unknown>; msg: string }[] = [];
+    const logger: StepLogger = {
+      info(obj, msg) {
+        entries.push({ obj, msg });
+      },
+    };
+
+    await generatePlan({ model, question: 'test', logger });
+
+    const agentLogs = entries.filter((e) => e.msg === 'agent.start' || e.msg === 'agent.finish');
+    expect(agentLogs).toHaveLength(2);
+    expect(agentLogs[0]).toMatchObject({
+      obj: { agentId: 'deep-research-planner' },
+      msg: 'agent.start',
+    });
+    expect(agentLogs[1]).toMatchObject({
+      obj: { agentId: 'deep-research-planner' },
+      msg: 'agent.finish',
+    });
   });
 });

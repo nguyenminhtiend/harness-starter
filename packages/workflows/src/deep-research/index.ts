@@ -103,6 +103,7 @@ export function createDeepResearchWorkflow(opts: DeepResearchWorkflowOptions) {
             findings: inputData.findings,
             ...(opts.writerPrompt ? { systemPrompt: opts.writerPrompt } : {}),
             ...(factCheckIssues.length > 0 ? { factCheckIssues } : {}),
+            logger,
           });
 
           const check = await checkFacts({
@@ -110,10 +111,12 @@ export function createDeepResearchWorkflow(opts: DeepResearchWorkflowOptions) {
             reportText,
             findings: inputData.findings,
             ...(opts.factCheckerPrompt ? { systemPrompt: opts.factCheckerPrompt } : {}),
+            logger,
           });
 
           passed = check.pass;
           factCheckIssues = check.issues;
+          logger?.info({ retry, passed, issues: check.issues.length }, 'fact-check.attempt');
 
           if (passed) {
             break;

@@ -33,6 +33,7 @@ export interface GeneratePlanOptions {
   question: string;
   depth?: string;
   systemPrompt?: string;
+  logger?: StepLogger | undefined;
 }
 
 export async function generatePlan(opts: GeneratePlanOptions): Promise<ResearchPlan> {
@@ -45,9 +46,11 @@ export async function generatePlan(opts: GeneratePlanOptions): Promise<ResearchP
     model: opts.model,
   });
 
+  opts.logger?.info({ agentId: 'deep-research-planner' }, 'agent.start');
   const result = await agent.generate(
     `<user_question>${opts.question}</user_question>\n\nGenerate exactly ${targetCount} subquestions.`,
   );
+  opts.logger?.info({ agentId: 'deep-research-planner' }, 'agent.finish');
   const raw = typeof result.text === 'string' ? result.text : '';
   const parsed = JSON.parse(extractJson(raw));
   if (Array.isArray(parsed.subquestions)) {
@@ -90,6 +93,7 @@ export function createPlanStep(opts: CreatePlanStepOptions) {
           question: inputData.question,
           ...(depth ? { depth } : {}),
           ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+          logger: opts.logger,
         });
         timer.end('success');
         return { question: inputData.question, plan };

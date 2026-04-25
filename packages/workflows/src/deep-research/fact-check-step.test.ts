@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { mockModel } from '@harness/agents/testing';
+import type { StepLogger } from '../lib/logged-step.ts';
 import { checkFacts } from './fact-check-step.ts';
 
 describe('checkFacts', () => {
@@ -56,5 +57,29 @@ describe('checkFacts', () => {
     });
     expect(result.pass).toBe(false);
     expect(result.issues.length).toBeGreaterThan(0);
+  });
+
+  test('emits agent.start and agent.finish when logger is provided', async () => {
+    const json = JSON.stringify({ pass: true, issues: [] });
+    const model = mockModel([{ type: 'text', text: json }]);
+
+    const entries: { obj: Record<string, unknown>; msg: string }[] = [];
+    const logger: StepLogger = {
+      info(obj, msg) {
+        entries.push({ obj, msg });
+      },
+    };
+
+    await checkFacts({
+      model,
+      reportText: '# Report',
+      findings: [],
+      logger,
+    });
+
+    const agentLogs = entries.filter((e) => e.msg === 'agent.start' || e.msg === 'agent.finish');
+    expect(agentLogs).toHaveLength(2);
+    expect(agentLogs[0].obj.agentId).toBe('deep-research-fact-checker');
+    expect(agentLogs[1].msg).toBe('agent.finish');
   });
 });

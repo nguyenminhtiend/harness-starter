@@ -50,6 +50,7 @@ export interface GenerateReportOptions {
   findings: Finding[];
   systemPrompt?: string;
   factCheckIssues?: string[];
+  logger?: StepLogger | undefined;
 }
 
 export async function generateReport(opts: GenerateReportOptions): Promise<string> {
@@ -71,9 +72,11 @@ export async function generateReport(opts: GenerateReportOptions): Promise<strin
     model: opts.model,
   });
 
+  opts.logger?.info({ agentId: 'deep-research-writer' }, 'agent.start');
   const result = await agent.generate(
     `Write a research report from these findings:\n\n${findingsText}${issuesHint}`,
   );
+  opts.logger?.info({ agentId: 'deep-research-writer' }, 'agent.finish');
 
   const text = typeof result.text === 'string' ? result.text : '';
   try {
@@ -118,6 +121,7 @@ export function createReportStep(opts: CreateReportStepOptions) {
           findings: inputData.findings,
           ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
           ...(inputData.factCheckIssues ? { factCheckIssues: inputData.factCheckIssues } : {}),
+          logger: opts.logger,
         });
         timer.end('success');
         return {

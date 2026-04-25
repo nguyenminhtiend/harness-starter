@@ -28,6 +28,7 @@ export interface ResearchSubquestionOptions {
   subquestion: Subquestion;
   systemPrompt?: string;
   maxSteps?: number;
+  logger?: StepLogger | undefined;
 }
 
 export async function researchSubquestion(opts: ResearchSubquestionOptions): Promise<Finding> {
@@ -39,9 +40,17 @@ export async function researchSubquestion(opts: ResearchSubquestionOptions): Pro
     tools: { fetch: fetchTool() },
   });
 
+  opts.logger?.info(
+    { agentId: 'deep-research-researcher', subquestionId: opts.subquestion.id },
+    'agent.start',
+  );
   const result = await agent.generate(`[${opts.subquestion.id}] ${opts.subquestion.question}`, {
     maxSteps: opts.maxSteps ?? 15,
   });
+  opts.logger?.info(
+    { agentId: 'deep-research-researcher', subquestionId: opts.subquestion.id },
+    'agent.finish',
+  );
 
   const text = typeof result.text === 'string' ? result.text : '';
   try {
@@ -93,6 +102,7 @@ export function createResearchStep(opts: CreateResearchStepOptions) {
               model: opts.model,
               subquestion: sq,
               ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+              logger: opts.logger,
             }),
           ),
         );

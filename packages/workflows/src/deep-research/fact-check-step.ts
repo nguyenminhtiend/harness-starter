@@ -38,6 +38,7 @@ export interface CheckFactsOptions {
   reportText: string;
   findings: Finding[];
   systemPrompt?: string;
+  logger?: StepLogger | undefined;
 }
 
 export async function checkFacts(opts: CheckFactsOptions): Promise<FactCheckResult> {
@@ -61,7 +62,9 @@ export async function checkFacts(opts: CheckFactsOptions): Promise<FactCheckResu
     model: opts.model,
   });
 
+  opts.logger?.info({ agentId: 'deep-research-fact-checker' }, 'agent.start');
   const result = await agent.generate(prompt);
+  opts.logger?.info({ agentId: 'deep-research-fact-checker' }, 'agent.finish');
   const text = typeof result.text === 'string' ? result.text : '';
   try {
     const parsed = JSON.parse(extractJson(text));
@@ -107,6 +110,7 @@ export function createFactCheckStep(opts: CreateFactCheckStepOptions) {
           reportText: inputData.reportText,
           findings: inputData.findings,
           ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+          logger: opts.logger,
         });
         timer.end('success');
         return {
