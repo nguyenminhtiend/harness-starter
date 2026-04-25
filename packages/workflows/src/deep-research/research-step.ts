@@ -3,6 +3,7 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import { extractJson } from './json.ts';
 import { Finding, ResearchPlan, type Subquestion } from './schemas.ts';
 
 const RESEARCHER_INSTRUCTIONS = `You are a focused research assistant. You receive a single subquestion to investigate.
@@ -25,14 +26,6 @@ export interface ResearchSubquestionOptions {
   subquestion: Subquestion;
   systemPrompt?: string;
   maxSteps?: number;
-}
-
-function extractJson(text: string): string {
-  const fence = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
-  if (fence?.[1]) {
-    return fence[1].trim();
-  }
-  return text.trim();
 }
 
 export async function researchSubquestion(opts: ResearchSubquestionOptions): Promise<Finding> {

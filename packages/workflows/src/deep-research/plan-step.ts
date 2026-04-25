@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import { extractJson } from './json.ts';
 import { ResearchPlan } from './schemas.ts';
 
 const DEPTH_TO_COUNT: Record<string, number> = {
@@ -24,14 +25,6 @@ Respond with ONLY valid JSON (no markdown fences) matching this exact schema:
 }
 
 IMPORTANT: Each item in "subquestions" MUST be an object with "id" and "question" fields, NOT a plain string.`;
-
-function extractJson(text: string): string {
-  const fence = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
-  if (fence?.[1]) {
-    return fence[1].trim();
-  }
-  return text.trim();
-}
 
 export interface GeneratePlanOptions {
   model: MastraModelConfig;

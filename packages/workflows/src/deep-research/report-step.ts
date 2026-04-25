@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import { extractJson } from './json.ts';
 import { Finding, ResearchPlan } from './schemas.ts';
 
 const WRITER_INSTRUCTIONS = `You are a report writer. You receive research findings and synthesize them into a structured report.
@@ -25,14 +26,6 @@ const Report = z.object({
 });
 
 type Report = z.infer<typeof Report>;
-
-function extractJson(text: string): string {
-  const fence = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
-  if (fence?.[1]) {
-    return fence[1].trim();
-  }
-  return text.trim();
-}
 
 function reportToMarkdown(report: Report): string {
   const lines: string[] = [`# ${report.title}`, ''];
