@@ -9,7 +9,7 @@ if (!message) {
 }
 
 const { deps, shutdown } = composeHarness({
-  capabilityRegistry: createCapabilityRegistry(),
+  capabilityRegistry: (logger) => createCapabilityRegistry(logger),
   logLevel: 'error',
 });
 const controller = new AbortController();

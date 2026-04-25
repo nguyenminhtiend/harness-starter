@@ -1,33 +1,36 @@
 import { describe, expect, test } from 'bun:test';
-import { simpleChatCapability } from './capability.ts';
+import { noopLogger } from '@mastra/core/logger';
+import { createSimpleChatCapability } from './capability.ts';
 
-describe('simpleChatCapability', () => {
+describe('createSimpleChatCapability', () => {
+  const cap = createSimpleChatCapability(noopLogger);
+
   test('has correct metadata', () => {
-    expect(simpleChatCapability.id).toBe('simple-chat');
-    expect(simpleChatCapability.title).toBe('Simple Chat');
-    expect(simpleChatCapability.supportsApproval).toBeFalsy();
+    expect(cap.id).toBe('simple-chat');
+    expect(cap.title).toBe('Simple Chat');
+    expect(cap.supportsApproval).toBeFalsy();
   });
 
   test('runner is a function', () => {
-    expect(typeof simpleChatCapability.runner).toBe('function');
+    expect(typeof cap.runner).toBe('function');
   });
 
   test('inputSchema validates correct input', () => {
-    const result = simpleChatCapability.inputSchema.safeParse({
+    const result = cap.inputSchema.safeParse({
       message: 'hello',
     });
     expect(result.success).toBe(true);
   });
 
   test('inputSchema rejects empty message', () => {
-    const result = simpleChatCapability.inputSchema.safeParse({
+    const result = cap.inputSchema.safeParse({
       message: '',
     });
     expect(result.success).toBe(false);
   });
 
   test('settingsSchema validates correct settings', () => {
-    const result = simpleChatCapability.settingsSchema.safeParse({
+    const result = cap.settingsSchema.safeParse({
       model: 'ollama:qwen2.5:3b',
     });
     expect(result.success).toBe(true);

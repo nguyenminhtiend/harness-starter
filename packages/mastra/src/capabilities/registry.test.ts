@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { noopLogger } from '@mastra/core/logger';
 import { createCapabilityRegistry } from './registry.ts';
 
 describe('createCapabilityRegistry', () => {
-  const registry = createCapabilityRegistry();
+  const registry = createCapabilityRegistry(noopLogger);
 
   test('list() returns simple-chat and deep-research', () => {
     const caps = registry.list();

@@ -11,7 +11,7 @@ export interface ComposedApp {
 
 export function compose(config: Config): ComposedApp {
   const { deps, shutdown } = composeHarness({
-    capabilityRegistry: createCapabilityRegistry(),
+    capabilityRegistry: (logger) => createCapabilityRegistry(logger),
     logLevel: config.logLevel,
   });
   return { app: createHttpApp(deps), shutdown };

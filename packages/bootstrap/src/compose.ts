@@ -28,7 +28,7 @@ import {
 import { PinoLogger } from '@mastra/loggers';
 
 export interface HarnessConfig {
-  capabilityRegistry: CapabilityRegistry;
+  capabilityRegistry: CapabilityRegistry | ((logger: MastraLogger) => CapabilityRegistry);
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
   pretty?: boolean;
 }
@@ -69,7 +69,10 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
   const approvalCoordinator = createInMemoryApprovalCoordinator();
   const conversationStore = createInMemoryConversationStore();
   const settingsStore = createInMemorySettingsStore();
-  const { capabilityRegistry } = config;
+  const capabilityRegistry =
+    typeof config.capabilityRegistry === 'function'
+      ? config.capabilityRegistry(mastraLogger)
+      : config.capabilityRegistry;
   const providerResolver = createProviderResolver();
   const providerKeys = loadProviderKeysFromEnv();
 
