@@ -15,5 +15,3 @@ export {
 } from './simple-chat/input.ts';
 export type { SimpleChatSettings } from './simple-chat/settings.ts';
 export { SimpleChatSettings as SimpleChatSettingsSchema } from './simple-chat/settings.ts';
-export type { BuildStudioConfigOptions } from './studio-config.ts';
-export { buildStudioConfig } from './studio-config.ts';
