@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 import type { ApprovalDecision } from '../domain/approval.ts';
 import type { CapabilityDefinition } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
@@ -538,5 +539,34 @@ describe('RunExecutor', () => {
     const events = await eventLog.read('run-11');
     const types = events.map((e) => e.type);
     expect(types).toEqual(['run.started', 'artifact', 'run.completed']);
+  });
+
+  it('fails with INVALID_SETTINGS when settings do not match schema', async () => {
+    const capability: CapabilityDefinition = {
+      id: 'strict-cap',
+      title: 'Strict',
+      description: 'Requires model string',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      outputSchema: { parse: (v: unknown) => v } as never,
+      settingsSchema: z.object({ model: z.string() }),
+      runner: {
+        kind: 'agent',
+        build: () => ({ stream: async () => ({ fullStream: new ReadableStream() }) }) as never,
+        extractPrompt: () => 'test',
+      },
+    };
+
+    const { eventLog, executor } = setup();
+    const run = new Run('run-12', 'strict-cap', '2026-04-24T00:00:00.000Z');
+
+    await executor.execute(run, capability, {}, new AbortController().signal, {
+      settings: { model: 123 },
+    });
+
+    expect(run.status).toBe('failed');
+    const events = await eventLog.read('run-12');
+    const failEvent = events.find((e) => e.type === 'run.failed');
+    expect(failEvent).toBeDefined();
+    expect((failEvent as { error: { code: string } }).error.code).toBe('INVALID_SETTINGS');
   });
 });

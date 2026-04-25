@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import type { ApprovalDecision, ApprovalRequester } from '../domain/approval.ts';
 import type {
   CapabilityDefinition,
@@ -205,9 +206,32 @@ export class RunExecutor {
 
     await this.emitAndSync(run.start(input, ts), run);
 
+    const rawSettings = params?.settings ?? {};
+    let validatedSettings: unknown;
+    try {
+      validatedSettings = capability.settingsSchema.parse(rawSettings);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        const first = err.issues[0];
+        const message = first ? `${first.path.join('.')}: ${first.message}` : 'Invalid settings';
+        const failTs = clock.now();
+        await this.emitAndSync(
+          run.fail({ code: 'INVALID_SETTINGS', message }, failTs),
+          run,
+          failTs,
+        );
+        span?.setStatus('error');
+        span?.end();
+        this.deps.eventBus.close(run.id);
+        this.notifyComplete(run.id);
+        return;
+      }
+      throw err;
+    }
+
     const ctx: ExecutionContext = {
       runId: run.id,
-      settings: params?.settings ?? {},
+      settings: validatedSettings,
       memory: params?.memory ?? null,
       signal,
       approvals: this.createApprovalRequester(run, signal),
