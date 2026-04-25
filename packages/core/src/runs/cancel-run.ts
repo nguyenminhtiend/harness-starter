@@ -1,5 +1,5 @@
 import { NotFoundError } from '../domain/errors.ts';
-import type { RunStore } from '../storage/memory/run-store.ts';
+import type { RunStore } from '../storage/run-store.ts';
 import type { RunExecutor } from './run-executor.ts';
 
 export interface CancelRunDeps {

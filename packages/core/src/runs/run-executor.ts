@@ -8,11 +8,11 @@ import type {
 } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
-import type { ApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
-import type { EventBus } from '../storage/memory/event-bus.ts';
-import type { EventLog } from '../storage/memory/event-log.ts';
-import type { RunStore } from '../storage/memory/run-store.ts';
-import type { Clock } from '../time/clock.ts';
+import type { Clock } from '../infra/clock.ts';
+import type { ApprovalCoordinator } from '../storage/approval-coordinator.ts';
+import type { EventBus } from '../storage/event-bus.ts';
+import type { EventLog } from '../storage/event-log.ts';
+import type { RunStore } from '../storage/run-store.ts';
 
 export interface RunExecutorDeps {
   readonly runStore: RunStore;

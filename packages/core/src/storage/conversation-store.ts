@@ -1,4 +1,4 @@
-import type { Conversation } from '../../domain/conversation.ts';
+import type { Conversation } from '../domain/conversation.ts';
 
 export interface ConversationStore {
   create(conversation: Conversation): Promise<void>;

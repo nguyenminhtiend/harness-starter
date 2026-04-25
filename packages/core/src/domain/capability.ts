@@ -1,9 +1,9 @@
 import type { z } from 'zod';
-import type { Logger } from '../observability/logger.ts';
+import type { Logger } from '../infra/logger.ts';
 import type { ApprovalRequester } from './approval.ts';
 import type { StreamEventPayload } from './session-event.ts';
 
-export type { Logger } from '../observability/logger.ts';
+export type { Logger } from '../infra/logger.ts';
 
 export interface MemoryHandle {
   readonly conversationId: string;

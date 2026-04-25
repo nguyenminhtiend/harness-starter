@@ -1,8 +1,8 @@
 import { NotFoundError } from '../domain/errors.ts';
 import type { SessionEvent } from '../domain/session-event.ts';
-import type { EventBus } from '../storage/memory/event-bus.ts';
-import type { EventLog } from '../storage/memory/event-log.ts';
-import type { RunStore } from '../storage/memory/run-store.ts';
+import type { EventBus } from '../storage/event-bus.ts';
+import type { EventLog } from '../storage/event-log.ts';
+import type { RunStore } from '../storage/run-store.ts';
 
 export interface StreamRunEventsDeps {
   readonly runStore: RunStore;

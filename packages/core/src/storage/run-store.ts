@@ -1,4 +1,4 @@
-import type { RunSnapshot, RunStatus } from '../../domain/run.ts';
+import type { RunSnapshot, RunStatus } from '../domain/run.ts';
 
 export interface RunFilter {
   readonly status?: RunStatus | undefined;

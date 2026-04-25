@@ -1,5 +1,5 @@
-import type { EventLog } from '../storage/memory/event-log.ts';
-import type { RunStore } from '../storage/memory/run-store.ts';
+import type { EventLog } from '../storage/event-log.ts';
+import type { RunStore } from '../storage/run-store.ts';
 
 export interface DeleteRunDeps {
   readonly runStore: RunStore;

@@ -1,4 +1,4 @@
-import type { SettingsStore } from '../storage/memory/settings-store.ts';
+import type { SettingsStore } from '../storage/settings-store.ts';
 
 export interface UpdateSettingsDeps {
   readonly settingsStore: SettingsStore;

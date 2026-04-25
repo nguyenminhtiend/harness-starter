@@ -1,13 +1,13 @@
+import type { Clock } from '../infra/clock.ts';
+import type { IdGen } from '../infra/id-gen.ts';
+import { createPinoLogger } from '../infra/logger.ts';
 import type { MemoryProvider } from '../memory/conversation-memory.ts';
-import { createPinoLogger } from '../observability/logger.ts';
-import { createInMemoryApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
-import { createInMemoryConversationStore } from '../storage/memory/conversation-store.ts';
-import { createInMemoryEventBus } from '../storage/memory/event-bus.ts';
-import { createInMemoryEventLog } from '../storage/memory/event-log.ts';
-import { createInMemoryRunStore } from '../storage/memory/run-store.ts';
-import { createInMemorySettingsStore } from '../storage/memory/settings-store.ts';
-import type { Clock } from '../time/clock.ts';
-import type { IdGen } from '../time/id-gen.ts';
+import { createInMemoryApprovalCoordinator } from '../storage/approval-coordinator.ts';
+import { createInMemoryConversationStore } from '../storage/conversation-store.ts';
+import { createInMemoryEventBus } from '../storage/event-bus.ts';
+import { createInMemoryEventLog } from '../storage/event-log.ts';
+import { createInMemoryRunStore } from '../storage/run-store.ts';
+import { createInMemorySettingsStore } from '../storage/settings-store.ts';
 
 export const createFakeRunStore = createInMemoryRunStore;
 export const createFakeEventLog = createInMemoryEventLog;

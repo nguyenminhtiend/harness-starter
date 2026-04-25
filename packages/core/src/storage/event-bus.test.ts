@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { SessionEvent } from '../../domain/session-event.ts';
+import type { SessionEvent } from '../domain/session-event.ts';
 import { createInMemoryEventBus } from './event-bus.ts';
 
 function makeEvent(runId: string, seq: number): SessionEvent {

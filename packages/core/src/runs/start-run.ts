@@ -1,12 +1,12 @@
 import type { CapabilityRegistry } from '../capabilities/registry.ts';
 import { NotFoundError } from '../domain/errors.ts';
 import { Run } from '../domain/run.ts';
+import type { Clock } from '../infra/clock.ts';
+import type { IdGen } from '../infra/id-gen.ts';
+import type { Logger } from '../infra/logger.ts';
 import type { MemoryProvider } from '../memory/conversation-memory.ts';
-import type { Logger } from '../observability/logger.ts';
-import type { ConversationStore } from '../storage/memory/conversation-store.ts';
-import type { RunStore } from '../storage/memory/run-store.ts';
-import type { Clock } from '../time/clock.ts';
-import type { IdGen } from '../time/id-gen.ts';
+import type { ConversationStore } from '../storage/conversation-store.ts';
+import type { RunStore } from '../storage/run-store.ts';
 import type { RunExecutor } from './run-executor.ts';
 
 export interface StartRunDeps {

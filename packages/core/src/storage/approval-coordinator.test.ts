@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { ApprovalDecision, PendingApproval } from '../../domain/approval.ts';
+import type { ApprovalDecision, PendingApproval } from '../domain/approval.ts';
 import type { ApprovalCoordinator } from './approval-coordinator.ts';
 import { createInMemoryApprovalCoordinator } from './approval-coordinator.ts';
 

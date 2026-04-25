@@ -1,8 +1,8 @@
 import type { ApprovalDecision } from '../domain/approval.ts';
 import { ConflictError, NotFoundError } from '../domain/errors.ts';
-import type { ApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
-import type { RunStore } from '../storage/memory/run-store.ts';
-import type { Clock } from '../time/clock.ts';
+import type { Clock } from '../infra/clock.ts';
+import type { ApprovalCoordinator } from '../storage/approval-coordinator.ts';
+import type { RunStore } from '../storage/run-store.ts';
 
 export interface ApproveRunDeps {
   readonly runStore: RunStore;

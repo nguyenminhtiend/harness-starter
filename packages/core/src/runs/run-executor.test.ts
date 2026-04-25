@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { CapabilityDefinition } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
-import type { ApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
+import type { ApprovalCoordinator } from '../storage/approval-coordinator.ts';
 import {
   createFakeApprovalCoordinator,
   createFakeClock,
