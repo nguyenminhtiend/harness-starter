@@ -1,7 +1,7 @@
 import type { CapabilityDefinition } from '@harness/core';
 import { resolveModel } from '@harness/core';
 import { createSimpleChatAgent } from '../../agents/index.ts';
-import { agentRunner } from '../runners/index.ts';
+import { agentAdapter } from '../adapters/index.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
 
@@ -14,7 +14,7 @@ export const simpleChatCapability: CapabilityDefinition<SimpleChatInput, SimpleC
   inputSchema: SimpleChatInput,
   outputSchema: SimpleChatOutput,
   settingsSchema: SimpleChatSettings,
-  runner: agentRunner({
+  runner: agentAdapter({
     build: (settings) => {
       const s = settings as SimpleChatSettings;
       return createSimpleChatAgent({

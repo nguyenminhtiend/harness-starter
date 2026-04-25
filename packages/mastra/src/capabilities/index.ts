@@ -1,3 +1,5 @@
+export type { AgentAdapterConfig, WorkflowAdapterConfig } from './adapters/index.ts';
+export { agentAdapter, workflowAdapter } from './adapters/index.ts';
 export { deepResearchCapability } from './deep-research/capability.ts';
 export type { DeepResearchInput } from './deep-research/input.ts';
 export {
@@ -7,8 +9,6 @@ export {
 export type { DeepResearchSettings } from './deep-research/settings.ts';
 export { DeepResearchSettings as DeepResearchSettingsSchema } from './deep-research/settings.ts';
 export { createCapabilityRegistry } from './registry.ts';
-export type { AgentRunnerConfig, WorkflowRunnerConfig } from './runners/index.ts';
-export { agentRunner, workflowRunner } from './runners/index.ts';
 export { simpleChatCapability } from './simple-chat/capability.ts';
 export type { SimpleChatInput } from './simple-chat/input.ts';
 export {

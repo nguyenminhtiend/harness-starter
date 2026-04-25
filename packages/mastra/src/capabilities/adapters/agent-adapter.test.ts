@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import type { StreamEventPayload } from '@harness/core';
-import { agentRunner } from './agent-runner.ts';
+import { agentAdapter } from './agent-adapter.ts';
 import { fakeCtx } from './testing.ts';
 
-describe('agentRunner', () => {
+describe('agentAdapter', () => {
   it('yields mapped stream events from agent.stream()', async () => {
-    const runner = agentRunner({
+    const runner = agentAdapter({
       build: () =>
         ({
           stream: async () => ({
@@ -32,7 +32,7 @@ describe('agentRunner', () => {
 
   it('passes memory thread to agent when ctx.memory is set', async () => {
     let receivedOpts: Record<string, unknown> = {};
-    const runner = agentRunner({
+    const runner = agentAdapter({
       build: () =>
         ({
           stream: async (_p: string, opts: Record<string, unknown>) => {
@@ -60,7 +60,7 @@ describe('agentRunner', () => {
 
   it('defaults maxSteps to 5', async () => {
     let receivedMaxSteps: unknown;
-    const runner = agentRunner({
+    const runner = agentAdapter({
       build: () =>
         ({
           stream: async (_p: string, opts: Record<string, unknown>) => {

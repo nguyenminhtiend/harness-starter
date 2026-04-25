@@ -3,7 +3,7 @@ import { resolveModel } from '@harness/core';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
 import { createDeepResearchWorkflow } from '../../workflows/index.ts';
-import { workflowRunner } from '../runners/index.ts';
+import { workflowAdapter } from '../adapters/index.ts';
 import { DeepResearchInput, DeepResearchOutput } from './input.ts';
 import { DeepResearchSettings } from './settings.ts';
 
@@ -20,7 +20,7 @@ export const deepResearchCapability: CapabilityDefinition<DeepResearchInput, Dee
   outputSchema: DeepResearchOutput,
   settingsSchema: DeepResearchSettings,
   supportsApproval: true,
-  runner: workflowRunner({
+  runner: workflowAdapter({
     build: (settings) => {
       const s = settings as DeepResearchSettings;
       const model = resolveModel(s.model) as WorkflowModel;

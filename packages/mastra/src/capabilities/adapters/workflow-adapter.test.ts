@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import type { StreamEventPayload } from '@harness/core';
 import { fakeCtx } from './testing.ts';
-import { workflowRunner } from './workflow-runner.ts';
+import { workflowAdapter } from './workflow-adapter.ts';
 
-describe('workflowRunner', () => {
+describe('workflowAdapter', () => {
   it('yields artifact when workflow succeeds without suspension', async () => {
-    const runner = workflowRunner({
+    const runner = workflowAdapter({
       build: () =>
         ({
           createRun: async () => ({
@@ -25,7 +25,7 @@ describe('workflowRunner', () => {
 
   it('yields plan.proposed and waits for approval on suspended workflow', async () => {
     let approvalPayload: unknown;
-    const runner = workflowRunner({
+    const runner = workflowAdapter({
       build: () =>
         ({
           createRun: async () => ({
@@ -63,7 +63,7 @@ describe('workflowRunner', () => {
   });
 
   it('stops after rejection without yielding artifact', async () => {
-    const runner = workflowRunner({
+    const runner = workflowAdapter({
       build: () =>
         ({
           createRun: async () => ({
@@ -89,7 +89,7 @@ describe('workflowRunner', () => {
   });
 
   it('throws when workflow fails', async () => {
-    const runner = workflowRunner({
+    const runner = workflowAdapter({
       build: () =>
         ({
           createRun: async () => ({

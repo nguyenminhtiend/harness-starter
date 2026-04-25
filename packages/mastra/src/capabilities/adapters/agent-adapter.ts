@@ -2,13 +2,13 @@ import type { CapabilityRunner, RuntimeStreamChunk } from '@harness/core';
 import { mapStreamChunk } from '@harness/core';
 import type { Agent } from '@mastra/core/agent';
 
-export interface AgentRunnerConfig {
+export interface AgentAdapterConfig {
   readonly build: (settings: unknown) => Agent;
   readonly extractPrompt: (input: unknown) => string;
   readonly maxSteps?: number;
 }
 
-export function agentRunner(config: AgentRunnerConfig): CapabilityRunner {
+export function agentAdapter(config: AgentAdapterConfig): CapabilityRunner {
   return async function* (_input, ctx) {
     const agent = config.build(ctx.settings);
     const prompt = config.extractPrompt(_input);
