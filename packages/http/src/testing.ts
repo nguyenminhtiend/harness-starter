@@ -1,6 +1,6 @@
 import { RunExecutor } from '@harness/core';
 import {
-  createFakeApprovalStore,
+  createFakeApprovalCoordinator,
   createFakeClock,
   createFakeConversationStore,
   createFakeEventBus,
@@ -26,7 +26,7 @@ export function createFakeHttpDeps(overrides?: Partial<HttpAppDeps>): HttpAppDep
     runStore,
     eventLog,
     eventBus,
-    approvalStore: createFakeApprovalStore(),
+    approvalCoordinator: createFakeApprovalCoordinator(),
     conversationStore: createFakeConversationStore(),
     settingsStore: createFakeSettingsStore(),
     capabilityRegistry: { list: () => [], get: () => undefined },

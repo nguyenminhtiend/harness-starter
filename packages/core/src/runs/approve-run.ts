@@ -1,14 +1,12 @@
 import type { ApprovalDecision } from '../domain/approval.ts';
 import { ConflictError, NotFoundError } from '../domain/errors.ts';
-import type { ApprovalQueue } from '../storage/memory/approval-queue.ts';
-import type { ApprovalStore } from '../storage/memory/approval-store.ts';
+import type { ApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
 import type { RunStore } from '../storage/memory/run-store.ts';
 import type { Clock } from '../time/clock.ts';
 
 export interface ApproveRunDeps {
   readonly runStore: RunStore;
-  readonly approvalStore: ApprovalStore;
-  readonly approvalQueue?: ApprovalQueue | undefined;
+  readonly approvalCoordinator: ApprovalCoordinator;
   readonly clock: Clock;
 }
 
@@ -23,7 +21,7 @@ export async function approveRun(
     throw new NotFoundError('Run', runId);
   }
 
-  const approval = await deps.approvalStore.get(approvalId);
+  const approval = await deps.approvalCoordinator.get(approvalId);
   if (!approval || approval.runId !== runId) {
     throw new NotFoundError('Approval', approvalId);
   }
@@ -32,9 +30,5 @@ export async function approveRun(
     throw new ConflictError(`Approval '${approvalId}' is already resolved`);
   }
 
-  if (deps.approvalQueue) {
-    await deps.approvalQueue.resolve(approvalId, decision, deps.clock.now());
-  } else {
-    await deps.approvalStore.resolve(approvalId, decision, deps.clock.now());
-  }
+  await deps.approvalCoordinator.resolve(approvalId, decision, deps.clock.now());
 }

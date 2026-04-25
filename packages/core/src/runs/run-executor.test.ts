@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import pino from 'pino';
 import { z } from 'zod';
-import type { ApprovalDecision } from '../domain/approval.ts';
 import type { CapabilityDefinition } from '../domain/capability.ts';
 import { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
-import type { ApprovalQueue } from '../storage/memory/approval-queue.ts';
+import type { ApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
 import {
-  createFakeApprovalStore,
+  createFakeApprovalCoordinator,
   createFakeClock,
   createFakeEventBus,
   createFakeEventLog,
@@ -15,37 +14,6 @@ import {
   createFakeRunStore,
 } from '../testing/fakes.ts';
 import { RunExecutor } from './run-executor.ts';
-
-function createFakeApprovalQueue(): ApprovalQueue & {
-  pendingResolvers: Map<string, (decision: ApprovalDecision) => void>;
-} {
-  const store = createFakeApprovalStore();
-  const pendingResolvers = new Map<string, (decision: ApprovalDecision) => void>();
-
-  return {
-    pendingResolvers,
-    async request(approvalId, runId, payload, createdAt) {
-      await store.createPending({
-        id: approvalId,
-        runId,
-        payload,
-        status: 'pending',
-        createdAt,
-      });
-      return new Promise<ApprovalDecision>((resolve) => {
-        pendingResolvers.set(approvalId, resolve);
-      });
-    },
-    async resolve(approvalId, decision, resolvedAt) {
-      await store.resolve(approvalId, decision, resolvedAt);
-      const resolver = pendingResolvers.get(approvalId);
-      if (resolver) {
-        pendingResolvers.delete(approvalId);
-        resolver(decision);
-      }
-    },
-  };
-}
 
 function fakeAgentCapability(events: StreamEventPayload[]): CapabilityDefinition {
   return {
@@ -145,7 +113,7 @@ function fakeRejectableHitlCapability(): CapabilityDefinition {
   };
 }
 
-function setup(opts?: { approvalQueue?: ApprovalQueue }) {
+function setup(opts?: { approvalCoordinator?: ApprovalCoordinator }) {
   const runStore = createFakeRunStore();
   const eventLog = createFakeEventLog();
   const eventBus = createFakeEventBus();
@@ -157,7 +125,7 @@ function setup(opts?: { approvalQueue?: ApprovalQueue }) {
     eventBus,
     clock,
     logger,
-    approvalQueue: opts?.approvalQueue,
+    approvalCoordinator: opts?.approvalCoordinator,
   });
   return { runStore, eventLog, eventBus, clock, logger, executor };
 }
@@ -248,8 +216,8 @@ describe('RunExecutor', () => {
   });
 
   it('emits approval.requested and approval.resolved for HITL flow', async () => {
-    const approvalQueue = createFakeApprovalQueue();
-    const { eventLog, eventBus, executor } = setup({ approvalQueue });
+    const approvalCoordinator = createFakeApprovalCoordinator();
+    const { eventLog, eventBus, executor } = setup({ approvalCoordinator });
     const run = new Run('run-5', 'research', '2026-04-24T00:00:00.000Z');
     const capability = fakeHitlCapability();
 
@@ -267,7 +235,11 @@ describe('RunExecutor', () => {
     const execPromise = executor.execute(run, capability, {}, new AbortController().signal);
 
     await new Promise((r) => setTimeout(r, 20));
-    await approvalQueue.resolve('run-5-approval', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
+    await approvalCoordinator.resolve(
+      'run-5-approval',
+      { kind: 'approve' },
+      '2026-04-24T00:01:00.000Z',
+    );
 
     await execPromise;
     await collectPromise;
@@ -288,15 +260,15 @@ describe('RunExecutor', () => {
   });
 
   it('stops after rejection and emits run.completed', async () => {
-    const approvalQueue = createFakeApprovalQueue();
-    const { eventLog, executor } = setup({ approvalQueue });
+    const approvalCoordinator = createFakeApprovalCoordinator();
+    const { eventLog, executor } = setup({ approvalCoordinator });
     const run = new Run('run-6', 'research', '2026-04-24T00:00:00.000Z');
     const capability = fakeRejectableHitlCapability();
 
     const execPromise = executor.execute(run, capability, {}, new AbortController().signal);
 
     await new Promise((r) => setTimeout(r, 20));
-    await approvalQueue.resolve(
+    await approvalCoordinator.resolve(
       'run-6-approval',
       { kind: 'reject', reason: 'bad plan' },
       '2026-04-24T00:01:00.000Z',
@@ -313,8 +285,8 @@ describe('RunExecutor', () => {
   });
 
   it('transitions run status to suspended during approval wait', async () => {
-    const approvalQueue = createFakeApprovalQueue();
-    const { runStore, executor } = setup({ approvalQueue });
+    const approvalCoordinator = createFakeApprovalCoordinator();
+    const { runStore, executor } = setup({ approvalCoordinator });
     const run = new Run('run-7', 'research', '2026-04-24T00:00:00.000Z');
     await runStore.create('run-7', 'research', '2026-04-24T00:00:00.000Z');
     const capability = fakeHitlCapability();
@@ -326,7 +298,11 @@ describe('RunExecutor', () => {
     const stored = await runStore.get('run-7');
     expect(stored?.status).toBe('suspended');
 
-    await approvalQueue.resolve('run-7-approval', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
+    await approvalCoordinator.resolve(
+      'run-7-approval',
+      { kind: 'approve' },
+      '2026-04-24T00:01:00.000Z',
+    );
     await execPromise;
 
     const after = await runStore.get('run-7');

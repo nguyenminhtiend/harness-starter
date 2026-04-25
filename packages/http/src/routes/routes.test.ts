@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { CapabilityDefinition, ModelEntry } from '@harness/core';
 import {
-  createFakeApprovalStore,
+  createFakeApprovalCoordinator,
   createFakeConversationStore,
   createFakeSettingsStore,
 } from '@harness/core/testing';
@@ -337,15 +337,15 @@ describe('POST /runs/:id/approve', () => {
   });
 
   test('resolves pending approval and returns 200', async () => {
-    const approvalStore = createFakeApprovalStore();
+    const approvalCoordinator = createFakeApprovalCoordinator();
     const deps = createFakeHttpDeps({
       ...depsWithCapability(),
-      approvalStore,
+      approvalCoordinator,
     });
     const app = createHttpApp(deps);
 
     await deps.runStore.create('run-1', 'simple-chat', '2026-04-24T00:00:00.000Z');
-    await approvalStore.createPending({
+    await approvalCoordinator.createPending({
       id: 'apr-1',
       runId: 'run-1',
       payload: { plan: 'test' },
@@ -361,28 +361,28 @@ describe('POST /runs/:id/approve', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
-    const resolved = await approvalStore.get('apr-1');
+    const resolved = await approvalCoordinator.get('apr-1');
     expect(resolved?.status).toBe('resolved');
     expect(resolved?.decision?.kind).toBe('approve');
   });
 
   test('returns 409 for already resolved approval', async () => {
-    const approvalStore = createFakeApprovalStore();
+    const approvalCoordinator = createFakeApprovalCoordinator();
     const deps = createFakeHttpDeps({
       ...depsWithCapability(),
-      approvalStore,
+      approvalCoordinator,
     });
     const app = createHttpApp(deps);
 
     await deps.runStore.create('run-1', 'simple-chat', '2026-04-24T00:00:00.000Z');
-    await approvalStore.createPending({
+    await approvalCoordinator.createPending({
       id: 'apr-1',
       runId: 'run-1',
       payload: {},
       status: 'pending',
       createdAt: '2026-04-24T00:00:00.000Z',
     });
-    await approvalStore.resolve('apr-1', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
+    await approvalCoordinator.resolve('apr-1', { kind: 'approve' }, '2026-04-24T00:01:00.000Z');
 
     const res = await app.request('/runs/run-1/approve', {
       method: 'POST',
@@ -405,15 +405,15 @@ describe('POST /runs/:id/reject', () => {
   });
 
   test('resolves pending approval with reject decision', async () => {
-    const approvalStore = createFakeApprovalStore();
+    const approvalCoordinator = createFakeApprovalCoordinator();
     const deps = createFakeHttpDeps({
       ...depsWithCapability(),
-      approvalStore,
+      approvalCoordinator,
     });
     const app = createHttpApp(deps);
 
     await deps.runStore.create('run-1', 'simple-chat', '2026-04-24T00:00:00.000Z');
-    await approvalStore.createPending({
+    await approvalCoordinator.createPending({
       id: 'apr-1',
       runId: 'run-1',
       payload: { plan: 'test' },
@@ -429,7 +429,7 @@ describe('POST /runs/:id/reject', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
-    const resolved = await approvalStore.get('apr-1');
+    const resolved = await approvalCoordinator.get('apr-1');
     expect(resolved?.status).toBe('resolved');
     expect(resolved?.decision?.kind).toBe('reject');
   });

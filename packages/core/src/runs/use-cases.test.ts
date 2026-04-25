@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { CapabilityDefinition } from '../domain/capability.ts';
 import { ConflictError, NotFoundError } from '../domain/errors.ts';
 import {
-  createFakeApprovalStore,
+  createFakeApprovalCoordinator,
   createFakeClock,
   createFakeConversationStore,
   createFakeEventBus,
@@ -179,11 +179,11 @@ describe('streamRunEvents', () => {
 describe('approveRun', () => {
   it('resolves a pending approval', async () => {
     const runStore = createFakeRunStore();
-    const approvalStore = createFakeApprovalStore();
+    const approvalCoordinator = createFakeApprovalCoordinator();
     const clock = createFakeClock();
 
     await runStore.create('run-1', 'cap', '2026-01-01T00:00:00Z');
-    await approvalStore.createPending({
+    await approvalCoordinator.createPending({
       id: 'apr-1',
       runId: 'run-1',
       payload: { plan: 'do stuff' },
@@ -191,9 +191,11 @@ describe('approveRun', () => {
       createdAt: '2026-01-01T00:00:00Z',
     });
 
-    await approveRun({ runStore, approvalStore, clock }, 'run-1', 'apr-1', { kind: 'approve' });
+    await approveRun({ runStore, approvalCoordinator, clock }, 'run-1', 'apr-1', {
+      kind: 'approve',
+    });
 
-    const resolved = await approvalStore.get('apr-1');
+    const resolved = await approvalCoordinator.get('apr-1');
     expect(resolved?.status).toBe('resolved');
     expect(resolved?.decision).toEqual({ kind: 'approve' });
   });
@@ -201,7 +203,7 @@ describe('approveRun', () => {
   it('throws NotFoundError for unknown run', async () => {
     const deps = {
       runStore: createFakeRunStore(),
-      approvalStore: createFakeApprovalStore(),
+      approvalCoordinator: createFakeApprovalCoordinator(),
       clock: createFakeClock(),
     };
     await expect(approveRun(deps, 'nope', 'apr-1', { kind: 'approve' })).rejects.toThrow(
@@ -211,21 +213,21 @@ describe('approveRun', () => {
 
   it('throws ConflictError for already resolved approval', async () => {
     const runStore = createFakeRunStore();
-    const approvalStore = createFakeApprovalStore();
+    const approvalCoordinator = createFakeApprovalCoordinator();
     const clock = createFakeClock();
 
     await runStore.create('run-1', 'cap', '2026-01-01T00:00:00Z');
-    await approvalStore.createPending({
+    await approvalCoordinator.createPending({
       id: 'apr-1',
       runId: 'run-1',
       payload: {},
       status: 'pending',
       createdAt: '2026-01-01T00:00:00Z',
     });
-    await approvalStore.resolve('apr-1', { kind: 'approve' }, '2026-01-01T00:00:01Z');
+    await approvalCoordinator.resolve('apr-1', { kind: 'approve' }, '2026-01-01T00:00:01Z');
 
     await expect(
-      approveRun({ runStore, approvalStore, clock }, 'run-1', 'apr-1', { kind: 'approve' }),
+      approveRun({ runStore, approvalCoordinator, clock }, 'run-1', 'apr-1', { kind: 'approve' }),
     ).rejects.toThrow(ConflictError);
   });
 });

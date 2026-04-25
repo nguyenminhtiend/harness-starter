@@ -1,12 +1,10 @@
 import {
-  type ApprovalQueue,
-  type ApprovalStore,
+  type ApprovalCoordinator,
   type CapabilityRegistry,
   type Clock,
   type ConversationStore,
   createCryptoIdGen,
-  createInMemoryApprovalQueue,
-  createInMemoryApprovalStore,
+  createInMemoryApprovalCoordinator,
   createInMemoryConversationStore,
   createInMemoryEventBus,
   createInMemoryEventLog,
@@ -36,8 +34,7 @@ export interface HarnessDeps {
   readonly runStore: RunStore;
   readonly eventLog: EventLog;
   readonly eventBus: EventBus;
-  readonly approvalStore: ApprovalStore;
-  readonly approvalQueue: ApprovalQueue;
+  readonly approvalCoordinator: ApprovalCoordinator;
   readonly conversationStore: ConversationStore;
   readonly settingsStore: SettingsStore;
   readonly capabilityRegistry: CapabilityRegistry;
@@ -62,8 +59,7 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
   const runStore = createInMemoryRunStore();
   const eventLog = createInMemoryEventLog();
   const eventBus = createInMemoryEventBus();
-  const approvalStore = createInMemoryApprovalStore();
-  const approvalQueue = createInMemoryApprovalQueue(approvalStore);
+  const approvalCoordinator = createInMemoryApprovalCoordinator();
   const conversationStore = createInMemoryConversationStore();
   const settingsStore = createInMemorySettingsStore();
   const { capabilityRegistry } = config;
@@ -76,15 +72,14 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
     eventBus,
     clock,
     logger,
-    approvalQueue,
+    approvalCoordinator,
   });
 
   const deps: HarnessDeps = {
     runStore,
     eventLog,
     eventBus,
-    approvalStore,
-    approvalQueue,
+    approvalCoordinator,
     conversationStore,
     settingsStore,
     capabilityRegistry,

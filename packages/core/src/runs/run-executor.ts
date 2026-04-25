@@ -8,7 +8,7 @@ import type {
 } from '../domain/capability.ts';
 import type { Run } from '../domain/run.ts';
 import type { SessionEvent, StreamEventPayload } from '../domain/session-event.ts';
-import type { ApprovalQueue } from '../storage/memory/approval-queue.ts';
+import type { ApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
 import type { EventBus } from '../storage/memory/event-bus.ts';
 import type { EventLog } from '../storage/memory/event-log.ts';
 import type { RunStore } from '../storage/memory/run-store.ts';
@@ -20,7 +20,7 @@ export interface RunExecutorDeps {
   readonly eventBus: EventBus;
   readonly clock: Clock;
   readonly logger: Logger;
-  readonly approvalQueue?: ApprovalQueue | undefined;
+  readonly approvalCoordinator?: ApprovalCoordinator | undefined;
 }
 
 export interface RunExecutionParams {
@@ -86,8 +86,8 @@ export class RunExecutor {
   }
 
   private createApprovalRequester(run: Run, signal: AbortSignal): ApprovalRequester {
-    const { approvalQueue, clock } = this.deps;
-    if (!approvalQueue) {
+    const { approvalCoordinator, clock } = this.deps;
+    if (!approvalCoordinator) {
       return noopApprovals;
     }
 
@@ -98,7 +98,7 @@ export class RunExecutor {
         await this.emitAndSync(suspendEvent, run, suspendTs);
 
         const decision = await Promise.race([
-          approvalQueue.request(approvalId, run.id, payload, suspendTs),
+          approvalCoordinator.request(approvalId, run.id, payload, suspendTs),
           new Promise<never>((_resolve, reject) => {
             if (signal.aborted) {
               reject(new Error('Run cancelled during approval'));

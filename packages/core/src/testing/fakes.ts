@@ -1,6 +1,6 @@
 import type { MemoryProvider } from '../memory/conversation-memory.ts';
 import { createPinoLogger } from '../observability/logger.ts';
-import { createInMemoryApprovalStore } from '../storage/memory/approval-store.ts';
+import { createInMemoryApprovalCoordinator } from '../storage/memory/approval-coordinator.ts';
 import { createInMemoryConversationStore } from '../storage/memory/conversation-store.ts';
 import { createInMemoryEventBus } from '../storage/memory/event-bus.ts';
 import { createInMemoryEventLog } from '../storage/memory/event-log.ts';
@@ -12,7 +12,7 @@ import type { IdGen } from '../time/id-gen.ts';
 export const createFakeRunStore = createInMemoryRunStore;
 export const createFakeEventLog = createInMemoryEventLog;
 export const createFakeEventBus = createInMemoryEventBus;
-export const createFakeApprovalStore = createInMemoryApprovalStore;
+export const createFakeApprovalCoordinator = createInMemoryApprovalCoordinator;
 export const createFakeConversationStore = createInMemoryConversationStore;
 export const createFakeSettingsStore = createInMemorySettingsStore;
 

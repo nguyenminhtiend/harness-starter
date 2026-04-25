@@ -1,5 +1,5 @@
 export {
-  createFakeApprovalStore,
+  createFakeApprovalCoordinator,
   createFakeClock,
   createFakeConversationStore,
   createFakeEventBus,

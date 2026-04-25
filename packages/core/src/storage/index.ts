@@ -1,7 +1,5 @@
-export type { ApprovalQueue } from './memory/approval-queue.ts';
-export { createInMemoryApprovalQueue } from './memory/approval-queue.ts';
-export type { ApprovalStore } from './memory/approval-store.ts';
-export { createInMemoryApprovalStore } from './memory/approval-store.ts';
+export type { ApprovalCoordinator } from './memory/approval-coordinator.ts';
+export { createInMemoryApprovalCoordinator } from './memory/approval-coordinator.ts';
 export type { ConversationStore } from './memory/conversation-store.ts';
 export { createInMemoryConversationStore } from './memory/conversation-store.ts';
 export type { EventBus } from './memory/event-bus.ts';
