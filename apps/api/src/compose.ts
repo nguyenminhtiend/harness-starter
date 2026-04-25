@@ -1,4 +1,3 @@
-import { createCapabilityRegistry } from '@harness/capabilities';
 import {
   createCryptoIdGen,
   createInMemoryApprovalQueue,
@@ -16,6 +15,7 @@ import {
   RunExecutor,
 } from '@harness/core';
 import { createHttpApp } from '@harness/http';
+import { createCapabilityRegistry } from '@harness/mastra/capabilities';
 import type { Hono } from 'hono';
 import type { Config } from './config.ts';
 

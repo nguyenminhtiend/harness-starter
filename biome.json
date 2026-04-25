@@ -106,35 +106,12 @@
               "options": {
                 "paths": {
                   "@harness/http": "core must not import http (DAG violation)",
-                  "@harness/capabilities": "core must not import capabilities (DAG violation)"
+                  "@harness/mastra": "core must not import mastra (DAG violation)"
                 },
                 "patterns": [
                   {
-                    "group": ["@harness/http/*", "@harness/capabilities/*"],
-                    "message": "core must not import http/capabilities (DAG violation)"
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/capabilities/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": {
-              "level": "error",
-              "options": {
-                "paths": {
-                  "@harness/http": "capabilities must not import http (DAG violation)"
-                },
-                "patterns": [
-                  {
-                    "group": ["@harness/http/*"],
-                    "message": "capabilities must not import http (DAG violation)"
+                    "group": ["@harness/http/*", "@harness/mastra/*"],
+                    "message": "core must not import http/mastra (DAG violation)"
                   }
                 ]
               }
@@ -152,13 +129,13 @@
               "level": "error",
               "options": {
                 "paths": {
-                  "@harness/capabilities": "http must not import capabilities (DAG violation)",
+                  "@harness/mastra": "http must not import mastra (DAG violation)",
                   "@mastra/core": "http must not import runtime SDK directly (use core)"
                 },
                 "patterns": [
                   {
                     "group": [
-                      "@harness/capabilities/*",
+                      "@harness/mastra/*",
                       "@mastra/core/*",
                       "@mastra/libsql",
                       "@mastra/libsql/*"
@@ -182,7 +159,6 @@
               "options": {
                 "paths": {
                   "@harness/core": "console may only import from @harness/http (DAG violation)",
-                  "@harness/capabilities": "console may only import from @harness/http (DAG violation)",
                   "@harness/mastra": "console may only import from @harness/http (DAG violation)",
                   "@mastra/core": "console may only import from @harness/http (DAG violation)",
                   "@mastra/libsql": "console may only import from @harness/http (DAG violation)"
@@ -191,7 +167,6 @@
                   {
                     "group": [
                       "@harness/core/*",
-                      "@harness/capabilities/*",
                       "@harness/mastra/*",
                       "@mastra/core/*",
                       "@mastra/libsql",

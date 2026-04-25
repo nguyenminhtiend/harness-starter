@@ -10,9 +10,9 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
-    "@harness/capabilities": "workspace:*",
     "@harness/core": "workspace:*",
-    "@harness/http": "workspace:*"
+    "@harness/http": "workspace:*",
+    "@harness/mastra": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

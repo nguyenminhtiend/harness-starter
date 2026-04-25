@@ -1,8 +1,8 @@
 import type { CapabilityDefinition } from '@harness/core';
 import { resolveModel } from '@harness/core';
-import { createDeepResearchWorkflow } from '@harness/mastra';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
+import { createDeepResearchWorkflow } from '../../workflows/index.ts';
 import { DeepResearchInput, DeepResearchOutput } from './input.ts';
 import { DeepResearchSettings } from './settings.ts';
 

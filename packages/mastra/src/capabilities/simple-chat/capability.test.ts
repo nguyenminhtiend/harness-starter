@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mockModel } from '@harness/mastra/testing';
+import { mockModel } from '../../agents/testing.ts';
 import { simpleChatCapability } from './capability.ts';
 
 describe('simpleChatCapability', () => {

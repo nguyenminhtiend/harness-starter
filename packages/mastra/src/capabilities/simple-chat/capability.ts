@@ -1,6 +1,6 @@
 import type { CapabilityDefinition } from '@harness/core';
 import { resolveModel } from '@harness/core';
-import { createSimpleChatAgent } from '@harness/mastra';
+import { createSimpleChatAgent } from '../../agents/index.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
 
