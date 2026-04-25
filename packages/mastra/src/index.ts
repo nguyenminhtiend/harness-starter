@@ -8,3 +8,17 @@ export {
   fsTool,
   getTimeTool,
 } from './tools/index.ts';
+export type {
+  DeepResearchWorkflowOptions,
+  Finding,
+  ResearchState,
+  StepLogger,
+  StepTimer,
+} from './workflows/index.ts';
+export {
+  createDeepResearchWorkflow,
+  ResearchPlan,
+  Subquestion,
+  startStepLog,
+  wrapWithLogging,
+} from './workflows/index.ts';

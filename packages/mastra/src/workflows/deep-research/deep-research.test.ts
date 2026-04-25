@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { mockModel } from '@harness/mastra/testing';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
+import { mockModel } from '../../agents/testing.ts';
 import { createDeepResearchWorkflow } from './index.ts';
 
 const fakePlan = {

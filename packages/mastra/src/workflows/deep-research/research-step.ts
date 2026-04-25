@@ -1,8 +1,8 @@
-import { fetchTool } from '@harness/mastra';
 import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+import { fetchTool } from '../../tools/index.ts';
 import type { StepLogger } from '../lib/logged-step.ts';
 import { startStepLog } from '../lib/logged-step.ts';
 import { extractJson } from './json.ts';
