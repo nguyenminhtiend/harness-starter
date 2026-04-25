@@ -1,4 +1,4 @@
-import { approveRun, cancelRun, startRun, streamRunEvents } from '@harness/core';
+import { approveRun, cancelRun, deleteRun, startRun, streamRunEvents } from '@harness/core';
 import { Hono } from 'hono';
 import { openApi } from 'hono-zod-openapi';
 import { z } from 'zod';
@@ -80,8 +80,7 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
       controller.abort();
       deps.runAbortControllers.delete(runId);
     }
-    await deps.eventLog.deleteByRunId(runId);
-    await deps.runStore.delete(runId);
+    await deleteRun(deps, runId);
     return c.body(null, 204);
   });
 

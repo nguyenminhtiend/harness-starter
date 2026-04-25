@@ -2,6 +2,8 @@ export type { ApproveRunDeps } from './approve-run.ts';
 export { approveRun } from './approve-run.ts';
 export type { CancelRunDeps } from './cancel-run.ts';
 export { cancelRun } from './cancel-run.ts';
+export type { DeleteRunDeps } from './delete-run.ts';
+export { deleteRun } from './delete-run.ts';
 export type { RuntimeStreamChunk } from './event-mapper.ts';
 export { mapStreamChunk } from './event-mapper.ts';
 export type { RunExecutionParams, RunExecutorDeps } from './run-executor.ts';

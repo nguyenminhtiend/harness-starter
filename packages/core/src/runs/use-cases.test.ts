@@ -14,6 +14,7 @@ import {
 } from '../testing/fakes.ts';
 import { approveRun } from './approve-run.ts';
 import { cancelRun } from './cancel-run.ts';
+import { deleteRun } from './delete-run.ts';
 import { RunExecutor } from './run-executor.ts';
 import { startRun } from './start-run.ts';
 import { streamRunEvents } from './stream-run-events.ts';
@@ -242,5 +243,33 @@ describe('cancelRun', () => {
   it('throws NotFoundError for unknown run', async () => {
     const deps = { runStore: createFakeRunStore() };
     await expect(cancelRun(deps, 'nope', new AbortController())).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe('deleteRun', () => {
+  it('deletes the run and its events', async () => {
+    const runStore = createFakeRunStore();
+    const eventLog = createFakeEventLog();
+    await runStore.create('run-1', 'cap', '2026-01-01T00:00:00Z');
+    await eventLog.append({
+      runId: 'run-1',
+      seq: 0,
+      ts: '2026-01-01T00:00:00Z',
+      type: 'run.started',
+      capabilityId: 'cap',
+      input: {},
+    });
+
+    await deleteRun({ runStore, eventLog }, 'run-1');
+
+    expect(await runStore.get('run-1')).toBeUndefined();
+    expect(await eventLog.read('run-1')).toEqual([]);
+  });
+
+  it('does not throw for non-existent run', async () => {
+    const runStore = createFakeRunStore();
+    const eventLog = createFakeEventLog();
+
+    await expect(deleteRun({ runStore, eventLog }, 'nonexistent')).resolves.toBeUndefined();
   });
 });
