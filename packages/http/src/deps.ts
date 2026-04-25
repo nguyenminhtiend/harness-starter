@@ -30,5 +30,4 @@ export interface HttpAppDeps
   readonly logger: Logger;
   readonly providerResolver: ProviderResolver;
   readonly providerKeys: ProviderKeys;
-  readonly runAbortControllers: Map<string, AbortController>;
 }

@@ -48,7 +48,6 @@ export interface HarnessDeps {
   readonly idGen: IdGen;
   readonly logger: Logger;
   readonly executor: RunExecutor;
-  readonly runAbortControllers: Map<string, AbortController>;
 }
 
 export interface ComposedHarness {
@@ -83,12 +82,6 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
     tracer,
   });
 
-  const runAbortControllers = new Map<string, AbortController>();
-
-  executor.onComplete((runId) => {
-    runAbortControllers.delete(runId);
-  });
-
   const deps: HarnessDeps = {
     runStore,
     eventLog,
@@ -104,16 +97,12 @@ export function composeHarness(config: HarnessConfig): ComposedHarness {
     idGen,
     logger,
     executor,
-    runAbortControllers,
   };
 
   return {
     deps,
     async shutdown() {
-      for (const controller of runAbortControllers.values()) {
-        controller.abort();
-      }
-      runAbortControllers.clear();
+      executor.abortAll();
       logger.info('Harness shut down');
     },
   };

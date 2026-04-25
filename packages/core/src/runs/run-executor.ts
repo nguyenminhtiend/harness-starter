@@ -39,9 +39,31 @@ const noopApprovals: ApprovalRequester = {
 export class RunExecutor {
   private readonly deps: RunExecutorDeps;
   private readonly onCompleteCallbacks: OnRunComplete[] = [];
+  private readonly abortControllers = new Map<string, AbortController>();
 
   constructor(deps: RunExecutorDeps) {
     this.deps = deps;
+  }
+
+  registerAbort(runId: string, controller: AbortController): void {
+    this.abortControllers.set(runId, controller);
+  }
+
+  abort(runId: string): boolean {
+    const controller = this.abortControllers.get(runId);
+    if (!controller) {
+      return false;
+    }
+    controller.abort();
+    this.abortControllers.delete(runId);
+    return true;
+  }
+
+  abortAll(): void {
+    for (const controller of this.abortControllers.values()) {
+      controller.abort();
+    }
+    this.abortControllers.clear();
   }
 
   onComplete(cb: OnRunComplete): void {
@@ -49,6 +71,7 @@ export class RunExecutor {
   }
 
   private notifyComplete(runId: string): void {
+    this.abortControllers.delete(runId);
     for (const cb of this.onCompleteCallbacks) {
       cb(runId);
     }

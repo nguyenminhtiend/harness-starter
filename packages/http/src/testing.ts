@@ -36,7 +36,6 @@ export function createFakeHttpDeps(overrides?: Partial<HttpAppDeps>): HttpAppDep
     idGen,
     logger,
     executor,
-    runAbortControllers: new Map(),
     ...overrides,
   };
 }

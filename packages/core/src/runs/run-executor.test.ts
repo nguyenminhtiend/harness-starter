@@ -435,6 +435,47 @@ describe('RunExecutor', () => {
     expect((failEvent as { error: { code: string } }).error.code).toBe('INVALID_SETTINGS');
   });
 
+  it('registerAbort + abort cancels the registered controller', () => {
+    const { executor } = setup();
+    const controller = new AbortController();
+    executor.registerAbort('run-a', controller);
+
+    expect(executor.abort('run-a')).toBe(true);
+    expect(controller.signal.aborted).toBe(true);
+    expect(executor.abort('run-a')).toBe(false);
+  });
+
+  it('abort returns false for unknown runId', () => {
+    const { executor } = setup();
+    expect(executor.abort('nonexistent')).toBe(false);
+  });
+
+  it('abortAll cancels all registered controllers', () => {
+    const { executor } = setup();
+    const c1 = new AbortController();
+    const c2 = new AbortController();
+    executor.registerAbort('r1', c1);
+    executor.registerAbort('r2', c2);
+
+    executor.abortAll();
+    expect(c1.signal.aborted).toBe(true);
+    expect(c2.signal.aborted).toBe(true);
+    expect(executor.abort('r1')).toBe(false);
+  });
+
+  it('cleans up abort controller when run completes', async () => {
+    const { executor } = setup();
+    const run = new Run('run-cleanup', 'test-cap', '2026-04-24T00:00:00.000Z');
+    const controller = new AbortController();
+
+    executor.registerAbort('run-cleanup', controller);
+
+    const capability = fakeAgentCapability([{ type: 'text.delta', text: 'done' }]);
+    await executor.execute(run, capability, {}, controller.signal);
+
+    expect(executor.abort('run-cleanup')).toBe(false);
+  });
+
   it('logs stream events with correct levels and summaries', async () => {
     const entries: Record<string, unknown>[] = [];
     const dest: pino.DestinationStream = {

@@ -46,7 +46,7 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
       const body = c.req.valid('json');
       const abortController = new AbortController();
       const result = await startRun(deps, body, abortController.signal);
-      deps.runAbortControllers.set(result.runId, abortController);
+      deps.executor.registerAbort(result.runId, abortController);
       return c.json(result, 201);
     },
   );
@@ -61,25 +61,13 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
 
   app.post('/:id/cancel', async (c) => {
     const runId = c.req.param('id');
-    const controller = deps.runAbortControllers.get(runId);
-    if (!controller) {
-      return c.json(
-        { error: { code: 'NOT_FOUND', message: 'Run not found or already finished' } },
-        404,
-      );
-    }
-    await cancelRun(deps, runId, controller);
-    deps.runAbortControllers.delete(runId);
+    await cancelRun(deps, runId);
     return c.json({ ok: true });
   });
 
   app.delete('/:id', async (c) => {
     const runId = c.req.param('id');
-    const controller = deps.runAbortControllers.get(runId);
-    if (controller) {
-      controller.abort();
-      deps.runAbortControllers.delete(runId);
-    }
+    deps.executor.abort(runId);
     await deleteRun(deps, runId);
     return c.body(null, 204);
   });

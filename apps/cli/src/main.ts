@@ -14,8 +14,6 @@ const { deps, shutdown } = composeHarness({
 });
 const controller = new AbortController();
 
-deps.runAbortControllers.set('cli', controller);
-
 const { runId } = await startRun(
   deps,
   { capabilityId: 'simple-chat', input: { message }, settings: {} },

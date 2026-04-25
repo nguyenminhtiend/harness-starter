@@ -231,18 +231,31 @@ describe('approveRun', () => {
 });
 
 describe('cancelRun', () => {
-  it('aborts the controller for an existing run', async () => {
+  it('aborts the controller for an existing run via executor', async () => {
     const runStore = createFakeRunStore();
-    await runStore.create('run-1', 'cap', '2026-01-01T00:00:00Z');
+    const eventLog = createFakeEventLog();
+    const eventBus = createFakeEventBus();
+    const clock = createFakeClock();
+    const logger = createFakeLogger();
+    const executor = new RunExecutor({ runStore, eventLog, eventBus, clock, logger });
 
+    await runStore.create('run-1', 'cap', '2026-01-01T00:00:00Z');
     const controller = new AbortController();
-    await cancelRun({ runStore }, 'run-1', controller);
+    executor.registerAbort('run-1', controller);
+
+    await cancelRun({ runStore, executor }, 'run-1');
     expect(controller.signal.aborted).toBe(true);
   });
 
   it('throws NotFoundError for unknown run', async () => {
-    const deps = { runStore: createFakeRunStore() };
-    await expect(cancelRun(deps, 'nope', new AbortController())).rejects.toThrow(NotFoundError);
+    const runStore = createFakeRunStore();
+    const eventLog = createFakeEventLog();
+    const eventBus = createFakeEventBus();
+    const clock = createFakeClock();
+    const logger = createFakeLogger();
+    const executor = new RunExecutor({ runStore, eventLog, eventBus, clock, logger });
+
+    await expect(cancelRun({ runStore, executor }, 'nope')).rejects.toThrow(NotFoundError);
   });
 });
 
