@@ -1,8 +1,8 @@
-import { cancelRun, startRun, streamRunEvents } from '@harness/core';
+import { approveRun, cancelRun, startRun, streamRunEvents } from '@harness/core';
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import type { HttpAppDeps } from '../deps.ts';
-import { ListRunsQuery, StartRunBody } from './runs.schemas.ts';
+import { ApproveBody, ListRunsQuery, RejectBody, StartRunBody } from './runs.schemas.ts';
 
 export function runsRoutes(deps: HttpAppDeps): Hono {
   const app = new Hono();
@@ -57,6 +57,26 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
     await deps.eventLog.deleteByRunId(runId);
     await deps.runStore.delete(runId);
     return c.body(null, 204);
+  });
+
+  app.post('/:id/approve', zValidator('json', ApproveBody), async (c) => {
+    const runId = c.req.param('id');
+    const body = c.req.valid('json');
+    await approveRun(deps, runId, body.approvalId, {
+      kind: 'approve',
+      ...(body.editedPlan !== undefined ? { editedPlan: body.editedPlan } : {}),
+    });
+    return c.json({ ok: true });
+  });
+
+  app.post('/:id/reject', zValidator('json', RejectBody), async (c) => {
+    const runId = c.req.param('id');
+    const body = c.req.valid('json');
+    await approveRun(deps, runId, body.approvalId, {
+      kind: 'reject',
+      ...(body.reason ? { reason: body.reason } : {}),
+    });
+    return c.json({ ok: true });
   });
 
   app.get('/:id/events', async (c) => {

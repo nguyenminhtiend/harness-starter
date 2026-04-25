@@ -14,3 +14,13 @@ export const StartRunBody = z.object({
   settings: z.unknown().optional(),
   conversationId: z.string().optional(),
 });
+
+export const ApproveBody = z.object({
+  approvalId: z.string().min(1),
+  editedPlan: z.unknown().optional(),
+});
+
+export const RejectBody = z.object({
+  approvalId: z.string().min(1),
+  reason: z.string().optional(),
+});

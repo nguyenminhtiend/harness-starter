@@ -6,7 +6,6 @@ import { errorHandler } from './middleware/error-handler.ts';
 import { accessLogger } from './middleware/logger.ts';
 import { requestId } from './middleware/request-id.ts';
 import { buildOpenApiSpec, getScalarHtml } from './openapi.ts';
-import { approvalsRoutes } from './routes/approvals.routes.ts';
 import { capabilitiesRoutes } from './routes/capabilities.routes.ts';
 import { conversationsRoutes } from './routes/conversations.routes.ts';
 import { healthRoutes } from './routes/health.routes.ts';
@@ -35,7 +34,6 @@ export function createHttpApp(deps: HttpAppDeps, config?: HttpAppConfig): Hono {
   app.route('/health', healthRoutes());
   app.route('/capabilities', capabilitiesRoutes(deps));
   app.route('/runs', runsRoutes(deps));
-  app.route('/runs', approvalsRoutes(deps));
   app.route('/settings', settingsRoutes(deps));
   app.route('/conversations', conversationsRoutes(deps));
   app.route('/models', modelsRoutes(deps));
