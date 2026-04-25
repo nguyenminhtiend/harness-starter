@@ -1,10 +1,11 @@
 {
-  "name": "@harness/tools",
+  "name": "@harness/mastra",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./tools": "./src/tools/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

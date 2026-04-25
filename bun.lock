@@ -61,7 +61,7 @@
       "name": "@harness/agents",
       "version": "0.0.0",
       "dependencies": {
-        "@harness/tools": "workspace:*",
+        "@harness/mastra": "workspace:*",
         "@mastra/core": "1.27.0",
         "@mastra/libsql": "1.9.0",
         "@mastra/memory": "1.17.0",
@@ -79,7 +79,7 @@
       "dependencies": {
         "@harness/agents": "workspace:*",
         "@harness/core": "workspace:*",
-        "@harness/tools": "workspace:*",
+        "@harness/mastra": "workspace:*",
         "@harness/workflows": "workspace:*",
         "zod": "^4.0.0",
       },
@@ -119,8 +119,8 @@
         "typescript": "^5.7.0",
       },
     },
-    "packages/tools": {
-      "name": "@harness/tools",
+    "packages/mastra": {
+      "name": "@harness/mastra",
       "version": "0.0.0",
       "dependencies": {
         "@mastra/core": "1.27.0",
@@ -137,7 +137,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@harness/agents": "workspace:*",
-        "@harness/tools": "workspace:*",
+        "@harness/mastra": "workspace:*",
         "@mastra/core": "1.27.0",
         "zod": "^4.0.0",
       },
@@ -392,7 +392,7 @@
 
     "@harness/http": ["@harness/http@workspace:packages/http"],
 
-    "@harness/tools": ["@harness/tools@workspace:packages/tools"],
+    "@harness/mastra": ["@harness/mastra@workspace:packages/mastra"],
 
     "@harness/workflows": ["@harness/workflows@workspace:packages/workflows"],
 

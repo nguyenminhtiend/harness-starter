@@ -1,4 +1,4 @@
-import { fetchTool } from '@harness/tools';
+import { fetchTool } from '@harness/mastra';
 import { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createStep } from '@mastra/core/workflows';

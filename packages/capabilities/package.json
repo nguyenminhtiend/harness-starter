@@ -13,7 +13,7 @@
   "dependencies": {
     "@harness/agents": "workspace:*",
     "@harness/core": "workspace:*",
-    "@harness/tools": "workspace:*",
+    "@harness/mastra": "workspace:*",
     "@harness/workflows": "workspace:*",
     "zod": "^4.0.0"
   },

@@ -185,7 +185,7 @@
                   "@harness/capabilities": "console may only import from @harness/http (DAG violation)",
                   "@harness/agents": "console may only import from @harness/http (DAG violation)",
                   "@harness/workflows": "console may only import from @harness/http (DAG violation)",
-                  "@harness/tools": "console may only import from @harness/http (DAG violation)",
+                  "@harness/mastra": "console may only import from @harness/http (DAG violation)",
                   "@mastra/core": "console may only import from @harness/http (DAG violation)",
                   "@mastra/libsql": "console may only import from @harness/http (DAG violation)"
                 },
@@ -196,7 +196,7 @@
                       "@harness/capabilities/*",
                       "@harness/agents/*",
                       "@harness/workflows/*",
-                      "@harness/tools/*",
+                      "@harness/mastra/*",
                       "@mastra/core/*",
                       "@mastra/libsql",
                       "@mastra/libsql/*"
