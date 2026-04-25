@@ -1,39 +1,14 @@
-import type { RunStatus } from '@harness/core';
 import { cancelRun, startRun, streamRunEvents } from '@harness/core';
+import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
-import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
-
-const VALID_STATUSES = new Set<string>([
-  'pending',
-  'running',
-  'suspended',
-  'completed',
-  'failed',
-  'cancelled',
-]);
-
-const StartRunBody = z.object({
-  capabilityId: z.string().min(1),
-  input: z.unknown(),
-  settings: z.unknown().optional(),
-  conversationId: z.string().optional(),
-});
+import { ListRunsQuery, StartRunBody } from './runs.schemas.ts';
 
 export function runsRoutes(deps: HttpAppDeps): Hono {
   const app = new Hono();
 
-  app.get('/', async (c) => {
-    const rawStatus = c.req.query('status');
-    const status =
-      rawStatus && VALID_STATUSES.has(rawStatus) ? (rawStatus as RunStatus) : undefined;
-    const capabilityId = c.req.query('capabilityId');
-    const limitStr = c.req.query('limit');
-    const rawLimit = limitStr ? Number.parseInt(limitStr, 10) : undefined;
-    const limit =
-      rawLimit !== undefined && Number.isFinite(rawLimit) && rawLimit > 0
-        ? Math.min(rawLimit, 500)
-        : undefined;
+  app.get('/', zValidator('query', ListRunsQuery), async (c) => {
+    const { status, capabilityId, limit } = c.req.valid('query');
     const runs = await deps.runStore.list({
       ...(status ? { status } : {}),
       ...(capabilityId ? { capabilityId } : {}),
@@ -42,8 +17,8 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
     return c.json({ runs });
   });
 
-  app.post('/', async (c) => {
-    const body = StartRunBody.parse(await c.req.json());
+  app.post('/', zValidator('json', StartRunBody), async (c) => {
+    const body = c.req.valid('json');
     const abortController = new AbortController();
     const result = await startRun(deps, body, abortController.signal);
     deps.runAbortControllers.set(result.runId, abortController);

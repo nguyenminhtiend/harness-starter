@@ -88,6 +88,53 @@ describe('GET /capabilities/:id', () => {
   });
 });
 
+describe('GET /runs', () => {
+  test('returns runs with no filters', async () => {
+    const deps = depsWithCapability();
+    const app = createHttpApp(deps);
+    const res = await app.request('/runs');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.runs).toBeInstanceOf(Array);
+  });
+
+  test('filters by status query param', async () => {
+    const deps = depsWithCapability();
+    const app = createHttpApp(deps);
+    await deps.runStore.create('r1', 'simple-chat', '2026-01-01T00:00:00Z');
+    const res = await app.request('/runs?status=pending');
+    expect(res.status).toBe(200);
+  });
+
+  test('returns 400 for invalid status', async () => {
+    const deps = depsWithCapability();
+    const app = createHttpApp(deps);
+    const res = await app.request('/runs?status=bogus');
+    expect(res.status).toBe(400);
+  });
+
+  test('coerces limit to integer and caps at 500', async () => {
+    const deps = depsWithCapability();
+    const app = createHttpApp(deps);
+    const res = await app.request('/runs?limit=10');
+    expect(res.status).toBe(200);
+  });
+
+  test('returns 400 for non-numeric limit', async () => {
+    const deps = depsWithCapability();
+    const app = createHttpApp(deps);
+    const res = await app.request('/runs?limit=abc');
+    expect(res.status).toBe(400);
+  });
+
+  test('returns 400 for negative limit', async () => {
+    const deps = depsWithCapability();
+    const app = createHttpApp(deps);
+    const res = await app.request('/runs?limit=-5');
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('POST /runs', () => {
   test('creates a run and returns runId', async () => {
     const deps = depsWithCapability();
