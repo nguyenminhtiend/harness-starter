@@ -18,7 +18,7 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 6. **Structured output** uses Zod v4 schemas passed to Mastra agents/steps.
 7. **Workflow-first for multi-step.** Multi-step pipelines are Mastra `createWorkflow` with typed steps, not custom graph implementations. HITL uses `suspend()`/`resume()`.
 8. **`AbortSignal` flows top-down** where supported by Mastra.
-9. **Clone-and-own invariant:** deleting any of `packages/tools/`, `packages/agents/`, `packages/workflows/`, `packages/capabilities/`, or any `apps/*` must leave the rest building and testing cleanly.
+9. **Clone-and-own invariant:** deleting `packages/mastra/` must leave `core` + `http` + `bootstrap` building and testing cleanly. Deleting any `apps/*` must leave the rest building.
 10. **Mastra Studio as dev UI.** `mastra dev` provides agent/workflow inspection, traces, and evals. `apps/console` is the production web UI.
 
 ## Non-goals — do not build these
@@ -50,22 +50,27 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 ### Package DAG
 
 ```
-tools ─┐
-agents ─┼─→ capabilities ─→ core ─→ http
-workflows ─┘                       ↑
-                         apps/api ─┘
-                         apps/console (http types only)
+mastra ─→ core ─→ http
+             ↑
+bootstrap ───┘
+    ↑
+apps/api ─→ http
+apps/cli
+apps/console (http types only)
 ```
 
 - **`packages/core/`** — Domain model, feature folders (runs, conversations, settings, capabilities), storage, providers, observability, time, memory, runtime. Deps: `zod`, `@mastra/core`, `@mastra/libsql`, `pino`, `ollama-ai-provider-v2`.
-- **`packages/capabilities/`** — `CapabilityDefinition` exports (simple-chat, deep-research) + `buildStudioConfig`.
-- **`packages/http/`** — Hono routes, middleware, OpenAPI spec, public DTO types.
-- **`packages/tools/`** — Mastra `createTool` implementations (calculator, get-time, fs, fetch).
-- **`packages/agents/`** — Mastra `Agent` definitions (simpleChatAgent) + `mockModel` test helper.
-- **`packages/workflows/`** — Mastra `createWorkflow` compositions (deepResearchWorkflow).
-- **`apps/api/`** — Composition root: config → core factories → capabilities → HTTP server.
+- **`packages/mastra/`** — Mastra primitives consolidated into one package:
+  - `src/tools/` — `createTool` implementations (calculator, get-time, fs, fetch).
+  - `src/agents/` — `Agent` definitions (simpleChatAgent) + `mockModel` test helper (`@harness/mastra/testing`).
+  - `src/workflows/` — `createWorkflow` compositions (deepResearchWorkflow) + `loggedStep` helper.
+  - `src/capabilities/` — `CapabilityDefinition` exports (simple-chat, deep-research) + `createCapabilityRegistry` (`@harness/mastra/capabilities`).
+- **`packages/http/`** — Hono routes, middleware, auto-generated OpenAPI spec (via `hono-zod-openapi`), public DTO types.
+- **`packages/bootstrap/`** — `composeHarness()` wires stores, executor, and capability registry. Shared by `apps/api` and `apps/cli`.
+- **`apps/api/`** — HTTP composition root: `composeHarness()` → `createHttpApp()` (~14 LOC).
+- **`apps/cli/`** — Minimal CLI: `composeHarness()` → `startRun()` → JSON-lines to stdout. Proves layering without HTTP.
 - **`apps/console/`** — React SPA (Vite + TanStack Query). Imports only `@harness/http/types`.
-- **`mastra.config.ts`** — Root Mastra Studio config using `buildStudioConfig()` from `@harness/capabilities`.
+- **`mastra.config.ts`** — Root Mastra Studio config.
 
 Module boundaries enforced by Biome `noRestrictedImports` rules in `biome.json`.
 
@@ -115,7 +120,7 @@ bun run studio:build # Mastra production build
 
 - Unit tests colocated: `foo.ts` + `foo.test.ts`.
 - **TDD enforced for `packages/*`**. Pragmatic / tests-after for `apps/*`.
-- **No mocks of `Provider`.** Use `mockModel()` from `@harness/agents/testing` — scripted `MockLanguageModelV3` replay.
+- **No mocks of `Provider`.** Use `mockModel()` from `@harness/mastra/testing` — scripted `MockLanguageModelV3` replay.
 - Tests use real in-memory stores from `@harness/core` (storage module). Only `FakeClock` and `FakeIdGen` in `@harness/core/testing` for timing-dependent tests.
 - Live-provider tests gated behind `HARNESS_LIVE=1`.
 
