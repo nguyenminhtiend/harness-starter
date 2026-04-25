@@ -36,10 +36,9 @@ describe('simpleChatCapability', () => {
 
   test('runner.build creates an agent with the given model', () => {
     const model = mockModel([{ type: 'text', text: 'Hello there!' }]);
-    const cap = simpleChatCapability.__createWithModel(model);
 
-    if (cap.runner.kind === 'agent') {
-      const agent = cap.runner.build({});
+    if (simpleChatCapability.runner.kind === 'agent') {
+      const agent = simpleChatCapability.runner.build({ model });
       expect(agent).toBeDefined();
     }
   });

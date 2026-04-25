@@ -42,10 +42,9 @@ describe('deepResearchCapability', () => {
       { type: 'text', text: '{}' },
       { type: 'text', text: '{}' },
     ]);
-    const cap = deepResearchCapability.__createWithModel(model);
 
-    if (cap.runner.kind === 'workflow') {
-      const wf = cap.runner.build({});
+    if (deepResearchCapability.runner.kind === 'workflow') {
+      const wf = deepResearchCapability.runner.build({ model });
       expect(wf).toBeDefined();
     }
   });
