@@ -1,29 +1,52 @@
 import { approveRun, cancelRun, startRun, streamRunEvents } from '@harness/core';
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
+import { openApi } from 'hono-zod-openapi';
+import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
 import { ApproveBody, ListRunsQuery, RejectBody, StartRunBody } from './runs.schemas.ts';
+
+const OkResponse = z.object({ ok: z.boolean() });
+const ErrorResponse = z.object({
+  error: z.object({ code: z.string(), message: z.string() }),
+});
+const RunIdResponse = z.object({ runId: z.string() });
 
 export function runsRoutes(deps: HttpAppDeps): Hono {
   const app = new Hono();
 
-  app.get('/', zValidator('query', ListRunsQuery), async (c) => {
-    const { status, capabilityId, limit } = c.req.valid('query');
-    const runs = await deps.runStore.list({
-      ...(status ? { status } : {}),
-      ...(capabilityId ? { capabilityId } : {}),
-      ...(limit != null ? { limit } : {}),
-    });
-    return c.json({ runs });
-  });
+  app.get(
+    '/',
+    openApi({
+      tags: ['runs'],
+      request: { query: ListRunsQuery },
+      responses: { 200: z.object({ runs: z.array(z.unknown()) }) },
+    }),
+    async (c) => {
+      const { status, capabilityId, limit } = c.req.valid('query');
+      const runs = await deps.runStore.list({
+        ...(status ? { status } : {}),
+        ...(capabilityId ? { capabilityId } : {}),
+        ...(limit != null ? { limit } : {}),
+      });
+      return c.json({ runs });
+    },
+  );
 
-  app.post('/', zValidator('json', StartRunBody), async (c) => {
-    const body = c.req.valid('json');
-    const abortController = new AbortController();
-    const result = await startRun(deps, body, abortController.signal);
-    deps.runAbortControllers.set(result.runId, abortController);
-    return c.json(result, 201);
-  });
+  app.post(
+    '/',
+    openApi({
+      tags: ['runs'],
+      request: { json: StartRunBody },
+      responses: { 201: RunIdResponse, 404: ErrorResponse },
+    }),
+    async (c) => {
+      const body = c.req.valid('json');
+      const abortController = new AbortController();
+      const result = await startRun(deps, body, abortController.signal);
+      deps.runAbortControllers.set(result.runId, abortController);
+      return c.json(result, 201);
+    },
+  );
 
   app.get('/:id', async (c) => {
     const run = await deps.runStore.get(c.req.param('id'));
@@ -59,25 +82,41 @@ export function runsRoutes(deps: HttpAppDeps): Hono {
     return c.body(null, 204);
   });
 
-  app.post('/:id/approve', zValidator('json', ApproveBody), async (c) => {
-    const runId = c.req.param('id');
-    const body = c.req.valid('json');
-    await approveRun(deps, runId, body.approvalId, {
-      kind: 'approve',
-      ...(body.editedPlan !== undefined ? { editedPlan: body.editedPlan } : {}),
-    });
-    return c.json({ ok: true });
-  });
+  app.post(
+    '/:id/approve',
+    openApi({
+      tags: ['approvals'],
+      request: { json: ApproveBody },
+      responses: { 200: OkResponse, 404: ErrorResponse, 409: ErrorResponse },
+    }),
+    async (c) => {
+      const runId = c.req.param('id');
+      const body = c.req.valid('json');
+      await approveRun(deps, runId, body.approvalId, {
+        kind: 'approve',
+        ...(body.editedPlan !== undefined ? { editedPlan: body.editedPlan } : {}),
+      });
+      return c.json({ ok: true });
+    },
+  );
 
-  app.post('/:id/reject', zValidator('json', RejectBody), async (c) => {
-    const runId = c.req.param('id');
-    const body = c.req.valid('json');
-    await approveRun(deps, runId, body.approvalId, {
-      kind: 'reject',
-      ...(body.reason ? { reason: body.reason } : {}),
-    });
-    return c.json({ ok: true });
-  });
+  app.post(
+    '/:id/reject',
+    openApi({
+      tags: ['approvals'],
+      request: { json: RejectBody },
+      responses: { 200: OkResponse, 404: ErrorResponse, 409: ErrorResponse },
+    }),
+    async (c) => {
+      const runId = c.req.param('id');
+      const body = c.req.valid('json');
+      await approveRun(deps, runId, body.approvalId, {
+        kind: 'reject',
+        ...(body.reason ? { reason: body.reason } : {}),
+      });
+      return c.json({ ok: true });
+    },
+  );
 
   app.get('/:id/events', async (c) => {
     const runId = c.req.param('id');

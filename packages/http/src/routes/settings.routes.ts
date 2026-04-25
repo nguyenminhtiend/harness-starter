@@ -1,6 +1,6 @@
 import { listCapabilities, updateSettings } from '@harness/core';
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
+import { openApi } from 'hono-zod-openapi';
 import { z } from 'zod';
 import type { HttpAppDeps } from '../deps.ts';
 
@@ -14,6 +14,11 @@ const GLOBAL_DEFAULTS = {
 const UpdateBody = z.object({
   scope: z.string().min(1),
   settings: z.record(z.string(), z.unknown()),
+});
+
+const SettingsResponse = z.object({
+  global: z.record(z.string(), z.unknown()),
+  capabilities: z.record(z.string(), z.unknown()),
 });
 
 async function buildSettingsResponse(deps: HttpAppDeps) {
@@ -41,17 +46,32 @@ async function buildSettingsResponse(deps: HttpAppDeps) {
 export function settingsRoutes(deps: HttpAppDeps): Hono {
   const app = new Hono();
 
-  app.get('/', async (c) => {
-    const result = await buildSettingsResponse(deps);
-    return c.json(result);
-  });
+  app.get(
+    '/',
+    openApi({
+      tags: ['settings'],
+      responses: { 200: SettingsResponse },
+    }),
+    async (c) => {
+      const result = await buildSettingsResponse(deps);
+      return c.json(result);
+    },
+  );
 
-  app.put('/', zValidator('json', UpdateBody), async (c) => {
-    const body = c.req.valid('json');
-    await updateSettings(deps, body.scope, body.settings);
-    const updated = await buildSettingsResponse(deps);
-    return c.json(updated);
-  });
+  app.put(
+    '/',
+    openApi({
+      tags: ['settings'],
+      request: { json: UpdateBody },
+      responses: { 200: SettingsResponse },
+    }),
+    async (c) => {
+      const body = c.req.valid('json');
+      await updateSettings(deps, body.scope, body.settings);
+      const updated = await buildSettingsResponse(deps);
+      return c.json(updated);
+    },
+  );
 
   return app;
 }
