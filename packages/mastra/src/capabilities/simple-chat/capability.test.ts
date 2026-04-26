@@ -1,9 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { noopLogger } from '@mastra/core/logger';
+import { Mastra } from '@mastra/core';
+import { createSimpleChatAgent } from '../../agents/index.ts';
+import { mockModel } from '../../agents/testing.ts';
 import { createSimpleChatCapability } from './capability.ts';
 
+function testMastra() {
+  const model = mockModel([{ type: 'text', text: 'hi' }]);
+  return new Mastra({
+    agents: { simpleChatAgent: createSimpleChatAgent({ model }) },
+  });
+}
+
 describe('createSimpleChatCapability', () => {
-  const cap = createSimpleChatCapability(noopLogger);
+  const cap = createSimpleChatCapability({ mastra: testMastra() });
 
   test('has correct metadata', () => {
     expect(cap.id).toBe('simple-chat');

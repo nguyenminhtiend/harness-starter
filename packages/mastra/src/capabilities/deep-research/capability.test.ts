@@ -1,9 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { noopLogger } from '@mastra/core/logger';
+import { Mastra } from '@mastra/core';
+import { mockModel } from '../../agents/testing.ts';
+import { createDeepResearchWorkflow } from '../../workflows/index.ts';
 import { createDeepResearchCapability } from './capability.ts';
 
+function testMastra() {
+  const model = mockModel([{ type: 'text', text: 'test' }]);
+  return new Mastra({
+    workflows: { deepResearch: createDeepResearchWorkflow({ model }) },
+  });
+}
+
 describe('createDeepResearchCapability', () => {
-  const cap = createDeepResearchCapability(noopLogger);
+  const cap = createDeepResearchCapability({ mastra: testMastra() });
 
   test('has correct metadata', () => {
     expect(cap.id).toBe('deep-research');

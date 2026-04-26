@@ -1,9 +1,26 @@
 import { describe, expect, test } from 'bun:test';
-import { noopLogger } from '@mastra/core/logger';
+import { Mastra } from '@mastra/core';
+import { createSimpleChatAgent } from '../agents/index.ts';
+import { mockModel } from '../agents/testing.ts';
+import { createDeepResearchWorkflow } from '../workflows/index.ts';
+import { createDeepResearchCapability } from './deep-research/capability.ts';
 import { createCapabilityRegistry } from './registry.ts';
+import { createSimpleChatCapability } from './simple-chat/capability.ts';
+
+function testMastra() {
+  const model = mockModel([{ type: 'text', text: 'test' }]);
+  return new Mastra({
+    agents: { simpleChatAgent: createSimpleChatAgent({ model }) },
+    workflows: { deepResearch: createDeepResearchWorkflow({ model }) },
+  });
+}
 
 describe('createCapabilityRegistry', () => {
-  const registry = createCapabilityRegistry(noopLogger);
+  const mastra = testMastra();
+  const registry = createCapabilityRegistry([
+    createSimpleChatCapability({ mastra }),
+    createDeepResearchCapability({ mastra }),
+  ]);
 
   test('list() returns simple-chat and deep-research', () => {
     const caps = registry.list();

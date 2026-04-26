@@ -1,15 +1,15 @@
 import type { CapabilityDefinition } from '@harness/core';
-import { resolveModel } from '@harness/core';
-import type { IMastraLogger } from '@mastra/core/logger';
-import { createSimpleChatAgent } from '../../agents/index.ts';
+import type { Mastra } from '@mastra/core';
 import { agentAdapter } from '../adapters/index.ts';
 import { SimpleChatInput, SimpleChatOutput } from './input.ts';
 import { SimpleChatSettings } from './settings.ts';
 
-type AgentModel = Parameters<typeof createSimpleChatAgent>[0]['model'];
+export interface SimpleChatCapabilityDeps {
+  readonly mastra: Mastra;
+}
 
 export function createSimpleChatCapability(
-  _logger: IMastraLogger,
+  deps: SimpleChatCapabilityDeps,
 ): CapabilityDefinition<SimpleChatInput, SimpleChatOutput> {
   return {
     id: 'simple-chat',
@@ -19,12 +19,7 @@ export function createSimpleChatCapability(
     outputSchema: SimpleChatOutput,
     settingsSchema: SimpleChatSettings,
     runner: agentAdapter({
-      build: (settings) => {
-        const s = settings as SimpleChatSettings;
-        return createSimpleChatAgent({
-          model: resolveModel(s.model) as AgentModel,
-        });
-      },
+      agent: deps.mastra.getAgent('simpleChatAgent'),
       extractPrompt: (input) => (input as SimpleChatInput).message,
       maxSteps: 5,
     }),

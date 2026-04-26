@@ -6,18 +6,17 @@ import { fakeCtx } from './testing.ts';
 describe('agentAdapter', () => {
   it('yields mapped stream events from agent.stream()', async () => {
     const runner = agentAdapter({
-      build: () =>
-        ({
-          stream: async () => ({
-            fullStream: new ReadableStream({
-              start(c) {
-                c.enqueue({ type: 'text-delta', payload: { text: 'hi' } });
-                c.enqueue({ type: 'step-finish', payload: { output: {} } });
-                c.close();
-              },
-            }),
+      agent: {
+        stream: async () => ({
+          fullStream: new ReadableStream({
+            start(c) {
+              c.enqueue({ type: 'text-delta', payload: { text: 'hi' } });
+              c.enqueue({ type: 'step-finish', payload: { output: {} } });
+              c.close();
+            },
           }),
-        }) as never,
+        }),
+      } as never,
       extractPrompt: (input) => (input as { message: string }).message,
       maxSteps: 3,
     });
@@ -33,19 +32,18 @@ describe('agentAdapter', () => {
   it('passes memory thread to agent when ctx.memory is set', async () => {
     let receivedOpts: Record<string, unknown> = {};
     const runner = agentAdapter({
-      build: () =>
-        ({
-          stream: async (_p: string, opts: Record<string, unknown>) => {
-            receivedOpts = opts;
-            return {
-              fullStream: new ReadableStream({
-                start(c) {
-                  c.close();
-                },
-              }),
-            };
-          },
-        }) as never,
+      agent: {
+        stream: async (_p: string, opts: Record<string, unknown>) => {
+          receivedOpts = opts;
+          return {
+            fullStream: new ReadableStream({
+              start(c) {
+                c.close();
+              },
+            }),
+          };
+        },
+      } as never,
       extractPrompt: () => 'test',
     });
 
@@ -61,19 +59,18 @@ describe('agentAdapter', () => {
   it('defaults maxSteps to 5', async () => {
     let receivedMaxSteps: unknown;
     const runner = agentAdapter({
-      build: () =>
-        ({
-          stream: async (_p: string, opts: Record<string, unknown>) => {
-            receivedMaxSteps = opts.maxSteps;
-            return {
-              fullStream: new ReadableStream({
-                start(c) {
-                  c.close();
-                },
-              }),
-            };
-          },
-        }) as never,
+      agent: {
+        stream: async (_p: string, opts: Record<string, unknown>) => {
+          receivedMaxSteps = opts.maxSteps;
+          return {
+            fullStream: new ReadableStream({
+              start(c) {
+                c.close();
+              },
+            }),
+          };
+        },
+      } as never,
       extractPrompt: () => 'test',
     });
 

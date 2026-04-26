@@ -3,14 +3,14 @@ import { mapStreamChunk } from '@harness/core';
 import type { Agent } from '@mastra/core/agent';
 
 export interface AgentAdapterConfig {
-  readonly build: (settings: unknown) => Agent;
+  readonly agent: Agent;
   readonly extractPrompt: (input: unknown) => string;
   readonly maxSteps?: number;
 }
 
 export function agentAdapter(config: AgentAdapterConfig): CapabilityRunner {
   return async function* (_input, ctx) {
-    const agent = config.build(ctx.settings);
+    const { agent } = config;
     const prompt = config.extractPrompt(_input);
 
     const memoryOpt = ctx.memory

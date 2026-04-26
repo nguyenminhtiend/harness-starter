@@ -2,7 +2,7 @@ import type { CapabilityRunner } from '@harness/core';
 import type { Workflow } from '@mastra/core/workflows';
 
 export interface WorkflowAdapterConfig {
-  readonly build: (settings: unknown) => Workflow;
+  readonly workflow: Workflow;
   readonly extractInput: (input: unknown) => Record<string, unknown>;
   readonly approveStepId?: string;
   readonly extractPlan?: (steps: Record<string, unknown>) => unknown;
@@ -10,7 +10,7 @@ export interface WorkflowAdapterConfig {
 
 export function workflowAdapter(config: WorkflowAdapterConfig): CapabilityRunner {
   return async function* (_input, ctx) {
-    const workflow = config.build(ctx.settings);
+    const { workflow } = config;
     const wfRun = await workflow.createRun();
     const inputData = config.extractInput(_input);
     const initial = await wfRun.start({ inputData });

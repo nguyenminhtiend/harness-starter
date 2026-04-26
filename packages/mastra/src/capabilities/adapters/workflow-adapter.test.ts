@@ -6,12 +6,11 @@ import { workflowAdapter } from './workflow-adapter.ts';
 describe('workflowAdapter', () => {
   it('yields artifact when workflow succeeds without suspension', async () => {
     const runner = workflowAdapter({
-      build: () =>
-        ({
-          createRun: async () => ({
-            start: async () => ({ status: 'success', result: { answer: 42 } }),
-          }),
-        }) as never,
+      workflow: {
+        createRun: async () => ({
+          start: async () => ({ status: 'success', result: { answer: 42 } }),
+        }),
+      } as never,
       extractInput: (input) => input as Record<string, unknown>,
     });
 
@@ -26,16 +25,15 @@ describe('workflowAdapter', () => {
   it('yields plan.proposed and waits for approval on suspended workflow', async () => {
     let approvalPayload: unknown;
     const runner = workflowAdapter({
-      build: () =>
-        ({
-          createRun: async () => ({
-            start: async () => ({
-              status: 'suspended',
-              steps: { plan: { status: 'success', output: { plan: ['sub1'] } } },
-            }),
-            resume: async () => ({ status: 'success', result: { report: 'done' } }),
+      workflow: {
+        createRun: async () => ({
+          start: async () => ({
+            status: 'suspended',
+            steps: { plan: { status: 'success', output: { plan: ['sub1'] } } },
           }),
-        }) as never,
+          resume: async () => ({ status: 'success', result: { report: 'done' } }),
+        }),
+      } as never,
       extractInput: () => ({}),
       extractPlan: (steps) => {
         const ps = steps.plan as { output?: { plan?: unknown } };
@@ -64,13 +62,12 @@ describe('workflowAdapter', () => {
 
   it('stops after rejection without yielding artifact', async () => {
     const runner = workflowAdapter({
-      build: () =>
-        ({
-          createRun: async () => ({
-            start: async () => ({ status: 'suspended', steps: {} }),
-            resume: async () => ({ status: 'success', result: {} }),
-          }),
-        }) as never,
+      workflow: {
+        createRun: async () => ({
+          start: async () => ({ status: 'suspended', steps: {} }),
+          resume: async () => ({ status: 'success', result: {} }),
+        }),
+      } as never,
       extractInput: () => ({}),
     });
 
@@ -90,12 +87,11 @@ describe('workflowAdapter', () => {
 
   it('throws when workflow fails', async () => {
     const runner = workflowAdapter({
-      build: () =>
-        ({
-          createRun: async () => ({
-            start: async () => ({ status: 'failed' }),
-          }),
-        }) as never,
+      workflow: {
+        createRun: async () => ({
+          start: async () => ({ status: 'failed' }),
+        }),
+      } as never,
       extractInput: () => ({}),
     });
 
