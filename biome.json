@@ -182,6 +182,79 @@
       }
     },
     {
+      "includes": ["apps/api/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@mastra/editor": "Editor is dev-only; mount in apps/studio",
+                  "mastra": "Mastra CLI is dev-only; mount in apps/studio"
+                },
+                "patterns": [
+                  {
+                    "group": ["@mastra/editor/*"],
+                    "message": "Editor is dev-only; mount in apps/studio"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/cli/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@mastra/editor": "Editor is dev-only; mount in apps/studio",
+                  "mastra": "Mastra CLI is dev-only; mount in apps/studio"
+                },
+                "patterns": [
+                  {
+                    "group": ["@mastra/editor/*"],
+                    "message": "Editor is dev-only; mount in apps/studio"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/studio/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@harness/http": "studio must not import http (DAG violation)",
+                  "@harness/bootstrap": "studio must not import bootstrap; build its own Mastra instance",
+                  "@harness/core": "studio uses Mastra primitives directly; core's Run aggregate is a runtime concern"
+                },
+                "patterns": [
+                  {
+                    "group": ["@harness/http/*", "@harness/bootstrap/*", "@harness/core/*"],
+                    "message": "studio must only import from @harness/mastra (DAG violation)"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/console/src/components/HistorySidebar.tsx"],
       "linter": {
         "rules": {

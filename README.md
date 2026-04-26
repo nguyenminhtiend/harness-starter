@@ -75,8 +75,8 @@ harness-starter/
 │   └── workflows/    # Mastra Workflow definitions
 ├── apps/
 │   ├── api/          # Hono API server (composition root — wires packages together)
-│   └── console/      # React SPA (Vite + TanStack Query, proxies to API)
-├── mastra.config.ts  # Root Mastra config (uses buildStudioConfig from capabilities)
+│   ├── console/      # React SPA (Vite + TanStack Query, proxies to API)
+│   └── studio/       # Mastra Studio + Editor host (entry: src/mastra/index.ts)
 ├── docs/             # Architecture plans
 └── .github/          # CI workflow
 ```

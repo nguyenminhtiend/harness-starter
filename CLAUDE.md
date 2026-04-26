@@ -47,6 +47,8 @@ TypeScript-first, clone-and-own (no npm publish) template for agentic AI systems
 └──────────────────────────────────────────────────────────────┘
 ```
 
+Studio composition is an app (`apps/studio`), mirroring `apps/api`: both consume `@harness/mastra` factories and build their own `Mastra` instance.
+
 ### Package DAG
 
 ```
@@ -57,6 +59,7 @@ bootstrap ───┘
 apps/api ─→ http
 apps/cli
 apps/console (http types only)
+apps/studio (mastra only — no core/http/bootstrap)
 ```
 
 - **`packages/core/`** — Domain model, feature folders (runs, conversations, settings, capabilities), storage, providers, observability, time, memory, runtime. Deps: `zod`, `@mastra/core`, `@mastra/libsql`, `pino`, `ollama-ai-provider-v2`.
@@ -70,7 +73,7 @@ apps/console (http types only)
 - **`apps/api/`** — HTTP composition root: `composeHarness()` → `createHttpApp()` (~14 LOC).
 - **`apps/cli/`** — Minimal CLI: `composeHarness()` → `startRun()` → JSON-lines to stdout. Proves layering without HTTP.
 - **`apps/console/`** — React SPA (Vite + TanStack Query). Imports only `@harness/http/types`.
-- **`mastra.config.ts`** — Root Mastra Studio config.
+- **`apps/studio/`** — Mastra Studio + Editor host. Composition lives at `apps/studio/src/mastra/index.ts` (Mastra CLI auto-discovery). Sibling of `apps/api`; both consume `@harness/mastra` factories and build their own `Mastra` instance. Depends only on `@harness/mastra` (no `core`/`http`/`bootstrap`).
 
 Module boundaries enforced by Biome `noRestrictedImports` rules in `biome.json`.
 
@@ -89,9 +92,11 @@ bun test path/to/file.test.ts  # single test
 bun run web          # api + console in parallel
 bun run api          # @harness/example-api (Hono backend on :3000)
 bun run console      # @harness/example-console (Vite dev server on :5173)
-bun run studio:dev   # Mastra Studio on :4111
-bun run studio:build # Mastra production build
+bun run studio:dev   # Mastra Studio on :4111 — proxies into apps/studio (entry: apps/studio/src/mastra/index.ts)
+bun run studio:build # Mastra production build (apps/studio)
 ```
+
+Editor lives inside Studio (Agents tab → an agent → Editor tab) and shares the LibSQL DB at `apps/studio/.mastra/mastra.db`. Mastra CLI auto-discovers the entry only when run from the workspace, which is why root `studio:*` scripts shell in via `bun run --filter @harness/studio`.
 
 ## API endpoints
 
