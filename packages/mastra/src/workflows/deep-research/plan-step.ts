@@ -9,7 +9,7 @@ import { ResearchPlan } from './schemas.ts';
 
 const DEPTH_TO_COUNT: Record<string, number> = {
   shallow: 3,
-  medium: 5,
+  medium: 1,
   deep: 8,
 };
 
