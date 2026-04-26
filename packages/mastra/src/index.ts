@@ -4,13 +4,13 @@ export { allAgents, createSimpleChatAgent } from './agents/index.ts';
 export type {
   CreateMastraLoggerOptions,
   CreateMastraStorageOptions,
-  TelemetryConfig,
+  CreateObservabilityOptions,
 } from './runtime/index.ts';
 export {
   createMastraLogger,
   createMastraStorage,
+  createObservability,
   defaultRepoDbUrl,
-  defaultTelemetryConfig,
 } from './runtime/index.ts';
 export {
   allTools,

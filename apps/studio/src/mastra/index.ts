@@ -3,6 +3,7 @@ import {
   allWorkflows,
   createMastraLogger,
   createMastraStorage,
+  createObservability,
   resolveModel,
 } from '@harness/mastra';
 import { Mastra } from '@mastra/core';
@@ -21,5 +22,6 @@ export const mastra = new Mastra({
   workflows: allWorkflows({ model }),
   storage: createMastraStorage(),
   logger: createMastraLogger(),
+  observability: createObservability({ serviceName: 'harness-studio' }),
   editor: new MastraEditor(),
 });

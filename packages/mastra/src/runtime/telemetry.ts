@@ -1,14 +1,16 @@
-/**
- * Placeholder telemetry config. @mastra/core@1.27.x uses the `observability`
- * field (requires @mastra/observability) rather than a top-level `telemetry`
- * key. This helper captures the intent; wire it up once @mastra/observability
- * is added to the project.
- */
-export interface TelemetryConfig {
+import { DefaultExporter, Observability } from '@mastra/observability';
+
+export interface CreateObservabilityOptions {
   serviceName: string;
-  enabled: boolean;
 }
 
-export function defaultTelemetryConfig(serviceName: string): TelemetryConfig {
-  return { serviceName, enabled: true };
+export function createObservability(opts: CreateObservabilityOptions): Observability {
+  return new Observability({
+    configs: {
+      default: {
+        serviceName: opts.serviceName,
+        exporters: [new DefaultExporter()],
+      },
+    },
+  });
 }

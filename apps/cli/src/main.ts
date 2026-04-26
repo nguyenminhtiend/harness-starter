@@ -4,6 +4,7 @@ import {
   createDeepResearchWorkflow,
   createMastraLogger,
   createMastraStorage,
+  createObservability,
   createSimpleChatAgent,
   resolveModel,
 } from '@harness/mastra';
@@ -33,6 +34,7 @@ const mastra = new Mastra({
   workflows: { deepResearch: createDeepResearchWorkflow({ model }) },
   storage: createMastraStorage(),
   logger: mastraLogger,
+  observability: createObservability({ serviceName: 'harness-cli' }),
 });
 
 const capabilityRegistry = createCapabilityRegistry([

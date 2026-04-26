@@ -96,7 +96,26 @@ bun run studio:dev   # Mastra Studio on :4111 — proxies into apps/studio (entr
 bun run studio:build # Mastra production build (apps/studio)
 ```
 
-Editor lives inside Studio (Agents tab → an agent → Editor tab) and shares the LibSQL DB at `apps/studio/.mastra/mastra.db`. Mastra CLI auto-discovers the entry only when run from the workspace, which is why root `studio:*` scripts shell in via `bun run --filter @harness/studio`.
+Editor lives inside Studio (Agents tab → an agent → Editor tab) and shares the LibSQL DB at `<repo-root>/.mastra/mastra.db`. Mastra CLI auto-discovers the entry only when run from the workspace, which is why root `studio:*` scripts shell in via `bun run --filter @harness/studio`.
+
+## Shared Mastra storage & observability
+
+All apps (`apps/api`, `apps/cli`, `apps/studio`) construct their own `Mastra` instance but share a **single LibSQL file** at `<repo-root>/.mastra/mastra.db`. This means traces from API/CLI runs show up in Studio.
+
+**Storage path resolution:** `createMastraStorage()` from `@harness/mastra/runtime` walks up from the package to find the repo root (via `bun.lock`/`biome.json`), then uses `file:<root>/.mastra/mastra.db`. Override with `MASTRA_DB_URL` env var.
+
+**Observability:** `createObservability({ serviceName })` from `@harness/mastra/runtime` returns a `@mastra/observability` `Observability` instance with a `DefaultExporter` that persists spans to the shared LibSQL storage. All apps pass this to `new Mastra({ observability })`.
+
+### Troubleshooting traces
+
+If Studio's Traces tab is empty after running the API:
+
+1. **Check `observability` is wired.** Both `apps/api/src/compose.ts` and `apps/studio/src/mastra/index.ts` must pass `observability: createObservability(...)` to `new Mastra({...})`.
+2. **Check `storage` is wired.** `DefaultExporter` writes to whatever `storage` the Mastra instance has. Without `storage`, traces are silently dropped.
+3. **Check both apps point at the same DB.** Run `sqlite3 .mastra/mastra.db "SELECT count(*) FROM mastra_ai_spans;"` — should be > 0 after a successful run. If Studio uses a different DB path (e.g. `apps/studio/.mastra/`), traces won't be visible.
+4. **Check the run completed.** Failed runs still generate partial traces, but a run that errors before the agent starts (e.g. invalid settings) won't produce agent spans.
+5. **Flush delay.** `DefaultExporter` batches writes (default: flush every 5s or 1000 spans). Traces may take a few seconds to appear after a run finishes.
+6. **Verify DB file exists.** `ls -la .mastra/mastra.db` — if missing, no Mastra instance has been initialized yet.
 
 ## API endpoints
 

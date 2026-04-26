@@ -4,6 +4,7 @@ import {
   createDeepResearchWorkflow,
   createMastraLogger,
   createMastraStorage,
+  createObservability,
   createSimpleChatAgent,
   resolveModel,
 } from '@harness/mastra';
@@ -36,6 +37,7 @@ export function compose(config: Config): ComposedApp {
     workflows: { deepResearch: createDeepResearchWorkflow({ model }) },
     storage: createMastraStorage(),
     logger: mastraLogger,
+    observability: createObservability({ serviceName: 'harness-api' }),
   });
 
   const capabilityRegistry = createCapabilityRegistry([
