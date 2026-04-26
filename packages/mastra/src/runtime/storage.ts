@@ -11,6 +11,7 @@ function defaultRepoFinder(startDir: string): string | undefined {
   let dir = startDir;
   while (true) {
     if (
+      existsSync(join(dir, 'bun.lock')) ||
       existsSync(join(dir, 'bun.lockb')) ||
       existsSync(join(dir, 'pnpm-workspace.yaml')) ||
       existsSync(join(dir, 'biome.json'))
