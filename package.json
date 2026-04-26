@@ -15,6 +15,7 @@
     "studio:build": "bun run --filter @harness/studio build",
     "build": "bun run --filter '*' build",
     "test": "bun test",
+    "test:evals": "HARNESS_EVAL=1 bun test packages/mastra/src/**/*.eval.test.ts",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "biome check .",
     "format": "biome format --write .",

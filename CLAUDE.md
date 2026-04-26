@@ -67,6 +67,7 @@ apps/studio (mastra only — no core/http/bootstrap)
   - `src/tools/` — `createTool` implementations (calculator, get-time, fs, fetch).
   - `src/agents/` — `Agent` definitions (simpleChatAgent) + `mockModel` test helper (`@harness/mastra/testing`).
   - `src/workflows/` — `createWorkflow` compositions (deepResearchWorkflow) + `loggedStep` helper.
+  - `src/evals/` — Default scorer factories (`defaultAgentScorers`, `defaultWorkflowScorers`) via `@mastra/evals`. Subpath: `@harness/mastra/evals`.
   - `src/capabilities/` — `CapabilityDefinition` exports (simple-chat, deep-research) + `createCapabilityRegistry` (`@harness/mastra/capabilities`).
 - **`packages/http/`** — Hono routes, middleware, auto-generated OpenAPI spec (via `hono-zod-openapi`), public DTO types.
 - **`packages/bootstrap/`** — `composeHarness()` wires stores, executor, and capability registry. Shared by `apps/api` and `apps/cli`.
@@ -94,6 +95,7 @@ bun run api          # @harness/example-api (Hono backend on :3000)
 bun run console      # @harness/example-console (Vite dev server on :5173)
 bun run studio:dev   # Mastra Studio on :4111 — proxies into apps/studio (entry: apps/studio/src/mastra/index.ts)
 bun run studio:build # Mastra production build (apps/studio)
+bun run test:evals   # eval suite (HARNESS_EVAL=1, requires live model — ollama by default)
 ```
 
 Editor lives inside Studio (Agents tab → an agent → Editor tab) and shares the LibSQL DB at `<repo-root>/.mastra/mastra.db`. Mastra CLI auto-discovers the entry only when run from the workspace, which is why root `studio:*` scripts shell in via `bun run --filter @harness/studio`.
@@ -147,6 +149,17 @@ If Studio's Traces tab is empty after running the API:
 - **No mocks of `Provider`.** Use `mockModel()` from `@harness/mastra/testing` — scripted `MockLanguageModelV3` replay.
 - Tests use real in-memory stores from `@harness/core` (storage module). Only `FakeClock` and `FakeIdGen` in `@harness/core/testing` for timing-dependent tests.
 - Live-provider tests gated behind `HARNESS_LIVE=1`.
+- **Eval tests** colocated as `*.eval.test.ts`, gated behind `HARNESS_EVAL=1`. Run via `bun run test:evals`. These use a real model (default: `ollama:qwen2.5:3b`, override with `MASTRA_MODEL`). Skipped by `bun test` / CI.
+
+## Evals
+
+Starter eval coverage via `@mastra/evals` scorers wired into Mastra's `MastraScorer` system.
+
+- **Chat agents** get `defaultAgentScorers(model)`: `AnswerRelevancyScorer` (LLM judge) + `ContentSimilarityScorer` (deterministic). Wired into `createSimpleChatAgent` by default.
+- **Research workflows** get `defaultWorkflowScorers(model)`: `FaithfulnessScorer` + `HallucinationScorer` (both LLM judge). Used in eval tests, not wired at construction time (workflows don't have a constructor-level `scorers` field).
+- New agents should accept `scorers?: MastraScorers` and default to `defaultAgentScorers(model)`.
+- Eval test files use `describe.skipIf(!process.env.HARNESS_EVAL)` so `bun test` skips them.
+- Studio shows eval results when agents run with scorers attached (via the agent's Evals tab).
 
 ## CI
 
@@ -167,6 +180,16 @@ All enforced in `biome.json`. Memorise these:
 - **No unused variables.** Prefix intentionally-unused callback params with `_`.
 - **No `console.*` in `packages/*`.** Use Mastra's logger or built-in telemetry. (`console` is allowed in `apps/*` and test files.)
 - **Formatting:** 2-space indent, single quotes, trailing commas, semicolons, LF, 100-char width, arrow parens always.
+
+## Adding a new agent / workflow / tool
+
+When adding a new primitive to `packages/mastra`:
+
+1. **Create the factory** in `src/agents/`, `src/workflows/`, or `src/tools/`.
+2. **Add it to the `all*` barrel** in the corresponding `index.ts` (`allAgents`, `allWorkflows`, `allTools`). This ensures Studio auto-discovers it.
+3. **For agents:** accept `scorers?: MastraScorers` and default to `defaultAgentScorers(model)`.
+4. **Add an eval test** (`*.eval.test.ts`) with 3–5 sample inputs, gated by `HARNESS_EVAL=1`.
+5. **Selective registration:** `apps/api` and `apps/cli` list agents/workflows explicitly in their compose files. Studio uses the `all*` barrels.
 
 ## Repository conventions
 

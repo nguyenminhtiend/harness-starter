@@ -1,6 +1,7 @@
 export { resolveModel } from '@harness/core';
 export type { SimpleChatAgentOptions } from './agents/index.ts';
 export { allAgents, createSimpleChatAgent } from './agents/index.ts';
+export { defaultAgentScorers, defaultWorkflowScorers } from './evals/index.ts';
 export type {
   CreateMastraLoggerOptions,
   CreateMastraStorageOptions,

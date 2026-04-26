@@ -10,6 +10,19 @@ describe('simpleChatAgent', () => {
     expect(agent.name).toBe('Simple Chat');
   });
 
+  test('constructs without error when scorers default (factory wires defaultAgentScorers)', () => {
+    const model = mockModel([]);
+    const agent = createSimpleChatAgent({ model });
+    expect(agent).toBeDefined();
+    expect(agent.id).toBe('simple-chat');
+  });
+
+  test('accepts explicit empty scorers override', () => {
+    const model = mockModel([]);
+    const agent = createSimpleChatAgent({ model, scorers: {} });
+    expect(agent).toBeDefined();
+  });
+
   test('calls calculator tool and returns final text', async () => {
     const model = mockModel([
       {
