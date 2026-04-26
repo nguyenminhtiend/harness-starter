@@ -1,0 +1,25 @@
+{
+  "name": "@harness/studio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build",
+    "start": "mastra start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@harness/mastra": "workspace:*",
+    "@mastra/core": "1.27.0",
+    "@mastra/editor": "0.7.19",
+    "@mastra/libsql": "1.9.0",
+    "@mastra/loggers": "1.1.1",
+    "@mastra/memory": "1.17.0",
+    "mastra": "1.6.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
