@@ -1,3 +1,4 @@
+export { resolveModel } from '@harness/core';
 export type { SimpleChatAgentOptions } from './agents/index.ts';
 export { createSimpleChatAgent } from './agents/index.ts';
 export {
