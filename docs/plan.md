@@ -1,185 +1,272 @@
-# Plan — `apps/studio` for Mastra Studio + Editor
+# Plan v2 — shared Mastra storage, observability, evals, selective registration
 
-Status: proposed, awaiting human review.
+Status: proposed, awaiting human review. Supersedes the v1 `apps/studio` plan (now done; see git history at `86ddeda`).
 
-## Goal
+## Goals
 
-Stand up a dedicated `apps/studio` workspace that hosts Mastra Studio and Mastra Editor, retarget root scripts at it, slim runtime apps, and enforce per-app import boundaries via Biome — without touching agent/workflow/tool code in `packages/mastra`.
+1. **Single Mastra storage** shared by `apps/studio` and `apps/api` (and `apps/cli`) so API/CLI runs surface in Studio (traces, agent memory, workflow snapshots, eval results).
+2. **Mastra telemetry on all apps** so traces flow into the shared store and render in Studio's Traces tab. No external collector.
+3. **Inject `Mastra` into capability adapters** — eliminate the per-invocation `new Mastra({...})` anti-pattern in `packages/mastra/src/capabilities/*/capability.ts`.
+4. **Selective registration in `apps/api` / `apps/cli`** — each app explicitly lists the agents/workflows it actually uses. **`apps/studio` auto-registers everything** via barrel exports from `@harness/mastra`, so new agents/workflows/tools appear in Studio with no Studio edit.
+5. **Evals via `@mastra/evals`** — starter metrics on existing agents/workflows + a pattern that auto-extends to future ones. Run as a separate test suite (`bun test:evals`, gated by `HARNESS_EVAL=1`) and on-demand in Studio.
 
 ## Locked decisions
 
 | ID | Decision |
 |----|----------|
-| A  | Composition lives at `apps/studio/src/mastra/index.ts` (Mastra convention; no `--config` flag). |
-| B  | Keep package name `@harness/mastra`. No rename. |
-| C  | Editor + Studio share the existing LibSQL store (`file:./.mastra/mastra.db`). |
-| D  | Add Biome `noRestrictedImports` per-app rules in this same change. |
+| A  | Shared storage = Mastra storage **only**. Harness's `RunStore`/`EventLog`/`ConversationStore` stay in-memory (out of scope). |
+| B  | Storage path: `<repo-root>/.mastra/mastra.db`, env-overridable via `MASTRA_DB_URL`. Single helper `createMastraStorage()` in `@harness/mastra/runtime` resolves the absolute path from the package's `import.meta.url`. |
+| C  | Capabilities accept a `Mastra` instance via DI; runners look up agents/workflows by name with `mastra.getAgent(...)` / `mastra.getWorkflow(...)`. (Mastra-native pattern, traces propagate.) |
+| D  | `createCapabilityRegistry(capabilities: CapabilityDefinition[])` — accepts a list, no longer constructs capabilities itself. |
+| E  | `apps/api` and `apps/cli` each construct their own `new Mastra({...})` with explicit agent/workflow maps. `apps/studio` uses `allAgents/allWorkflows/allTools` barrels. |
+| F  | Telemetry: `telemetry: { enabled: true, serviceName }` on each Mastra instance. No OTLP exporter. |
+| G  | Evals: starter set = `AnswerRelevancyMetric` + `ContentSimilarityMetric` for chat agents, `FaithfulnessMetric` + `HallucinationMetric` for research-style workflows. Defaults applied automatically by the agent/workflow factories so future ones inherit. Judge model = same `model` as the agent (ollama-friendly). |
+| H  | No restructure of `packages/mastra` layout. |
 
 ## Constraints
 
-- Preserve **invariant #9** (clone-and-own): deleting `packages/mastra/` must still leave `core + http + bootstrap` green. After this change, deleting `packages/mastra/` *and* `apps/studio/` must leave `core + http + bootstrap + apps/api + apps/cli + apps/console` green.
-- Preserve existing module-boundary rules in `biome.json` (`packages/core`, `packages/http`, `apps/console`). Extend, don't replace.
-- No new tests required (this is `apps/*` work; TDD-for-packages does not apply).
-- No new abstractions, no rename, no behavior changes inside `packages/mastra`.
+- Preserve **invariant #2** (capabilities are data) and **#9** (clone-and-own — deleting `packages/mastra/` and `apps/studio/` must still leave `core + http + bootstrap + apps/api + apps/cli + apps/console` green). Phase 4 means `apps/api` / `apps/cli` will start importing `@mastra/core` directly to construct `Mastra` — that's a deliberate widening; the boundary lint rule must be updated to allow it.
+- Preserve all v1 boundary rules (`@harness/http`, `@harness/bootstrap`, `@harness/core` still forbidden in `apps/studio`; `@mastra/editor` + `mastra` CLI still forbidden in `apps/api` / `apps/cli`).
+- TDD applies inside `packages/mastra` (capability refactor + evals).
 
 ## Dependency graph after the change
 
 ```
 @harness/core ─→ @harness/http
        ↑
-@harness/mastra ──────────┐
+@harness/mastra ─→ @harness/mastra/runtime (storage, logger, telemetry helpers)
        ↑                  │
 @harness/bootstrap        │
        ↑                  │
        │                  │
-apps/api ─→ @harness/http │
-apps/cli                  │
-apps/console (http types) │
-apps/studio ──────────────┘   (no http, no bootstrap, no core)
+apps/api  ─→ @harness/http, @mastra/core (constructs own Mastra)
+apps/cli  ─────────────────→ @mastra/core (constructs own Mastra)
+apps/console (http types only)
+apps/studio ──────────────┘   (still no http/bootstrap/core)
 ```
 
-`apps/studio` is a sibling of `apps/api` — both consume `@harness/mastra` factories, each builds its own `Mastra` instance.
+All Mastra instances point at the **same LibSQL file** (`<repo>/.mastra/mastra.db`).
+
+---
 
 ## Phasing & checkpoints
 
-Five phases. Each ends in a checkpoint where the workspace must be green via a defined verification command. Phases are sequential; tasks *within* a phase that are marked `parallelizable` may run concurrently.
+Seven phases, sequential. Each phase ends in a `bun run ci` checkpoint plus the named verification.
 
 ---
 
-### Phase 1 — Stand up `apps/studio` (no removals yet)
+### Phase 0 — Cleanup stale files
 
-Goal: new app exists, boots Studio, leaves the rest of the repo unchanged. Both the root `mastra.config.ts` *and* the new app coexist temporarily so we can compare side-by-side.
+**Task 0.1 — Delete stale `/src/mastra/` at repo root**
+- Left over from the v1 migration (Phase 2.2 missed it). Studio now owns Mastra composition.
+- **Acceptance:** `ls /src 2>/dev/null` empty (or absent); `bun run ci` green.
 
-**Task 1.1 — Create `apps/studio/package.json`**
-- Add workspace package `@harness/studio`, `private: true`, `type: "module"`.
-- `dependencies`: `@harness/mastra` (workspace), `@mastra/core`, `@mastra/editor` (new), `@mastra/libsql`, `@mastra/loggers`, `@mastra/memory`, `mastra` (CLI; runtime dep so `mastra start` works in prod).
-- `devDependencies`: `@types/bun`, `typescript`.
-- `scripts`: `dev: "mastra dev"`, `build: "mastra build"`, `start: "mastra start"`, `typecheck: "tsc --noEmit"`.
-- **Acceptance:** `bun install` resolves; lockfile updates; `apps/studio` appears in `bun pm ls` workspace list.
+**Task 0.2 — Confirm only `apps/studio/src/mastra/index.ts` defines a `Mastra` instance**
+- `grep -rn "new Mastra(" --include="*.ts" .` should show only `apps/studio/src/mastra/index.ts`, the per-capability files (to be refactored in Phase 3), and test files.
+- **Acceptance:** grep audit recorded.
 
-**Task 1.2 — Create `apps/studio/tsconfig.json`** *(parallelizable with 1.1)*
-- Extends `tsconfig.base.json` like other apps; `include` covers `src/**/*.ts`.
-- **Acceptance:** `bun run --filter @harness/studio typecheck` exits 0.
-
-**Task 1.3 — Create `apps/studio/src/mastra/index.ts`**
-- Move composition contents from current root `mastra.config.ts`:
-  - Import factories from `@harness/mastra`.
-  - Construct `LibSQLStore` with `MASTRA_DB_URL ?? 'file:./.mastra/mastra.db'`.
-  - Construct `PinoLogger`.
-  - Add `editor: new MastraEditor()` from `@mastra/editor`.
-  - Export `mastra`.
-- Keep existing root `mastra.config.ts` *unchanged* in this phase.
-- **Acceptance:** typecheck passes; file exports a single `mastra` constant typed as `Mastra`.
-
-**Task 1.4 — Verify Studio boots from the new location**
-- Run `bun run --filter @harness/studio dev`. Confirm:
-  - Studio loads at `http://localhost:4111`.
-  - `simpleChatAgent` and `deepResearch` render.
-  - The Editor tab is visible inside an agent detail page.
-  - LibSQL file is created at `./.mastra/mastra.db` (same path Studio used before — shared store).
-- Stop Studio.
-- **Acceptance:** human-verified screenshots / notes recorded; Studio renders agents + Editor tab.
-
-**Checkpoint 1:** `bun run ci` green. Both old root config and new `apps/studio` exist; nothing broken; Studio is reachable from the new path.
+**Checkpoint 0:** `bun run ci` green.
 
 ---
 
-### Phase 2 — Cut over root scripts and remove the legacy config
+### Phase 1 — `@harness/mastra/runtime` helpers (storage, logger, telemetry)
 
-Goal: only one source of truth for Studio composition.
+Goal: one place that knows how to wire Mastra to the shared LibSQL file, the standard PinoLogger, and the telemetry config. Apps consume helpers; no app re-implements path-resolution.
 
-**Task 2.1 — Retarget root `package.json` scripts**
-- Replace `studio:dev: "bunx mastra dev --config mastra.config.ts"` → `"bun run --filter @harness/studio dev"`.
-- Replace `studio:build` similarly with `--filter @harness/studio build`.
-- **Acceptance:** `bun run studio:dev` boots Studio at :4111 (same as 1.4).
+**Task 1.1 — Add `packages/mastra/src/runtime/storage.ts`**
+- `createMastraStorage({ url? })` returns a `LibSQLStore`. URL precedence: arg → `process.env.MASTRA_DB_URL` → `defaultRepoDbUrl()`.
+- `defaultRepoDbUrl()` resolves `<repo-root>/.mastra/mastra.db` by walking up from `import.meta.url` until it finds `bun.lockb` (or `pnpm-workspace.yaml` / `biome.json`); returns `file:` + absolute path. Caches the resolved path.
+- **TDD:** unit test with a fake fs walker; verify env override and arg override.
+- **Acceptance:** test passes; `bun run --filter @harness/mastra typecheck` green.
 
-**Task 2.2 — Delete root `mastra.config.ts`**
-- Remove the file.
-- **Acceptance:** `ls mastra.config.ts` fails; `bun run studio:dev` still works (proves Mastra CLI auto-discovers `apps/studio/src/mastra/index.ts`).
+**Task 1.2 — Add `packages/mastra/src/runtime/logger.ts`** *(parallelizable with 1.1)*
+- `createMastraLogger({ level?, pretty? })` returns a `PinoLogger` with sensible defaults (`level=info`, `pretty=NODE_ENV !== 'production'`).
+- **Acceptance:** typecheck.
 
-**Task 2.3 — Slim root `package.json` deps** *(parallelizable with 2.2)*
-- Remove root-level deps that only the deleted root config needed and that no other root script uses: `@mastra/core`, `@mastra/libsql`, `@mastra/loggers`, `@mastra/memory` (each now lives in the consumer that needs it: `packages/mastra`, `apps/studio`).
-- Move `mastra` out of root `devDependencies` — it now lives in `apps/studio` deps.
-- Keep `ai` and `@ai-sdk/openai` only if they are still consumed by root scripts; otherwise drop them too. Verify by grep.
-- Keep root devDeps that are truly workspace-wide: `@biomejs/biome`, `@changesets/cli`, `@commitlint/*`, `lefthook`, `typescript`.
-- **Acceptance:** `bun install --frozen-lockfile` (after `bun install` updates lock) succeeds; `bun run ci` green; `apps/api` and `apps/cli` still build (deps resolve transitively through their own package.json).
+**Task 1.3 — Add `packages/mastra/src/runtime/telemetry.ts`** *(parallelizable with 1.1)*
+- `defaultTelemetryConfig(serviceName: string)` returns the Mastra telemetry config object: `{ serviceName, enabled: true, sampling: { type: 'always_on' } }` (verify field names against `@mastra/core`'s `TelemetryConfig` type).
+- **Acceptance:** typecheck.
 
-**Checkpoint 2:** `bun run ci` green. Single source of truth for Studio composition is `apps/studio/src/mastra/index.ts`. Root carries no Mastra runtime deps.
+**Task 1.4 — Re-export from `@harness/mastra`**
+- Add to `packages/mastra/src/index.ts`: `export * from './runtime/index.ts';` and create `runtime/index.ts` barrel.
+- Add subpath export: `"./runtime": "./src/runtime/index.ts"` in `packages/mastra/package.json`.
+- **Acceptance:** `import { createMastraStorage } from '@harness/mastra/runtime'` resolves.
 
----
-
-### Phase 3 — Confirm `apps/api` is lean
-
-Goal: `apps/api` carries no dev-only Mastra deps. (Inspection of current `apps/api/package.json` shows it is already lean — only `@harness/bootstrap`, `@harness/http`, `@harness/mastra`. This phase is a verification phase.)
-
-**Task 3.1 — Audit `apps/api` runtime imports**
-- `grep -r "@mastra/editor\|from 'mastra'" apps/api/` → must be empty.
-- `grep -r "@mastra/" apps/api/` → must be empty (Mastra access goes through `@harness/mastra` and `@harness/bootstrap`).
-- **Acceptance:** both greps empty.
-
-**Task 3.2 — Confirm `apps/api/package.json` lists only runtime deps**
-- Required: `@harness/bootstrap`, `@harness/http`, `@harness/mastra`.
-- Forbidden: `@mastra/editor`, `mastra` (CLI), any direct `@mastra/*` pkg.
-- **Acceptance:** package.json matches; no changes needed (already correct), or any forbidden entry removed.
-
-**Task 3.3 — Confirm `apps/cli/package.json` lean** *(parallelizable with 3.2)*
-- Same forbidden list applies. Current state already conforms.
-- **Acceptance:** unchanged or trimmed.
-
-**Checkpoint 3:** `bun run ci` green; `apps/api` has zero Mastra-CLI / Editor exposure in its dep tree.
+**Checkpoint 1:** `bun run ci` green. New helpers exist, nothing else changed.
 
 ---
 
-### Phase 4 — Per-app import boundaries in Biome
+### Phase 2 — Studio uses helpers + barrels (auto-registration)
 
-Goal: make the boundary mechanically enforceable so future drift is caught at lint time.
+Goal: studio rebuilt around barrel exports so future agents/workflows/tools appear automatically.
 
-**Task 4.1 — Add `apps/api/**` `noRestrictedImports` override**
-- Forbidden paths:
-  - `@mastra/editor` — "Editor is dev-only; mount in apps/studio."
-  - `mastra` — "Mastra CLI is dev-only."
-- Forbidden patterns: `@mastra/editor/*`.
-- **Acceptance:** `bun run lint` green. Inserting `import x from '@mastra/editor'` into `apps/api/src/index.ts` produces an error (manual probe, then revert).
+**Task 2.1 — Add `allAgents` / `allWorkflows` / `allTools` barrels**
+- In `packages/mastra/src/agents/index.ts`:
+  ```ts
+  export const allAgents = (opts: { model: MastraModelConfig }) => ({
+    simpleChatAgent: createSimpleChatAgent(opts),
+  });
+  ```
+- Same shape for `workflows/index.ts` (`allWorkflows`) and `tools/index.ts` (`allTools()` — no model needed).
+- Re-export from `packages/mastra/src/index.ts`.
+- **Convention:** every new agent/workflow/tool MUST be added to its `all*` map in the same PR. Document in CLAUDE.md (Phase 7).
+- **Acceptance:** typecheck; existing imports unaffected.
 
-**Task 4.2 — Add `apps/cli/**` `noRestrictedImports` override** *(parallelizable with 4.1)*
-- Same forbidden list as 4.1.
-- **Acceptance:** lint green; same manual probe.
+**Task 2.2 — Refactor `apps/studio/src/mastra/index.ts`**
+- Replace ad-hoc `LibSQLStore` / `PinoLogger` construction with `createMastraStorage()` / `createMastraLogger()`.
+- Replace explicit `simpleChatAgent` / `deepResearch` registration with spread of `allAgents({ model })` / `allWorkflows({ model })` / `allTools()`.
+- Add `telemetry: defaultTelemetryConfig('harness-studio')`.
+- **Acceptance:** `bun run studio:dev` boots; Studio shows `simpleChatAgent`, `deepResearch`, **and** the four tools (`calculator`, `fetch`, `fs`, `getTime`) in the tool browser; LibSQL file lands at `<repo>/.mastra/mastra.db` (not `apps/studio/.mastra/mastra.db`).
 
-**Task 4.3 — Add `apps/studio/**` `noRestrictedImports` override**
-- Forbidden paths:
-  - `@harness/http` — "studio must not import http (DAG violation)."
-  - `@harness/bootstrap` — "studio must not import bootstrap; build its own Mastra instance."
-  - `@harness/core` — "studio uses Mastra primitives directly; core's Run aggregate is a runtime concern."
-- Forbidden patterns: `@harness/http/*`, `@harness/bootstrap/*`, `@harness/core/*`.
-- **Acceptance:** lint green; manual probe of an offending import errors.
-
-**Checkpoint 4:** `bun run ci` green. Each app's allowed import surface is encoded in `biome.json`.
+**Checkpoint 2:** `bun run ci` green; manual Studio smoke pass; DB file at repo root.
 
 ---
 
-### Phase 5 — Documentation
+### Phase 3 — Refactor capabilities to accept `Mastra` (DI)
 
-Goal: CLAUDE.md and README reflect the new layout so future readers (and Claude Code) don't drift.
+Goal: kill per-invocation `new Mastra({...})` so traces propagate and capabilities don't re-pay construction cost.
 
-**Task 5.1 — Update CLAUDE.md package DAG diagram**
-- Add `apps/studio` as a sibling of `apps/api`/`apps/cli`/`apps/console`.
-- Add a note that `apps/studio` depends only on `@harness/mastra`, not on `core`/`http`/`bootstrap`.
+**Task 3.1 — Change capability factory signatures (TDD)**
+- `createSimpleChatCapability({ mastra, logger })`
+- `createDeepResearchCapability({ mastra, logger })`
+- Inside the runner: replace `new Mastra({...})` and direct agent/workflow construction with `mastra.getAgent('simpleChatAgent')` / `mastra.getWorkflow('deepResearch').createRun().start({ inputData })`.
+- Update `adapters/agent-adapter.ts` and `adapters/workflow-adapter.ts` to take handles from a passed-in `Mastra` rather than constructing.
+- Update tests (`*.capability.test.ts`, `adapters/testing.ts`) to construct a real `Mastra` (with `simpleChatAgent` registered, `mockModel()`, in-memory LibSQL `file::memory:?cache=shared`) and pass it in.
+- **Acceptance:** all existing tests green; `grep -rn "new Mastra(" packages/mastra/src/capabilities/` returns nothing (excluding test fixtures).
 
-**Task 5.2 — Update CLAUDE.md commands table** *(parallelizable with 5.1)*
-- `bun run studio:dev` now proxies into `apps/studio`. Note the canonical entry path `apps/studio/src/mastra/index.ts`.
-- Add: Editor lives inside Studio (Agents tab → an agent → Editor tab). Same LibSQL DB as Studio traces.
+**Task 3.2 — Update `createCapabilityRegistry` to take a list**
+- New signature: `createCapabilityRegistry(capabilities: CapabilityDefinition[]): CapabilityRegistry`.
+- Drop the `IMastraLogger` parameter; capability construction (and its logger dep) is now the caller's responsibility.
+- Existing callers in `apps/api` and `apps/cli` will be updated in Phase 4.
+- **Acceptance:** `packages/mastra` tests green; `bun run --filter @harness/mastra typecheck` green.
 
-**Task 5.3 — Add a one-liner to "Architecture — feature folders"**
-- Note that Studio composition is an app, mirroring `apps/api`, both consume `@harness/mastra` factories with their own `Mastra` instance.
+**Checkpoint 3:** `bun run --filter @harness/mastra ci` green. `apps/api` / `apps/cli` are temporarily broken — Phase 4 fixes them.
 
-**Task 5.4 — Optional README touch-up** *(skip if README already neutral)*
-- If the existing README references the old root `mastra.config.ts` path, update.
+---
 
-**Checkpoint 5 — final acceptance:** all of the following green:
-- `bun run ci` exits 0 with no warnings beyond the existing baseline.
-- `bun run studio:dev` boots Studio at :4111; `simpleChatAgent` chat works; `deepResearch` workflow renders; an Editor tab is visible on an agent detail page.
-- `bun run api` boots `apps/api` at :3000; `/health` returns 200; `/runs` accepts a request; **dependency tree audit:** `bun pm ls --filter @harness/example-api | grep -E '@mastra/editor|^mastra@'` returns nothing.
-- Invariant probe (manual, do not commit): `mv packages/mastra /tmp/.mastra-bak && mv apps/studio /tmp/.studio-bak && bun run --filter @harness/core typecheck && bun run --filter @harness/http typecheck && bun run --filter @harness/bootstrap typecheck` all exit 0; then restore. (Only run if comfortable; the existing CI never deletes these but the invariant must hold.)
+### Phase 4 — `apps/api` + `apps/cli` construct own `Mastra`, register selectively, share storage
+
+**Task 4.1 — `apps/api/src/compose.ts`**
+- Construct `Mastra` here:
+  ```ts
+  import { Mastra } from '@mastra/core';
+  import {
+    createSimpleChatAgent, createDeepResearchWorkflow,
+    createMastraStorage, createMastraLogger, defaultTelemetryConfig,
+    resolveModel,
+  } from '@harness/mastra';
+  import {
+    createSimpleChatCapability, createDeepResearchCapability, createCapabilityRegistry,
+  } from '@harness/mastra/capabilities';
+
+  const model = /* same model resolution as studio */;
+  const mastra = new Mastra({
+    agents:    { simpleChatAgent: createSimpleChatAgent({ model }) },
+    workflows: { deepResearch:    createDeepResearchWorkflow({ model }) },
+    storage:   createMastraStorage(),
+    logger:    createMastraLogger(),
+    telemetry: defaultTelemetryConfig('harness-api'),
+  });
+
+  const { deps, shutdown } = composeHarness({
+    capabilityRegistry: createCapabilityRegistry([
+      createSimpleChatCapability({ mastra, logger: deps.mastraLogger }), // ← wiring detail TBD; see 4.3
+      createDeepResearchCapability({ mastra, logger: deps.mastraLogger }),
+    ]),
+    logLevel: config.logLevel,
+  });
+  ```
+- Add `apps/api/src/model.ts` (small helper) that mirrors studio's model resolution so both apps stay in sync.
+- **Acceptance:** `bun run api` boots; `POST /runs` returns 201; `GET /runs/:id/events` streams events; trace shows up in Studio for the same run after refresh.
+
+**Task 4.2 — `apps/cli/src/index.ts`** *(parallelizable with 4.1)*
+- Same Mastra construction + registry pattern as 4.1.
+- **Acceptance:** `bun run start "hello"` prints JSON-line events; trace appears in Studio.
+
+**Task 4.3 — Resolve `mastraLogger` chicken-and-egg in `composeHarness`**
+- `composeHarness` currently builds `mastraLogger` internally and passes it to the capability-registry factory. With the new list signature, capabilities are built *outside* `composeHarness`, so the caller needs the logger first.
+- Options:
+  - **(a)** Export a standalone `createMastraLogger()` (Phase 1.2 already does); apps build the logger, pass it to both capabilities and `composeHarness`.
+  - **(b)** Add a `createCapabilityRegistry: (mastraLogger) => CapabilityRegistry` overload to `composeHarness` for convenience.
+- Recommend **(a)** — explicit beats hidden. Update `composeHarness` to accept an optional pre-built `mastraLogger`.
+- **Acceptance:** typecheck green; both apps wire the logger explicitly.
+
+**Task 4.4 — Update biome `noRestrictedImports` for `apps/api` and `apps/cli`**
+- Forbidden today: `@mastra/editor`, `mastra` (CLI), `@mastra/editor/*`. Keep all of these.
+- Now-allowed: `@mastra/core`, `@mastra/libsql`, `@mastra/loggers` (transitively used through `@harness/mastra/runtime`, but apps may also import directly).
+- Add `@harness/mastra/runtime` to the explicit allow-list comment for clarity.
+- **Acceptance:** `bun run lint` green; manual probe — inserting `import { Mastra } from '@mastra/core'` in `apps/api/src/index.ts` no longer errors; inserting `import {} from '@mastra/editor'` still errors.
+
+**Checkpoint 4:** `bun run ci` green. End-to-end: start `apps/api`, POST a run, open Studio → run's traces visible in the Traces tab. Same for `apps/cli`.
+
+---
+
+### Phase 5 — Telemetry verification
+
+Goal: confirm Mastra's built-in OTel actually writes to LibSQL and renders in Studio.
+
+**Task 5.1 — Verify trace capture**
+- POST a run via API; query the LibSQL DB directly: `sqlite3 .mastra/mastra.db 'select count(*) from mastra_traces;'` should be > 0.
+- Open Studio → Traces tab → see span tree for the agent call (model invocation, tool calls if any).
+- **Acceptance:** screenshot/notes recorded.
+
+**Task 5.2 — Document fallback if traces are empty**
+- If traces don't show, the most likely culprit is `telemetry.enabled=false` defaults or sampling config. Doc the diagnostic in CLAUDE.md (Phase 7).
+
+**Checkpoint 5:** trace round-trip works end-to-end.
+
+---
+
+### Phase 6 — Evals
+
+Goal: starter eval coverage on existing agents/workflows + a convention that future ones inherit. Separate test suite (`bun test:evals`), on-demand in Studio.
+
+**Task 6.1 — Install `@mastra/evals`, set up directory layout**
+- Add `@mastra/evals` to `packages/mastra/dependencies` (pin to a version compatible with `@mastra/core@1.27.0`).
+- Add `packages/mastra/src/evals/`:
+  - `defaults.ts` — exports `defaultAgentEvals(model)` returning `{ relevancy: new AnswerRelevancyMetric(model), similarity: new ContentSimilarityMetric() }` (similarity doesn't need a judge model).
+  - `defaults.ts` also exports `defaultWorkflowEvalMetrics(model)` returning `{ faithfulness: ..., hallucination: ... }` for use in workflow eval tests.
+- **Acceptance:** typecheck; `bun install` resolves.
+
+**Task 6.2 — Wire defaults into agent factories**
+- Refactor `createSimpleChatAgent({ model, evals? })` to default `evals` to `defaultAgentEvals(model)` and pass to `new Agent({ ..., evals })`.
+- Pattern documented: every new agent factory should accept `evals?` with the same default. Future agents auto-inherit.
+- **TDD:** test that `createSimpleChatAgent({ model })` exposes the metric keys on its `Agent` instance.
+- **Acceptance:** test green; Studio shows the agent's eval metrics on its detail page.
+
+**Task 6.3 — Eval test files, gated**
+- Add `packages/mastra/src/agents/simple-chat.eval.test.ts` — sample inputs (3–5 cases), call `agent.generate(input)`, run each metric, assert thresholds (e.g., `relevancy.score > 0.6`). Use real model (ollama by default) — gated by `HARNESS_EVAL=1` so unit `bun test` skips them.
+- Add `packages/mastra/src/workflows/deep-research/deep-research.eval.test.ts` — execute workflow on a fixture input, run faithfulness + hallucination metrics over the final report against the gathered findings.
+- **Skip mechanism:** at top of each `*.eval.test.ts`: `if (!process.env.HARNESS_EVAL) { describe.skip(...) }` (or test.skipIf).
+- Add root `package.json` script: `"test:evals": "HARNESS_EVAL=1 bun test --test-name-pattern '\\[eval\\]'"` (or filter by file glob — verify `bun test`'s globbing).
+- **Acceptance:** `bun test` skips evals; `bun run test:evals` runs them and exits 0.
+
+**Task 6.4 — Confirm Studio's Evals tab shows scores**
+- Run `bun run test:evals` once with shared LibSQL pointed at `.mastra/mastra.db` (not `:memory:`). Mastra writes eval results to storage; Studio reads them.
+- **Acceptance:** Studio's agent → Evals tab shows the metric runs.
+
+**Checkpoint 6:** `bun run ci` green (evals skipped); `bun run test:evals` green; Studio Evals tab populated.
+
+---
+
+### Phase 7 — Documentation
+
+**Task 7.1 — Update CLAUDE.md**
+- Commands table: add `bun run test:evals` row.
+- Architecture section: add a paragraph on shared Mastra storage (path, env var, what's persisted, who writes).
+- "Adding a new agent/workflow/tool" convention: new entry MUST be added to the corresponding `all*` map in `packages/mastra` so Studio picks it up automatically.
+- Telemetry diagnostic note from Task 5.2.
+- **Acceptance:** doc reads cleanly; nothing stale.
+
+**Task 7.2 — `.env.example`** *(parallelizable with 7.1)*
+- Add `MASTRA_DB_URL` row with the default value documented.
+- **Acceptance:** file exists / row present.
+
+**Checkpoint 7 — final acceptance**
+- `bun run ci` green.
+- `bun run test:evals` green (with `HARNESS_EVAL=1`).
+- Round-trip smoke: `bun run api` → POST `/runs` with `simple-chat` → run completes → Studio shows the run in Traces tab → metric scores visible (after a `bun run test:evals` pass that exercises the same agent).
+- Invariant probe: `mv packages/mastra /tmp/.bak && mv apps/studio /tmp/.bak2 && bun run --filter @harness/core typecheck && ...` exits 0; restore.
 
 ---
 
@@ -188,24 +275,27 @@ Goal: CLAUDE.md and README reflect the new layout so future readers (and Claude 
 | When | Command |
 |------|---------|
 | After every task | `bun run lint` |
-| After Phase boundary | `bun run ci` |
+| After phase boundary | `bun run ci` |
 | Studio smoke | `bun run studio:dev` |
 | API smoke | `bun run api` |
-| Workspace audit | `bun pm ls` |
-| Dep-tree audit (api) | `bun pm ls --filter @harness/example-api` |
+| Trace round-trip | `sqlite3 .mastra/mastra.db 'select count(*) from mastra_traces;'` |
+| Eval suite | `bun run test:evals` |
 
 ## Risks & open questions
 
-1. **`@mastra/editor` version pinning.** The package version is not yet known — Task 1.1 needs to discover the latest compatible release with `@mastra/core@1.27.0`. If incompatible, fall back to deferring Editor to a follow-up PR (still ship the `apps/studio` move).
-2. **`mastra` CLI as runtime dep.** Listing `mastra` in `apps/studio/dependencies` (vs `devDependencies`) is intentional so `mastra start` works in a prod deploy of Studio. If you never deploy Studio, demote to `devDependencies`.
-3. **Auto-discovery vs `--config`.** Mastra CLI auto-discovers `src/mastra/index.ts` only when run from the package root. The root `studio:*` scripts therefore must shell into the workspace via `bun run --filter`, which they do. If a future contributor reverts to running `mastra dev` from the repo root, it will fail to discover the new path. The doc update in Task 5.2 calls this out.
-4. **Workspace hoisting.** Removing `@mastra/*` packages from the root `package.json` (Task 2.3) is safe only because each consumer (`packages/mastra`, `apps/studio`) declares them. Run `bun install` and `bun run ci` immediately after to confirm hoisting still resolves transitively.
-5. **Editor + tested prompts.** Editor lets non-devs publish prompt overrides. Today, agent prompts live in code and are tested via `mockModel()`. Out of scope for this plan, but flagged: once anyone publishes a draft via Editor, the runtime API needs a story for whether/how to consume it. Track as a follow-up doc.
+1. **Mastra `telemetry` field shape.** Verify the exact shape against `@mastra/core@1.27.0`'s `TelemetryConfig` — the helper in Task 1.3 may need adjusting. If sampling-config keys differ, treat the helper as the single source of truth for the wire format.
+2. **Workflow steps and the `mastra` arg.** `deep-research` steps may rely on having a Mastra instance with specific agents/workflows registered. After Phase 3, steps receive the *app's* Mastra (which has `simpleChatAgent` + `deepResearch` registered in api/studio/cli). Verify steps don't reference anything that wasn't on the per-call Mastra.
+3. **`bun test` glob/tag filter for evals.** `bun test` doesn't have first-class tags. The simplest reliable approach is filename convention (`*.eval.test.ts`) + a script that runs `bun test packages/mastra/src/**/*.eval.test.ts`. Verify glob support; fall back to env-gating inside each file if globbing is brittle.
+4. **Eval cost with cloud providers.** Ollama is free; cloud providers (OpenAI/etc.) pay per LLM-judge call. Evals run on-demand only — document expected token cost in CLAUDE.md once a starter run is profiled.
+5. **`MASTRA_DB_URL` for `:memory:` dev mode.** Some devs may prefer ephemeral storage (no persisted DB). `MASTRA_DB_URL=file::memory:?cache=shared` works but only within a single process — Studio + API in separate processes won't share it. Doc this caveat.
+6. **`workflows[*].evals`.** Mastra workflows don't have a built-in `evals` field on `createWorkflow`. Workflow metrics are evaluated at the test level by feeding the workflow output into a metric. Phase 6.3 follows this pattern. If Mastra adds workflow-native evals later, migrate.
+7. **Concurrent LibSQL writes.** Studio + API + CLI all writing to one SQLite file = potential lock contention under load. Fine for dev; not a production deploy story (and we're not building one yet — out of scope).
 
 ## Out of scope (explicitly)
 
-- Renaming `packages/mastra` → anything else.
-- Splitting Editor storage to a separate DB.
-- Wiring published Editor prompts back into `apps/api`.
-- New tests, new agents, new workflows, refactoring inside `packages/mastra`.
-- Production deploy story for Studio.
+- OTLP exporter / external collector (Jaeger / Tempo / Honeycomb).
+- Migrating Harness's `RunStore` / `EventLog` / `ConversationStore` to LibSQL.
+- Restructuring `packages/mastra` layout.
+- Wiring eval thresholds into CI gates (CI stays unit-only; evals run on-demand).
+- Production deploy story for Studio or shared storage.
+- Wiring published Editor prompt overrides back into `apps/api`.
