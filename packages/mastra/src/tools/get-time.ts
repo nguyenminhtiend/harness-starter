@@ -25,7 +25,7 @@ export const getTimeTool = createTool({
   }),
   outputSchema: z.discriminatedUnion('ok', [successSchema, errorSchema]),
   execute: async (inputData) => {
-    const tz = inputData.timezone ?? 'UTC';
+    const tz = inputData.timezone || 'UTC';
 
     try {
       Intl.DateTimeFormat(undefined, { timeZone: tz });

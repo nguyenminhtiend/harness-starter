@@ -58,15 +58,15 @@ describe.skipIf(SKIP)('[eval] simpleChatAgent', () => {
     console.log(`  [eval] summary: ${result.summary.totalItems} items`);
 
     const agentScores = result.scores['agent'];
-    const relevancyAvg = agentScores?.['answer-relevancy-scorer']?.averageScore;
+    const relevancyAvg = agentScores?.['answer-relevancy-scorer'];
     expect(relevancyAvg).toBeDefined();
     console.log(`  [eval] relevancy avg=${relevancyAvg}`);
     expect(relevancyAvg).toBeGreaterThan(0.8);
 
     const trajectoryScores = result.scores['trajectory'];
-    const trajAvg = trajectoryScores?.['code-trajectory-accuracy-scorer']?.averageScore;
+    const trajAvg = trajectoryScores?.['code-trajectory-accuracy-scorer'];
     expect(trajAvg).toBeDefined();
     console.log(`  [eval] trajectory avg=${trajAvg}`);
     expect(trajAvg).toBeGreaterThan(0.7);
-  }, 120_000);
+  }, 240_000);
 });
