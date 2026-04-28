@@ -1,301 +1,763 @@
-# Plan v2 — shared Mastra storage, observability, evals, selective registration
+# Implementation Plan: Mastra Feature Gallery
 
-Status: proposed, awaiting human review. Supersedes the v1 `apps/studio` plan (now done; see git history at `86ddeda`).
+## Overview
 
-## Goals
+Build a portfolio of **7 small agents + 3 small workflows** (10 pieces total) that together exercise the full Mastra v1 feature surface. Spec lives at [`docs/mastra-feature-gallery-plan.md`](./mastra-feature-gallery-plan.md). Each piece is intentionally pedagogical (toy domains, ≤150 LOC), independently shippable, and validated end-to-end in Studio before being wrapped as a `CapabilityDefinition` and registered in `apps/api` / `apps/cli`.
 
-1. **Single Mastra storage** shared by `apps/studio` and `apps/api` (and `apps/cli`) so API/CLI runs surface in Studio (traces, agent memory, workflow snapshots, eval results).
-2. **Mastra telemetry on all apps** so traces flow into the shared store and render in Studio's Traces tab. No external collector.
-3. **Inject `Mastra` into capability adapters** — eliminate the per-invocation `new Mastra({...})` anti-pattern in `packages/mastra/src/capabilities/*/capability.ts`.
-4. **Selective registration in `apps/api` / `apps/cli`** — each app explicitly lists the agents/workflows it actually uses. **`apps/studio` auto-registers everything** via barrel exports from `@harness/mastra`, so new agents/workflows/tools appear in Studio with no Studio edit.
-5. **Evals via `@mastra/evals`** — starter metrics on existing agents/workflows + a pattern that auto-extends to future ones. Run as a separate test suite (`bun test:evals`, gated by `HARNESS_EVAL=1`) and on-demand in Studio.
+The previous `plan.md` (v2 platform-redesign) is fully shipped; this plan supersedes it. Historical content is in git history (last commit on file: `eb1eb0a`, `0ca081f`).
 
-## Locked decisions
+## Architecture decisions
 
-| ID | Decision |
-|----|----------|
-| A  | Shared storage = Mastra storage **only**. Harness's `RunStore`/`EventLog`/`ConversationStore` stay in-memory (out of scope). |
-| B  | Storage path: `<repo-root>/.mastra/mastra.db`, env-overridable via `MASTRA_DB_URL`. Single helper `createMastraStorage()` in `@harness/mastra/runtime` resolves the absolute path from the package's `import.meta.url`. |
-| C  | Capabilities accept a `Mastra` instance via DI; runners look up agents/workflows by name with `mastra.getAgent(...)` / `mastra.getWorkflow(...)`. (Mastra-native pattern, traces propagate.) |
-| D  | `createCapabilityRegistry(capabilities: CapabilityDefinition[])` — accepts a list, no longer constructs capabilities itself. |
-| E  | `apps/api` and `apps/cli` each construct their own `new Mastra({...})` with explicit agent/workflow maps. `apps/studio` uses `allAgents/allWorkflows/allTools` barrels. |
-| F  | Telemetry: `telemetry: { enabled: true, serviceName }` on each Mastra instance. No OTLP exporter. |
-| G  | Evals: starter set = `AnswerRelevancyMetric` + `ContentSimilarityMetric` for chat agents, `FaithfulnessMetric` + `HallucinationMetric` for research-style workflows. Defaults applied automatically by the agent/workflow factories so future ones inherit. Judge model = same `model` as the agent (ollama-friendly). |
-| H  | No restructure of `packages/mastra` layout. |
+| Decision | Choice | Rationale |
+|---|---|---|
+| Build loop | **Studio-first; capability-export later** | Wire each piece into `allAgents`/`allWorkflows` first; verify in Studio (traces, evals, suspend/resume UI); only then wrap as `CapabilityDefinition`. |
+| Infra wiring | **Path 1 — fat barrel** | `allAgents` constructs shared `LibSQLVector`, default `Memory`, and default `MCPClient` once and threads them into factories. Apps that need different wiring bypass the barrel. |
+| Slicing | **Vertical per piece** | Each task ships one piece end-to-end (factory + unit test + Studio verification + barrel registration). |
+| Build order | **Easiest-first** (echo → memory → guardrail → rag → graph-rag → mcp → supervisor → control-flow → hitl → sandbox) | Earliest piece becomes the template every later piece copies; supervisor is built after its 3 subagents exist. |
+| Capability export | **Phase 5, after all 10 pieces are Studio-green** | Reduces churn — no piece gets capability-wrapped until its API surface is stable. |
+| DAG respect | **All work lives in `packages/mastra/`**; `core`/`http`/`bootstrap` untouched | Per CLAUDE.md "deleting `packages/mastra/` must leave core+http+bootstrap building cleanly". `apps/api` and `apps/cli` register capabilities at end. |
+| TDD policy | **Per CLAUDE.md** — TDD enforced for `packages/*`. Eval tests gated by `HARNESS_EVAL=1`. Use `mockModel()` from `@harness/mastra/testing`. |
 
-## Constraints
-
-- Preserve **invariant #2** (capabilities are data) and **#9** (clone-and-own — deleting `packages/mastra/` and `apps/studio/` must still leave `core + http + bootstrap + apps/api + apps/cli + apps/console` green). Phase 4 means `apps/api` / `apps/cli` will start importing `@mastra/core` directly to construct `Mastra` — that's a deliberate widening; the boundary lint rule must be updated to allow it.
-- Preserve all v1 boundary rules (`@harness/http`, `@harness/bootstrap`, `@harness/core` still forbidden in `apps/studio`; `@mastra/editor` + `mastra` CLI still forbidden in `apps/api` / `apps/cli`).
-- TDD applies inside `packages/mastra` (capability refactor + evals).
-
-## Dependency graph after the change
+## Package DAG (respected)
 
 ```
-@harness/core ─→ @harness/http
-       ↑
-@harness/mastra ─→ @harness/mastra/runtime (storage, logger, telemetry helpers)
-       ↑                  │
-@harness/bootstrap        │
-       ↑                  │
-       │                  │
-apps/api  ─→ @harness/http, @mastra/core (constructs own Mastra)
-apps/cli  ─────────────────→ @mastra/core (constructs own Mastra)
-apps/console (http types only)
-apps/studio ──────────────┘   (still no http/bootstrap/core)
+mastra ─→ core ─→ http
+             ↑
+bootstrap ───┘
+    ↑
+apps/api ─→ http
+apps/cli
+apps/studio (mastra only)
 ```
 
-All Mastra instances point at the **same LibSQL file** (`<repo>/.mastra/mastra.db`).
+All Phase 0–4 work happens inside `packages/mastra/`. Phase 5 touches `apps/api` + `apps/cli`. `core`, `http`, `bootstrap`, `apps/console`, `apps/studio` are not modified.
 
 ---
 
-## Phasing & checkpoints
+## Task list
 
-Seven phases, sequential. Each phase ends in a `bun run ci` checkpoint plus the named verification.
+### Phase 0 — Foundation helpers
 
----
+Three small additions: a new dep + two helpers in `runtime/` so the barrel can construct shared infra without inlining setup. The MCP **client** helper is deferred to Phase 3 (needs the stub server to point at), but the dep that ships both `MCPServer` and `MCPClient` lands now so later tasks can `import` cleanly.
 
-### Phase 0 — Cleanup stale files
+#### Task 0.0: Add `@mastra/mcp` dependency
 
-**Task 0.1 — Delete stale `/src/mastra/` at repo root**
-- Left over from the v1 migration (Phase 2.2 missed it). Studio now owns Mastra composition.
-- **Acceptance:** `ls /src 2>/dev/null` empty (or absent); `bun run ci` green.
+**Description:** Add `@mastra/mcp` to `packages/mastra/package.json` deps, pinned to a version compatible with `@mastra/core@1.27.0`. Verify import works for both `MCPServer` and `MCPClient`.
 
-**Task 0.2 — Confirm only `apps/studio/src/mastra/index.ts` defines a `Mastra` instance**
-- `grep -rn "new Mastra(" --include="*.ts" .` should show only `apps/studio/src/mastra/index.ts`, the per-capability files (to be refactored in Phase 3), and test files.
-- **Acceptance:** grep audit recorded.
+**Acceptance criteria:**
+- [ ] `@mastra/mcp` appears in `packages/mastra/package.json` `dependencies` with a pinned exact version
+- [ ] `import { MCPServer, MCPClient } from '@mastra/mcp'` typechecks
+- [ ] `bun.lock` is committed
+- [ ] `bun install` from a clean checkout pulls the new dep without conflict against `@mastra/core@1.27.0`
 
-**Checkpoint 0:** `bun run ci` green.
+**Verification:**
+- [ ] `bun install` clean
+- [ ] `bun run typecheck` passes
+- [ ] `bun run build` passes
 
----
-
-### Phase 1 — `@harness/mastra/runtime` helpers (storage, logger, telemetry)
-
-Goal: one place that knows how to wire Mastra to the shared LibSQL file, the standard PinoLogger, and the telemetry config. Apps consume helpers; no app re-implements path-resolution.
-
-**Task 1.1 — Add `packages/mastra/src/runtime/storage.ts`**
-- `createMastraStorage({ url? })` returns a `LibSQLStore`. URL precedence: arg → `process.env.MASTRA_DB_URL` → `defaultRepoDbUrl()`.
-- `defaultRepoDbUrl()` resolves `<repo-root>/.mastra/mastra.db` by walking up from `import.meta.url` until it finds `bun.lockb` (or `pnpm-workspace.yaml` / `biome.json`); returns `file:` + absolute path. Caches the resolved path.
-- **TDD:** unit test with a fake fs walker; verify env override and arg override.
-- **Acceptance:** test passes; `bun run --filter @harness/mastra typecheck` green.
-
-**Task 1.2 — Add `packages/mastra/src/runtime/logger.ts`** *(parallelizable with 1.1)*
-- `createMastraLogger({ level?, pretty? })` returns a `PinoLogger` with sensible defaults (`level=info`, `pretty=NODE_ENV !== 'production'`).
-- **Acceptance:** typecheck.
-
-**Task 1.3 — Add `packages/mastra/src/runtime/telemetry.ts`** *(parallelizable with 1.1)*
-- `defaultTelemetryConfig(serviceName: string)` returns the Mastra telemetry config object: `{ serviceName, enabled: true, sampling: { type: 'always_on' } }` (verify field names against `@mastra/core`'s `TelemetryConfig` type).
-- **Acceptance:** typecheck.
-
-**Task 1.4 — Re-export from `@harness/mastra`**
-- Add to `packages/mastra/src/index.ts`: `export * from './runtime/index.ts';` and create `runtime/index.ts` barrel.
-- Add subpath export: `"./runtime": "./src/runtime/index.ts"` in `packages/mastra/package.json`.
-- **Acceptance:** `import { createMastraStorage } from '@harness/mastra/runtime'` resolves.
-
-**Checkpoint 1:** `bun run ci` green. New helpers exist, nothing else changed.
+**Dependencies:** None
+**Files likely touched:**
+- `packages/mastra/package.json`
+- `bun.lock`
+**Estimated scope:** XS (2 files)
 
 ---
 
-### Phase 2 — Studio uses helpers + barrels (auto-registration)
+#### Task 0.1: Add `createMastraVector()` helper
 
-Goal: studio rebuilt around barrel exports so future agents/workflows/tools appear automatically.
+**Description:** New helper in `packages/mastra/src/runtime/` returning a `LibSQLVector` configured to use the same DB path as `createMastraStorage()`. Both `rag-agent` and `graph-rag-agent` share this single vector instance with separate index names.
 
-**Task 2.1 — Add `allAgents` / `allWorkflows` / `allTools` barrels**
-- In `packages/mastra/src/agents/index.ts`:
-  ```ts
-  export const allAgents = (opts: { model: MastraModelConfig }) => ({
-    simpleChatAgent: createSimpleChatAgent(opts),
-  });
-  ```
-- Same shape for `workflows/index.ts` (`allWorkflows`) and `tools/index.ts` (`allTools()` — no model needed).
-- Re-export from `packages/mastra/src/index.ts`.
-- **Convention:** every new agent/workflow/tool MUST be added to its `all*` map in the same PR. Document in CLAUDE.md (Phase 7).
-- **Acceptance:** typecheck; existing imports unaffected.
+**Acceptance criteria:**
+- [ ] `createMastraVector()` returns a `LibSQLVector` instance
+- [ ] DB URL resolution mirrors `createMastraStorage()` (walks up to repo root via `bun.lock`/`biome.json`; respects `MASTRA_DB_URL` env)
+- [ ] Exported from `@harness/mastra/runtime`
 
-**Task 2.2 — Refactor `apps/studio/src/mastra/index.ts`**
-- Replace ad-hoc `LibSQLStore` / `PinoLogger` construction with `createMastraStorage()` / `createMastraLogger()`.
-- Replace explicit `simpleChatAgent` / `deepResearch` registration with spread of `allAgents({ model })` / `allWorkflows({ model })` / `allTools()`.
-- Add `telemetry: defaultTelemetryConfig('harness-studio')`.
-- **Acceptance:** `bun run studio:dev` boots; Studio shows `simpleChatAgent`, `deepResearch`, **and** the four tools (`calculator`, `fetch`, `fs`, `getTime`) in the tool browser; LibSQL file lands at `<repo>/.mastra/mastra.db` (not `apps/studio/.mastra/mastra.db`).
+**Verification:**
+- [ ] Unit test: `bun test packages/mastra/src/runtime/vector.test.ts`
+- [ ] Typecheck: `bun run typecheck`
+- [ ] Build: `bun run build`
 
-**Checkpoint 2:** `bun run ci` green; manual Studio smoke pass; DB file at repo root.
+**Dependencies:** None
+**Files likely touched:**
+- `packages/mastra/src/runtime/vector.ts` (new) — uses `LibSQLVector` from existing `@mastra/libsql@1.9.0`
+- `packages/mastra/src/runtime/vector.test.ts` (new)
+- `packages/mastra/src/runtime/index.ts` (export)
+**Estimated scope:** Small (3 files)
 
 ---
 
-### Phase 3 — Refactor capabilities to accept `Mastra` (DI)
+#### Task 0.2: Add `createDefaultMemory({ storage })` helper
 
-Goal: kill per-invocation `new Mastra({...})` so traces propagate and capabilities don't re-pay construction cost.
+**Description:** New helper in `runtime/` returning a `Memory` instance with sensible portfolio defaults: `lastMessages: 20`, semantic recall enabled, working memory enabled, observational memory enabled, `TokenLimiter` + `ToolCallFilter` processors. Per-agent overrides happen at agent factory level.
 
-**Task 3.1 — Change capability factory signatures (TDD)**
-- `createSimpleChatCapability({ mastra, logger })`
-- `createDeepResearchCapability({ mastra, logger })`
-- Inside the runner: replace `new Mastra({...})` and direct agent/workflow construction with `mastra.getAgent('simpleChatAgent')` / `mastra.getWorkflow('deepResearch').createRun().start({ inputData })`.
-- Update `adapters/agent-adapter.ts` and `adapters/workflow-adapter.ts` to take handles from a passed-in `Mastra` rather than constructing.
-- Update tests (`*.capability.test.ts`, `adapters/testing.ts`) to construct a real `Mastra` (with `simpleChatAgent` registered, `mockModel()`, in-memory LibSQL `file::memory:?cache=shared`) and pass it in.
-- **Acceptance:** all existing tests green; `grep -rn "new Mastra(" packages/mastra/src/capabilities/` returns nothing (excluding test fixtures).
+**Acceptance criteria:**
+- [ ] `createDefaultMemory({ storage })` returns `Memory` with all 5 features wired
+- [ ] Working memory uses a generic profile schema (subclass override available)
+- [ ] Exported from `@harness/mastra/runtime`
 
-**Task 3.2 — Update `createCapabilityRegistry` to take a list**
-- New signature: `createCapabilityRegistry(capabilities: CapabilityDefinition[]): CapabilityRegistry`.
-- Drop the `IMastraLogger` parameter; capability construction (and its logger dep) is now the caller's responsibility.
-- Existing callers in `apps/api` and `apps/cli` will be updated in Phase 4.
-- **Acceptance:** `packages/mastra` tests green; `bun run --filter @harness/mastra typecheck` green.
+**Verification:**
+- [ ] Unit test: `bun test packages/mastra/src/runtime/memory.test.ts`
+- [ ] Typecheck + build pass
 
-**Checkpoint 3:** `bun run --filter @harness/mastra ci` green. `apps/api` / `apps/cli` are temporarily broken — Phase 4 fixes them.
-
----
-
-### Phase 4 — `apps/api` + `apps/cli` construct own `Mastra`, register selectively, share storage
-
-**Task 4.1 — `apps/api/src/compose.ts`**
-- Construct `Mastra` here:
-  ```ts
-  import { Mastra } from '@mastra/core';
-  import {
-    createSimpleChatAgent, createDeepResearchWorkflow,
-    createMastraStorage, createMastraLogger, defaultTelemetryConfig,
-    resolveModel,
-  } from '@harness/mastra';
-  import {
-    createSimpleChatCapability, createDeepResearchCapability, createCapabilityRegistry,
-  } from '@harness/mastra/capabilities';
-
-  const model = /* same model resolution as studio */;
-  const mastra = new Mastra({
-    agents:    { simpleChatAgent: createSimpleChatAgent({ model }) },
-    workflows: { deepResearch:    createDeepResearchWorkflow({ model }) },
-    storage:   createMastraStorage(),
-    logger:    createMastraLogger(),
-    telemetry: defaultTelemetryConfig('harness-api'),
-  });
-
-  const { deps, shutdown } = composeHarness({
-    capabilityRegistry: createCapabilityRegistry([
-      createSimpleChatCapability({ mastra, logger: deps.mastraLogger }), // ← wiring detail TBD; see 4.3
-      createDeepResearchCapability({ mastra, logger: deps.mastraLogger }),
-    ]),
-    logLevel: config.logLevel,
-  });
-  ```
-- Add `apps/api/src/model.ts` (small helper) that mirrors studio's model resolution so both apps stay in sync.
-- **Acceptance:** `bun run api` boots; `POST /runs` returns 201; `GET /runs/:id/events` streams events; trace shows up in Studio for the same run after refresh.
-
-**Task 4.2 — `apps/cli/src/index.ts`** *(parallelizable with 4.1)*
-- Same Mastra construction + registry pattern as 4.1.
-- **Acceptance:** `bun run start "hello"` prints JSON-line events; trace appears in Studio.
-
-**Task 4.3 — Resolve `mastraLogger` chicken-and-egg in `composeHarness`**
-- `composeHarness` currently builds `mastraLogger` internally and passes it to the capability-registry factory. With the new list signature, capabilities are built *outside* `composeHarness`, so the caller needs the logger first.
-- Options:
-  - **(a)** Export a standalone `createMastraLogger()` (Phase 1.2 already does); apps build the logger, pass it to both capabilities and `composeHarness`.
-  - **(b)** Add a `createCapabilityRegistry: (mastraLogger) => CapabilityRegistry` overload to `composeHarness` for convenience.
-- Recommend **(a)** — explicit beats hidden. Update `composeHarness` to accept an optional pre-built `mastraLogger`.
-- **Acceptance:** typecheck green; both apps wire the logger explicitly.
-
-**Task 4.4 — Update biome `noRestrictedImports` for `apps/api` and `apps/cli`**
-- Forbidden today: `@mastra/editor`, `mastra` (CLI), `@mastra/editor/*`. Keep all of these.
-- Now-allowed: `@mastra/core`, `@mastra/libsql`, `@mastra/loggers` (transitively used through `@harness/mastra/runtime`, but apps may also import directly).
-- Add `@harness/mastra/runtime` to the explicit allow-list comment for clarity.
-- **Acceptance:** `bun run lint` green; manual probe — inserting `import { Mastra } from '@mastra/core'` in `apps/api/src/index.ts` no longer errors; inserting `import {} from '@mastra/editor'` still errors.
-
-**Checkpoint 4:** `bun run ci` green. End-to-end: start `apps/api`, POST a run, open Studio → run's traces visible in the Traces tab. Same for `apps/cli`.
+**Dependencies:** Task 0.1 (shares storage helpers)
+**Files likely touched:**
+- `packages/mastra/src/runtime/memory.ts` (new)
+- `packages/mastra/src/runtime/memory.test.ts` (new)
+- `packages/mastra/src/runtime/index.ts` (export)
+**Estimated scope:** Small (3 files)
 
 ---
 
-### Phase 5 — Telemetry verification
-
-Goal: confirm Mastra's built-in OTel actually writes to LibSQL and renders in Studio.
-
-**Task 5.1 — Verify trace capture**
-- POST a run via API; query the LibSQL DB directly: `sqlite3 .mastra/mastra.db 'select count(*) from mastra_traces;'` should be > 0.
-- Open Studio → Traces tab → see span tree for the agent call (model invocation, tool calls if any).
-- **Acceptance:** screenshot/notes recorded.
-
-**Task 5.2 — Document fallback if traces are empty**
-- If traces don't show, the most likely culprit is `telemetry.enabled=false` defaults or sampling config. Doc the diagnostic in CLAUDE.md (Phase 7).
-
-**Checkpoint 5:** trace round-trip works end-to-end.
+### Checkpoint: Foundation
+- [ ] `bun run ci` passes
+- [ ] Helpers exported and importable from `@harness/mastra/runtime`
+- [ ] Studio entry (`apps/studio/src/mastra/index.ts`) still works unchanged
+- [ ] Human review
 
 ---
 
-### Phase 6 — Evals
+### Phase 1 — Agent fundamentals (pieces 1–3)
 
-Goal: starter eval coverage on existing agents/workflows + a convention that future ones inherit. Separate test suite (`bun test:evals`), on-demand in Studio.
+Three agents that establish the per-piece template: factory + unit test + eval test + barrel registration. Each task is one full vertical slice.
 
-**Task 6.1 — Install `@mastra/evals`, set up directory layout**
-- Add `@mastra/evals` to `packages/mastra/dependencies` (pin to a version compatible with `@mastra/core@1.27.0`).
-- Add `packages/mastra/src/evals/`:
-  - `defaults.ts` — exports `defaultAgentEvals(model)` returning `{ relevancy: new AnswerRelevancyMetric(model), similarity: new ContentSimilarityMetric() }` (similarity doesn't need a judge model).
-  - `defaults.ts` also exports `defaultWorkflowEvalMetrics(model)` returning `{ faithfulness: ..., hallucination: ... }` for use in workflow eval tests.
-- **Acceptance:** typecheck; `bun install` resolves.
+#### Task 1.1: Build `echo-agent` (capability template)
 
-**Task 6.2 — Wire defaults into agent factories**
-- Refactor `createSimpleChatAgent({ model, evals? })` to default `evals` to `defaultAgentEvals(model)` and pass to `new Agent({ ..., evals })`.
-- Pattern documented: every new agent factory should accept `evals?` with the same default. Future agents auto-inherit.
-- **TDD:** test that `createSimpleChatAgent({ model })` exposes the metric keys on its `Agent` instance.
-- **Acceptance:** test green; Studio shows the agent's eval metrics on its detail page.
+**Description:** Smallest-possible Agent with Zod `structuredOutput` for `{intent, payload, tokens}`. No tools, no memory. Sets the file-layout + test-shape template every later agent copies.
 
-**Task 6.3 — Eval test files, gated**
-- Add `packages/mastra/src/agents/simple-chat.eval.test.ts` — sample inputs (3–5 cases), call `agent.generate(input)`, run each metric, assert thresholds (e.g., `relevancy.score > 0.6`). Use real model (ollama by default) — gated by `HARNESS_EVAL=1` so unit `bun test` skips them.
-- Add `packages/mastra/src/workflows/deep-research/deep-research.eval.test.ts` — execute workflow on a fixture input, run faithfulness + hallucination metrics over the final report against the gathered findings.
-- **Skip mechanism:** at top of each `*.eval.test.ts`: `if (!process.env.HARNESS_EVAL) { describe.skip(...) }` (or test.skipIf).
-- Add root `package.json` script: `"test:evals": "HARNESS_EVAL=1 bun test --test-name-pattern '\\[eval\\]'"` (or filter by file glob — verify `bun test`'s globbing).
-- **Acceptance:** `bun test` skips evals; `bun run test:evals` runs them and exits 0.
+**Acceptance criteria:**
+- [ ] `createEchoAgent({ model, scorers? })` returns `Agent` with `structuredOutput.schema`
+- [ ] Defaults `scorers` to `defaultAgentScorers(model)`
+- [ ] Wired into `allAgents` barrel as `echoAgent`
+- [ ] Visible + chattable in Studio Agents tab
+- [ ] Returns valid Zod-shaped output for "Hello there"
 
-**Task 6.4 — Confirm Studio's Evals tab shows scores**
-- Run `bun run test:evals` once with shared LibSQL pointed at `.mastra/mastra.db` (not `:memory:`). Mastra writes eval results to storage; Studio reads them.
-- **Acceptance:** Studio's agent → Evals tab shows the metric runs.
+**Verification:**
+- [ ] Unit test (mockModel): `bun test packages/mastra/src/agents/echo-agent.test.ts`
+- [ ] Eval test (gated): `HARNESS_EVAL=1 bun test packages/mastra/src/agents/echo-agent.eval.test.ts`
+- [ ] Studio smoke: `bun run studio:dev` → chat with echo agent → see structured output
 
-**Checkpoint 6:** `bun run ci` green (evals skipped); `bun run test:evals` green; Studio Evals tab populated.
+**Dependencies:** None (uses existing `defaultAgentScorers`)
+**Files likely touched:**
+- `packages/mastra/src/agents/echo-agent.ts` (new)
+- `packages/mastra/src/agents/echo-agent.test.ts` (new)
+- `packages/mastra/src/agents/echo-agent.eval.test.ts` (new)
+- `packages/mastra/src/agents/index.ts` (add to `allAgents`)
+**Estimated scope:** Small (4 files)
 
 ---
 
-### Phase 7 — Documentation
+#### Task 1.2: Build `memory-agent` (Memory template)
 
-**Task 7.1 — Update CLAUDE.md**
-- Commands table: add `bun run test:evals` row.
-- Architecture section: add a paragraph on shared Mastra storage (path, env var, what's persisted, who writes).
-- "Adding a new agent/workflow/tool" convention: new entry MUST be added to the corresponding `all*` map in `packages/mastra` so Studio picks it up automatically.
-- Telemetry diagnostic note from Task 5.2.
-- **Acceptance:** doc reads cleanly; nothing stale.
+**Description:** Persona-profile chat using `createDefaultMemory()`. Override the working-memory schema with `PersonaProfile` Zod. `scope: 'resource'` for both working memory and semantic recall.
 
-**Task 7.2 — `.env.example`** *(parallelizable with 7.1)*
-- Add `MASTRA_DB_URL` row with the default value documented.
-- **Acceptance:** file exists / row present.
+**Acceptance criteria:**
+- [ ] `createMemoryAgent({ model, memory })` accepts injected memory
+- [ ] Working memory schema is `PersonaProfile` (`name?`, `timezone?`, `preferredTone`, `knownTopics`)
+- [ ] Wired into `allAgents` barrel; barrel constructs default memory via `createDefaultMemory()`
+- [ ] Across two threads (same `resourceId`), the agent recalls profile from thread 1 in thread 2
+- [ ] `generateTitle` produces a non-empty title
 
-**Checkpoint 7 — final acceptance**
-- `bun run ci` green.
-- `bun run test:evals` green (with `HARNESS_EVAL=1`).
-- Round-trip smoke: `bun run api` → POST `/runs` with `simple-chat` → run completes → Studio shows the run in Traces tab → metric scores visible (after a `bun run test:evals` pass that exercises the same agent).
-- Invariant probe: `mv packages/mastra /tmp/.bak && mv apps/studio /tmp/.bak2 && bun run --filter @harness/core typecheck && ...` exits 0; restore.
+**Verification:**
+- [ ] Unit test (mockModel + in-memory storage): `bun test packages/mastra/src/agents/memory-agent.test.ts`
+- [ ] Eval test (gated): asserts cross-thread recall
+- [ ] Studio smoke: 2 threads same user → working memory persists
+
+**Dependencies:** Task 0.2
+**Files likely touched:**
+- `packages/mastra/src/agents/memory-agent.ts` (new)
+- `packages/mastra/src/agents/memory-agent.test.ts` (new)
+- `packages/mastra/src/agents/memory-agent.eval.test.ts` (new)
+- `packages/mastra/src/agents/index.ts` (export, barrel update)
+**Estimated scope:** Small (4 files)
 
 ---
 
-## Verification commands (reference)
+#### Task 1.3: Build `guardrail-agent` (processor stack)
 
-| When | Command |
-|------|---------|
-| After every task | `bun run lint` |
-| After phase boundary | `bun run ci` |
-| Studio smoke | `bun run studio:dev` |
-| API smoke | `bun run api` |
-| Trace round-trip | `sqlite3 .mastra/mastra.db 'select count(*) from mastra_traces;'` |
-| Eval suite | `bun run test:evals` |
+**Description:** Trivial-purpose Agent with full input processor stack (`UnicodeNormalizer`, `LanguageDetector`, `PIIDetector`, `PromptInjectionDetector`, `ModerationProcessor`) and `SensitiveDataFilter` output processor. Tripwire on injection / moderation / unsupported language. PII redacts in place.
 
-## Risks & open questions
+**Acceptance criteria:**
+- [ ] `createGuardrailAgent({ model })` returns Agent with processor stack
+- [ ] PII prompt → input visibly redacted before model
+- [ ] Injection prompt → run ends in `tripwire` status with `reason`
+- [ ] Non-English prompt (e.g. `"Bonjour"`) → tripwire `language not allowed`
+- [ ] Wired into `allAgents` barrel
 
-1. **Mastra `telemetry` field shape.** Verify the exact shape against `@mastra/core@1.27.0`'s `TelemetryConfig` — the helper in Task 1.3 may need adjusting. If sampling-config keys differ, treat the helper as the single source of truth for the wire format.
-2. **Workflow steps and the `mastra` arg.** `deep-research` steps may rely on having a Mastra instance with specific agents/workflows registered. After Phase 3, steps receive the *app's* Mastra (which has `simpleChatAgent` + `deepResearch` registered in api/studio/cli). Verify steps don't reference anything that wasn't on the per-call Mastra.
-3. **`bun test` glob/tag filter for evals.** `bun test` doesn't have first-class tags. The simplest reliable approach is filename convention (`*.eval.test.ts`) + a script that runs `bun test packages/mastra/src/**/*.eval.test.ts`. Verify glob support; fall back to env-gating inside each file if globbing is brittle.
-4. **Eval cost with cloud providers.** Ollama is free; cloud providers (OpenAI/etc.) pay per LLM-judge call. Evals run on-demand only — document expected token cost in CLAUDE.md once a starter run is profiled.
-5. **`MASTRA_DB_URL` for `:memory:` dev mode.** Some devs may prefer ephemeral storage (no persisted DB). `MASTRA_DB_URL=file::memory:?cache=shared` works but only within a single process — Studio + API in separate processes won't share it. Doc this caveat.
-6. **`workflows[*].evals`.** Mastra workflows don't have a built-in `evals` field on `createWorkflow`. Workflow metrics are evaluated at the test level by feeding the workflow output into a metric. Phase 6.3 follows this pattern. If Mastra adds workflow-native evals later, migrate.
-7. **Concurrent LibSQL writes.** Studio + API + CLI all writing to one SQLite file = potential lock contention under load. Fine for dev; not a production deploy story (and we're not building one yet — out of scope).
+**Verification:**
+- [ ] Unit test: 4 prompts, 4 expected outcomes (one normal, three trip variants)
+- [ ] Studio smoke: trip each processor; trace shows redaction / tripwire
 
-## Out of scope (explicitly)
+**Dependencies:** None (processors come from `@mastra/core`)
+**Files likely touched:**
+- `packages/mastra/src/agents/guardrail-agent.ts` (new)
+- `packages/mastra/src/agents/guardrail-agent.test.ts` (new)
+- `packages/mastra/src/agents/guardrail-agent.eval.test.ts` (new)
+- `packages/mastra/src/agents/index.ts`
+**Estimated scope:** Small (4 files)
 
-- OTLP exporter / external collector (Jaeger / Tempo / Honeycomb).
-- Migrating Harness's `RunStore` / `EventLog` / `ConversationStore` to LibSQL.
-- Restructuring `packages/mastra` layout.
-- Wiring eval thresholds into CI gates (CI stays unit-only; evals run on-demand).
-- Production deploy story for Studio or shared storage.
-- Wiring published Editor prompt overrides back into `apps/api`.
+---
+
+### Checkpoint: Agent fundamentals
+- [ ] `bun run ci` passes
+- [ ] Three new agents visible in Studio
+- [ ] Per-piece file template established (factory + unit test + eval test + barrel update)
+- [ ] Human review of template before scaling
+
+---
+
+### Phase 2 — RAG pieces (4–5)
+
+Two pieces share vector infrastructure. Land RAG first (sets corpus + seed pattern), then GraphRAG (reuses store, adds graph traversal).
+
+#### Task 2.1: Build `rag-agent` corpus + seed pipeline
+
+**Description:** Scaffold `agents/rag-agent/` folder with 5 fictional Acme Vacuum 3000 markdown docs (frontmatter: `section`, `last_updated`). Add `seed.ts` (idempotent: chunk → embed → upsert into `LibSQLVector` index `acme_docs`). Add root `bun run rag:seed` script.
+
+**Acceptance criteria:**
+- [ ] 5 markdown docs ship in repo at `agents/rag-agent/corpus/*.md`, ~200 words each
+- [ ] `seed.ts` chunks with `MDocument.fromMarkdown` + markdown strategy (size 512, overlap 50)
+- [ ] Embeds with Ollama `nomic-embed-text` by default; `MASTRA_EMBEDDER` env override works
+- [ ] Idempotent: running twice doesn't duplicate
+- [ ] `bun run rag:seed` creates `acme_docs` index in shared `.mastra/mastra.db`
+
+**Verification:**
+- [ ] Unit test: `bun test packages/mastra/src/agents/rag-agent/seed.test.ts` (mocks embedder; asserts chunk count + metadata shape)
+- [ ] Manual: `bun run rag:seed` → `sqlite3 .mastra/mastra.db "select count(*) from libsql_vector;"` shows N chunks
+
+**Dependencies:** Task 0.1
+**Files likely touched:**
+- `packages/mastra/src/agents/rag-agent/corpus/{specs,troubleshooting,warranty,accessories,faq}.md` (new × 5)
+- `packages/mastra/src/agents/rag-agent/seed.ts` (new)
+- `packages/mastra/src/agents/rag-agent/seed.test.ts` (new)
+- root `package.json` (add `rag:seed` script)
+**Estimated scope:** Medium (8 files)
+
+---
+
+#### Task 2.2: Build `rag-agent` factory + custom citation scorer
+
+**Description:** Agent factory with `createVectorQueryTool` + `rerankWithScorer` (deterministic content-similarity rerank). Custom `citation-format` scorer using full `createScorer` chain (preprocess regex → analyze LLM judge → score precision → reason). 10-entry dataset.
+
+**Acceptance criteria:**
+- [ ] `createRagAgent({ model, vector, memory })` returns Agent with vector query + rerank
+- [ ] Citation scorer uses all four `createScorer` steps
+- [ ] Wired into `allAgents` barrel
+- [ ] Studio chat: "What's the warranty period?" returns answer with `[doc:warranty.md]` citation
+- [ ] 10-entry dataset visible in Studio Experiments
+
+**Verification:**
+- [ ] Unit test (mockModel + in-memory vector seed): `bun test packages/mastra/src/agents/rag-agent/agent.test.ts`
+- [ ] Scorer unit test: `bun test packages/mastra/src/agents/rag-agent/scorer.test.ts`
+- [ ] Eval test gated: asserts citation precision ≥ 0.7 across dataset
+- [ ] Studio smoke: rag agent answers warranty + filter questions
+
+**Dependencies:** Tasks 0.1, 0.2, 2.1
+**Files likely touched:**
+- `packages/mastra/src/agents/rag-agent/agent.ts` (new)
+- `packages/mastra/src/agents/rag-agent/scorer.ts` (new)
+- `packages/mastra/src/agents/rag-agent/index.ts` (new)
+- `packages/mastra/src/agents/rag-agent/agent.test.ts` (new)
+- `packages/mastra/src/agents/rag-agent/scorer.test.ts` (new)
+- `packages/mastra/src/agents/rag-agent/agent.eval.test.ts` (new)
+- `packages/mastra/src/evals/datasets/rag-agent.dataset.ts` (new)
+- `packages/mastra/src/agents/index.ts` (barrel)
+**Estimated scope:** Medium (8 files)
+
+---
+
+#### Task 2.3: Build `graph-rag-agent` (multi-hop)
+
+**Description:** 9 fictional org-universe docs with cross-references. Same vector store as RAG, separate index `org_graph`. `createGraphRAGTool` with documented graph options. `bun run graph-rag:seed` script.
+
+**Acceptance criteria:**
+- [ ] 9 markdown docs ship in `agents/graph-rag-agent/corpus/` (3 companies + 3 people + 3 products), ~120 words each, prose cross-references, frontmatter `type`
+- [ ] `seed.ts` chunks with size 256/overlap 30 + `extract: { keywords, summary }`
+- [ ] `createGraphRAGTool` configured with `dimension: 768`, `threshold: 0.7`, `randomWalkSteps: 100`, `restartProb: 0.15`
+- [ ] Wired into `allAgents` barrel
+- [ ] Studio: 3-hop query "Which companies employ designers of Acme's products?" returns sensible traversal
+
+**Verification:**
+- [ ] Unit test (mockModel + seeded in-memory vector)
+- [ ] Eval test gated: 4 demo queries (1, 1-reverse, 2, 3 hops) — assert top-1 retrieval correctness
+- [ ] Studio smoke: same 4 demo queries
+
+**Dependencies:** Tasks 0.1, 2.1 (vector infra pattern)
+**Files likely touched:**
+- `packages/mastra/src/agents/graph-rag-agent/corpus/*.md` (new × 9)
+- `packages/mastra/src/agents/graph-rag-agent/agent.ts` (new)
+- `packages/mastra/src/agents/graph-rag-agent/seed.ts` (new)
+- `packages/mastra/src/agents/graph-rag-agent/index.ts` (new)
+- `packages/mastra/src/agents/graph-rag-agent/{agent,seed}.test.ts` (new × 2)
+- `packages/mastra/src/agents/graph-rag-agent/agent.eval.test.ts` (new)
+- `packages/mastra/src/agents/index.ts`
+- root `package.json` (add `graph-rag:seed`)
+**Estimated scope:** Medium (16 files; 9 are short corpus markdown)
+
+---
+
+### Checkpoint: RAG pieces
+- [ ] `bun run ci` passes
+- [ ] Both seed scripts run idempotently from a fresh clone
+- [ ] Two indexes coexist in same `.mastra/mastra.db`
+- [ ] 3-hop query visibly succeeds in Studio (vs flat-RAG fail)
+- [ ] Human review
+
+---
+
+### Phase 3 — MCP + supervisor (pieces 6–7)
+
+#### Task 3.1: Build stub MCPServer process
+
+**Description:** Standalone Bun script at `packages/mastra/src/mcp/stub-server/server.ts` exposing two tools: `get_weather(city)` (no approval) and `send_notification(channel, body)` (requires approval). In-memory state. Spawnable via stdio.
+
+**Acceptance criteria:**
+- [ ] `bun run packages/mastra/src/mcp/stub-server/server.ts` starts and accepts MCP stdio messages
+- [ ] `get_weather('hanoi')` returns `{temp: 22, condition: 'sunny'}`
+- [ ] `send_notification(...)` writes to in-memory outbox, returns `{id, status}`
+- [ ] Tool schemas (Zod) exported for type-checking on the client side
+
+**Verification:**
+- [ ] Unit test (in-process): `bun test packages/mastra/src/mcp/stub-server/server.test.ts` — uses `MCPClient` to call both tools
+- [ ] Manual: spawn the script directly, send a `tools/list` request
+
+**Dependencies:** None
+**Files likely touched:**
+- `packages/mastra/src/mcp/stub-server/server.ts` (new)
+- `packages/mastra/src/mcp/stub-server/server.test.ts` (new)
+- `packages/mastra/src/mcp/stub-server/tools.ts` (new — shared Zod schemas)
+**Estimated scope:** Small (3 files)
+
+---
+
+#### Task 3.2: Add `createDefaultMcpClient()` helper + barrel wiring
+
+**Description:** Helper in `runtime/` that constructs an `MCPClient` pointing at the stub server (stdio, spawn `bun run packages/mastra/src/mcp/stub-server/server.ts`). `requireToolApproval: { stub_send_notification: true }`. Used by both `mcp-agent` and barrel default.
+
+**Acceptance criteria:**
+- [ ] `createDefaultMcpClient()` returns ready-to-use `MCPClient`
+- [ ] Selective approval: `stub_get_weather` runs immediately; `stub_send_notification` requires approval
+- [ ] Exported from `@harness/mastra/runtime`
+
+**Verification:**
+- [ ] Unit test: spawn stub, list tools, verify approval policy
+- [ ] Typecheck + build pass
+
+**Dependencies:** Task 3.1
+**Files likely touched:**
+- `packages/mastra/src/runtime/mcp-client.ts` (new)
+- `packages/mastra/src/runtime/mcp-client.test.ts` (new)
+- `packages/mastra/src/runtime/index.ts`
+**Estimated scope:** Small (3 files)
+
+---
+
+#### Task 3.3: Build `mcp-agent` (runtimeContext + dynamic resolvers)
+
+**Description:** Agent factory accepting `mcp` client. `requestContextSchema` validates `{userId, tier, locale}`. `model` resolver swaps Ollama → `claude-sonnet-4-6` when `tier === 'pro'`. `instructions` resolver swaps language by `locale`.
+
+**Acceptance criteria:**
+- [ ] `createMcpAgent({ model, mcp })` returns Agent with both dynamic resolvers
+- [ ] `requestContextSchema` rejects invalid context
+- [ ] Studio: same prompt with `tier: 'free'` vs `tier: 'pro'` shows different model in trace
+- [ ] Studio: `locale: 'vi'` switches instructions to Vietnamese
+- [ ] Wired into `allAgents` barrel
+
+**Verification:**
+- [ ] Unit test (mockModel + stubbed MCPClient): asserts both resolvers fire on requestContext changes
+- [ ] Eval test gated
+- [ ] Studio smoke: `send_notification` triggers approval UI; approve → tool call completes
+
+**Dependencies:** Tasks 3.1, 3.2
+**Files likely touched:**
+- `packages/mastra/src/agents/mcp-agent.ts` (new)
+- `packages/mastra/src/agents/mcp-agent.test.ts` (new)
+- `packages/mastra/src/agents/mcp-agent.eval.test.ts` (new)
+- `packages/mastra/src/agents/index.ts`
+**Estimated scope:** Small (4 files)
+
+---
+
+#### Task 3.4: Build `supervisor-agent` (delegation hooks)
+
+**Description:** Supervisor binds `ragAgent`, `graphRagAgent`, `mcpAgent` via `agents:{}`. All four delegation hook usages (PII redact + off-topic reject in `onDelegationStart`; quality bail in `onDelegationComplete`; `messageFilter` for mcpAgent only). Observational memory + thread-scoped working memory (deliberate contrast with `memory-agent`).
+
+**Acceptance criteria:**
+- [ ] `createSupervisorAgent({ model, subagents: { ragAgent, graphRagAgent, mcpAgent } })` returns Agent
+- [ ] Routing instructions delegate to one of three subagents based on intent
+- [ ] PII prompt → `onDelegationStart` rewrites prompt before delegation; trace shows the rewrite
+- [ ] Off-topic prompt → `onDelegationStart` rejects with reason
+- [ ] Empty subagent response → `onDelegationComplete.bail()` fires
+- [ ] mcpAgent subagent receives filtered messages (no prior assistant turns)
+- [ ] Wired into `allAgents` (barrel constructs subagents first, then supervisor)
+
+**Verification:**
+- [ ] Unit test (mockModel for each subagent, scripted delegation outcomes)
+- [ ] Eval test gated: 5 prompts → asserts correct delegation target per prompt
+- [ ] Studio smoke: 5 demo prompts; verify trace shows `delegation_start` → subagent → `delegation_complete`
+
+**Dependencies:** Tasks 1.2, 2.2, 2.3, 3.3
+**Files likely touched:**
+- `packages/mastra/src/agents/supervisor-agent.ts` (new)
+- `packages/mastra/src/agents/supervisor-agent.test.ts` (new)
+- `packages/mastra/src/agents/supervisor-agent.eval.test.ts` (new)
+- `packages/mastra/src/agents/index.ts` (barrel — supervisor depends on others built first)
+**Estimated scope:** Medium (4 files; supervisor logic is dense)
+
+---
+
+### Checkpoint: MCP + supervisor
+- [ ] `bun run ci` passes
+- [ ] All 7 agents visible + functional in Studio
+- [ ] Approval flow works end-to-end (Studio approval UI → tool call resumes)
+- [ ] Supervisor traces show 3-way routing
+- [ ] Human review
+
+---
+
+### Phase 4 — Workflows (pieces 8–10)
+
+#### Task 4.1: Build `control-flow-workflow` (every primitive)
+
+**Description:** Deterministic word-stats pipeline using all 8 control primitives + nested workflow + streaming. Tripwire on empty/oversized input. 5-entry dataset.
+
+**Acceptance criteria:**
+- [ ] Workflow uses every primitive: `.then` `.map` `.parallel` `.branch` `.foreach` `.dountil` `.dowhile` `.sleep`
+- [ ] Per-sentence work runs as a nested workflow inside `.foreach` (concurrency 2)
+- [ ] Every step boundary emits a `writer.write` progress event
+- [ ] Empty input or sentence > 10k chars → run ends `tripwire` with structured `reason`
+- [ ] Wired into `allWorkflows` barrel
+
+**Verification:**
+- [ ] Unit test: feeds 3 inputs (small, large, malformed) → asserts shape + tripwire
+- [ ] Eval test gated: deterministic, runs over 5-entry dataset
+- [ ] Studio smoke: trace shows fan-out, branch decision, foreach iterations, dountil loop
+
+**Dependencies:** None (pure deterministic logic)
+**Files likely touched:**
+- `packages/mastra/src/workflows/control-flow/workflow.ts` (new)
+- `packages/mastra/src/workflows/control-flow/per-sentence.workflow.ts` (new — nested)
+- `packages/mastra/src/workflows/control-flow/index.ts` (new)
+- `packages/mastra/src/workflows/control-flow/workflow.test.ts` (new)
+- `packages/mastra/src/workflows/control-flow/workflow.eval.test.ts` (new)
+- `packages/mastra/src/evals/datasets/control-flow.dataset.ts` (new)
+- `packages/mastra/src/workflows/index.ts` (barrel)
+**Estimated scope:** Medium (7 files)
+
+---
+
+#### Task 4.2: Add `control-flow` custom scorer + `cloneWorkflow` replay script
+
+**Description:** Deterministic `stats-coverage` scorer (no LLM) using full `createScorer` chain. `bun run wf:replay <runId>` script using `cloneWorkflow(controlFlow, { id })` to re-run from a chosen step.
+
+**Acceptance criteria:**
+- [ ] Scorer uses preprocess + analyze + generateScore + generateReason; all deterministic
+- [ ] Scorer attached to control-flow workflow (per-step or end)
+- [ ] `bun run wf:replay <runId>` reads snapshot from LibSQL, calls `cloneWorkflow`, re-runs from a step argument
+- [ ] Replay produces a new run with a distinct ID
+
+**Verification:**
+- [ ] Unit test: scorer over 3 hand-crafted outputs (consistent / inconsistent / partial)
+- [ ] Manual: run control-flow once → `bun run wf:replay <runId>` → new run shows up in Studio
+
+**Dependencies:** Task 4.1
+**Files likely touched:**
+- `packages/mastra/src/workflows/control-flow/scorer.ts` (new)
+- `packages/mastra/src/workflows/control-flow/scorer.test.ts` (new)
+- `packages/mastra/src/workflows/control-flow/scripts/replay.ts` (new)
+- root `package.json` (add `wf:replay`)
+**Estimated scope:** Small (4 files)
+
+---
+
+#### Task 4.3: Build `hitl-workflow` (suspend/resume + snapshots)
+
+**Description:** Quote-approval workflow with rich Zod `suspendSchema` + `resumeSchema`. Three-way `.branch` on resume payload (approved / approved-with-edits / rejected). `shouldPersistSnapshot: true` enables Studio time-travel.
+
+**Acceptance criteria:**
+- [ ] All four schemas declared (`inputSchema`, `suspendSchema`, `resumeSchema`, `outputSchema`)
+- [ ] Workflow reaches `suspended` status with `draft` payload
+- [ ] Resume with `{approved: true}` → `finalize` branch
+- [ ] Resume with `{approved: true, edits: {...}}` → `applyEditsThenFinalize` branch
+- [ ] Resume with `{approved: false}` → `recordRejection` branch
+- [ ] Snapshots persist; Studio "replay from step" works
+- [ ] `defaultWorkflowScorers(model)` attached
+- [ ] Wired into `allWorkflows` barrel
+
+**Verification:**
+- [ ] Unit test: 3 resume scenarios → 3 distinct outputs
+- [ ] Eval test gated: 3-entry dataset
+- [ ] Studio smoke: suspend → approve in UI → completes; replay from step → completes again
+
+**Dependencies:** None
+**Files likely touched:**
+- `packages/mastra/src/workflows/hitl/workflow.ts` (new)
+- `packages/mastra/src/workflows/hitl/schemas.ts` (new)
+- `packages/mastra/src/workflows/hitl/index.ts` (new)
+- `packages/mastra/src/workflows/hitl/workflow.test.ts` (new)
+- `packages/mastra/src/workflows/hitl/workflow.eval.test.ts` (new)
+- `packages/mastra/src/evals/datasets/hitl.dataset.ts` (new)
+- `packages/mastra/src/workflows/index.ts`
+**Estimated scope:** Medium (7 files)
+
+---
+
+#### Task 4.4: Build `sandbox-workflow` (Workspaces + LSP)
+
+**Description:** TS type-check pipeline. Workspace with `LocalFilesystem`, `LocalSandbox`, `TypeScriptLSP`. Pipeline: setup → write file → spawn `tsc --noEmit` → parse diagnostics → enrich via LSP hover.
+
+**Acceptance criteria:**
+- [ ] `Workspace` constructed once in barrel-side helper
+- [ ] Pipeline executes against an input `{filename, content}`
+- [ ] Output `{ok, diagnostics: [...]}` with structured diagnostics
+- [ ] LSP hover information attached when LSP is enabled
+- [ ] Wired into `allWorkflows` barrel
+
+**Verification:**
+- [ ] Unit test: 2 inputs (clean snippet → `ok: true`; broken snippet → diagnostics with line/col)
+- [ ] Studio smoke: submit broken snippet → see diagnostic in output panel
+
+**Dependencies:** None (workspace primitives ship in `@mastra/core/workspace`; already pinned at 1.27.0 — see R1)
+**Files likely touched:**
+- `packages/mastra/src/workflows/sandbox/workflow.ts` (new)
+- `packages/mastra/src/workflows/sandbox/workspace.ts` (new — workspace factory)
+- `packages/mastra/src/workflows/sandbox/index.ts` (new)
+- `packages/mastra/src/workflows/sandbox/workflow.test.ts` (new)
+- `packages/mastra/src/workflows/sandbox/workflow.eval.test.ts` (new)
+- `packages/mastra/src/workflows/index.ts`
+**Estimated scope:** Medium (6 files)
+
+---
+
+#### Task 4.5: Expose `sandbox-workflow` via MCPServer
+
+**Description:** Register an `MCPServer` (stdio) that exposes the sandbox workflow as `typecheck_ts` tool. Wire into the same `Mastra` instance via `mcpServers` config (visible in Studio's MCP tab if available; otherwise validated by spawning a test client).
+
+**Acceptance criteria:**
+- [ ] `MCPServer` instance constructed with `workflows: { typecheck_ts: sandboxWorkflow }`
+- [ ] Registered in `Mastra` via `mcpServers` config
+- [ ] External MCP client (test harness) can `tools/call` `typecheck_ts` and receive structured diagnostics
+- [ ] Stretch: `mcp-agent`'s `MCPClient` can also resolve `typecheck_ts` (closes the loop)
+
+**Verification:**
+- [ ] Unit test: spawn an in-process `MCPClient` against the server, call the tool, verify result
+- [ ] Manual: connect Claude Desktop / `mcp-agent` and invoke `typecheck_ts`
+
+**Dependencies:** Task 4.4
+**Files likely touched:**
+- `packages/mastra/src/mcp/sandbox-server.ts` (new)
+- `packages/mastra/src/mcp/sandbox-server.test.ts` (new)
+- `apps/studio/src/mastra/index.ts` (register `mcpServers`)
+**Estimated scope:** Small (3 files)
+
+---
+
+### Checkpoint: Workflows
+- [ ] `bun run ci` passes
+- [ ] All 3 workflows visible + runnable in Studio
+- [ ] Suspend/resume + time-travel verified manually
+- [ ] MCPServer round-trip verified (external client can call `typecheck_ts`)
+- [ ] Coverage matrix from spec is fully green
+- [ ] Human review
+
+---
+
+### Phase 5 — Capability export + apps wiring
+
+Each piece becomes a `CapabilityDefinition` matching the existing `simple-chat`/`deep-research` template. Wrapping is mechanical at this point — APIs are stable.
+
+#### Task 5.1: Wrap pieces 1–3 as CapabilityDefinitions
+
+**Description:** Create `capabilities/{echo,memory,guardrail}-agent/` folders each with `capability.ts` + `input.ts` + `settings.ts` + `capability.test.ts`, mirroring `capabilities/simple-chat/`.
+
+**Acceptance criteria:**
+- [ ] Three capability folders exist with the canonical 4-file layout
+- [ ] Each `capability.ts` exports a `CapabilityDefinition`
+- [ ] Each `settings.ts` declares a Zod settings schema
+- [ ] Each capability test passes (matches `capabilities/simple-chat/capability.test.ts` pattern)
+
+**Verification:**
+- [ ] `bun test packages/mastra/src/capabilities/{echo,memory,guardrail}-agent/`
+- [ ] Typecheck + build pass
+
+**Dependencies:** Tasks 1.1, 1.2, 1.3
+**Files likely touched:**
+- 12 files (3 capabilities × 4 files)
+**Estimated scope:** Medium (12 files; mechanical)
+
+---
+
+#### Task 5.2: Wrap pieces 4–7 as CapabilityDefinitions
+
+**Description:** Same wrapping for `rag-agent`, `graph-rag-agent`, `mcp-agent`, `supervisor-agent`.
+
+**Acceptance criteria:**
+- [ ] Four capability folders exist; tests pass
+- [ ] `supervisor-agent` capability injects subagent capabilities (or accepts pre-built supervisor instance — match existing DI pattern)
+
+**Verification:**
+- [ ] `bun test packages/mastra/src/capabilities/{rag,graph-rag,mcp,supervisor}-agent/`
+- [ ] Typecheck + build pass
+
+**Dependencies:** Tasks 2.2, 2.3, 3.3, 3.4
+**Files likely touched:**
+- 16 files (4 capabilities × 4 files)
+**Estimated scope:** Medium (16 files; mechanical)
+
+---
+
+#### Task 5.3: Wrap workflow pieces 8–10 as CapabilityDefinitions
+
+**Description:** Same wrapping for `control-flow-workflow`, `hitl-workflow`, `sandbox-workflow`. Use the existing `capabilities/adapters/workflow-adapter.ts` pattern.
+
+**Acceptance criteria:**
+- [ ] Three workflow capabilities exist; tests pass
+- [ ] HITL capability surfaces suspend payload via the existing `/runs/:id/approve` mechanism
+
+**Verification:**
+- [ ] `bun test packages/mastra/src/capabilities/{control-flow,hitl,sandbox}-workflow/`
+- [ ] Typecheck + build pass
+
+**Dependencies:** Tasks 4.1, 4.3, 4.4
+**Files likely touched:**
+- 12 files (3 capabilities × 4 files)
+**Estimated scope:** Medium (12 files)
+
+---
+
+#### Task 5.4: Register capabilities in `apps/api`
+
+**Description:** Update `apps/api/src/compose.ts` to register all 10 new capabilities alongside the existing `simple-chat` + `deep-research`. Verify each appears in `GET /capabilities`.
+
+**Acceptance criteria:**
+- [ ] All 10 capabilities listed in `GET /capabilities` JSON
+- [ ] Each capability has correct id, version, schemas
+- [ ] `POST /runs` works for each capability (smoke test 3 representative ones)
+- [ ] No breaking changes to existing endpoints
+
+**Verification:**
+- [ ] `bun test apps/api`
+- [ ] Manual: `bun run api` → `curl localhost:3000/capabilities | jq '.[].id'` shows all 12 ids
+- [ ] `bun run ci`
+
+**Dependencies:** Tasks 5.1, 5.2, 5.3
+**Files likely touched:**
+- `apps/api/src/compose.ts`
+- `apps/api/src/compose.test.ts` (or equivalent integration test)
+**Estimated scope:** Small (2 files)
+
+---
+
+#### Task 5.5: Register curated subset in `apps/cli`
+
+**Description:** Update `apps/cli/src/compose.ts` to register the curated subset: `echoAgent`, `ragAgent`, `controlFlowWorkflow`. Keeps CLI demo focused; full list lives in `apps/api`.
+
+**Acceptance criteria:**
+- [ ] `apps/cli` registers exactly 3 capabilities (plus existing `simple-chat`)
+- [ ] CLI runs each successfully against an in-memory store
+- [ ] Stdout JSON-lines match expected schema
+
+**Verification:**
+- [ ] `bun test apps/cli`
+- [ ] Manual: `bun run --filter @harness/example-cli start <capability> <input>` for each of the 3
+- [ ] `bun run ci`
+
+**Dependencies:** Tasks 5.1, 5.2, 5.3
+**Files likely touched:**
+- `apps/cli/src/compose.ts`
+- `apps/cli/src/compose.test.ts`
+**Estimated scope:** Small (2 files)
+
+---
+
+### Checkpoint: Complete
+- [ ] `bun run ci` passes
+- [ ] `apps/api` exposes all 12 capabilities (10 new + 2 existing)
+- [ ] `apps/cli` runs the curated subset
+- [ ] Studio shows all 8 agents + 4 workflows (10 new + 2 existing)
+- [ ] Coverage matrix from spec is fully green
+- [ ] Spec doc updated to mark every section as `done`
+- [ ] Final human review for merge
+
+---
+
+## Risks and mitigations
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Ollama `qwen2.5:3b` produces unreliable structured output for `echo-agent` and beyond | High — derails Phase 1 | Eval tests use `errorStrategy: 'warn'` initially; can swap to `'fallback'` if extraction fails. `MASTRA_MODEL` env override lets you test against a stronger model when validating templates. |
+| `nomic-embed-text` quality on graph-rag relationship extraction is poor | Medium — graph queries return noisy results | Accepted per `Q9` answer (Ollama default); `MASTRA_EMBEDDER` override to OpenAI for verification. Eval test asserts top-1 not top-N. |
+| `LocalSandbox` runs `tsc` on host; output paths could collide between runs | Low — flaky tests | `LocalFilesystem` root is per-run `tmpdir()`; tests clean up. |
+| `MCPServer` registration changes Studio's startup behavior | Medium — Studio breakage halts iteration | Phase 4.5 lands last; if it breaks Studio, `mcpServers` config is gated behind an env flag. |
+| Phase 5 capability wrapping reveals API churn from Phase 1–4 | Medium — rework | Capabilities deferred to Phase 5 by design; APIs settle first. |
+| Stub MCPServer process leaks across test runs | Low — CI flake | Tests spawn + tear down per-test; `MCPClient` `dispose()` called in `afterEach`. |
+| Working memory schema changes after Phase 1.2 force migrations | Low — dev-only DB | DB lives at `.mastra/mastra.db`; nuke and reseed if schema changes. Document `bun run rag:seed` + `graph-rag:seed` as the recovery path. |
+
+## Resolved decisions (formerly open questions)
+
+### R1. Workspace primitives ship in `@mastra/core` — no new dep needed
+`LocalSandbox`, `LocalFilesystem`, `Workspace`, and `WORKSPACE_TOOLS` import from `@mastra/core/workspace`. Added in `@mastra/core@1.1.0`; we're pinned at `1.27.0`. TypeScript LSP is enabled with the simple flag `lsp: true` on the workspace config — no `typescript-language-server` install or custom server registration required for TS (custom LSPs are only needed for PHP/Ruby/Java/Kotlin/Swift/Elixir).
+
+**Implication for Task 4.4**: imports become
+```ts
+import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
+const workspace = new Workspace({
+  filesystem: new LocalFilesystem({ root: tmpdir() }),
+  sandbox:    new LocalSandbox({ requireApproval: false }),
+  lsp:        true,                               // built-in TS LSP
+});
+```
+No `package.json` changes required for the workspace surface.
+
+### R2. `MCPServer` ships in `@mastra/mcp` — add as a new dep
+Constructor lives in `@mastra/mcp` (separate from core). `MCPClient` ships in the same package, so adding it covers both Tasks 3.1/3.2 (mcp-agent) and Task 4.5 (sandbox-workflow exposure). Registration is via `new Mastra({ mcpServers: { key: serverInstance } })`. Each workflow registered on the server becomes a tool named `run_<workflowKey>`. **Workflows must have a non-empty `description` or `MCPServer` initialization throws.**
+
+**Implication for Task 4.5**:
+```ts
+import { MCPServer } from '@mastra/mcp';
+const sandboxMcpServer = new MCPServer({
+  id:      'harness-sandbox',
+  name:    'harness-sandbox',
+  version: '0.1.0',
+  workflows: { typecheckTs: sandboxWorkflow },   // → tool named `run_typecheckTs`
+});
+// Registered in apps/studio/src/mastra/index.ts:
+new Mastra({ /* … */ mcpServers: { sandbox: sandboxMcpServer } });
+```
+
+**Action item folded into Phase 0**: add `@mastra/mcp` to `packages/mastra/package.json` dependencies. Pin to a version compatible with `@mastra/core@1.27.0` (verify on `npm view @mastra/mcp` during Phase 0).
+
+### R3. Register all 10 capabilities unconditionally in `apps/api` — no env gate
+The starter's purpose is to demo the gallery; gating capabilities behind `HARNESS_GALLERY=1` would hide them from the people the starter exists for. Anyone deploying this code into production forks `apps/api/src/compose.ts` and edits the registration list — that's the clone-and-own invariant in CLAUDE.md (line 9). An env flag would add config surface for zero benefit.
+
+**Implication for Task 5.4**: `apps/api/src/compose.ts` registers all 12 capabilities (10 new + `simple-chat` + `deep-research`) directly. No env reads.
+
+### R4. Seed scripts probe-and-fail-loudly on dimension mismatch
+`nomic-embed-text` is 768-dim; `nomic-embed-text-v2-moe` supports 256–768 (Matryoshka). Other Ollama embed models are different dimensions entirely. Silent dim mismatch produces unsearchable indexes that *appear* to work — worst-of-both-worlds.
+
+**Implication for Tasks 2.1 + 2.3** (`seed.ts` shape):
+```ts
+const expectedDim = await probeDimension(embedder);   // embed a known string, count
+const existing    = await vector.describeIndex(indexName).catch(() => null);
+if (existing && existing.dimension !== expectedDim) {
+  throw new Error(
+    `Index "${indexName}" has dimension ${existing.dimension}, but the configured ` +
+    `embedder produces ${expectedDim}. Drop the index (rm .mastra/mastra.db) and re-seed.`
+  );
+}
+if (!existing) {
+  await vector.createIndex({ indexName, dimension: expectedDim });
+}
+// …continue with chunk/embed/upsert
+```
+Probe runs once at the start of seeding (one extra embedding call per run). Loud failure means a developer sees the actual problem, not a mysterious "results are empty" bug downstream.
+
+## Parallelization opportunities
+
+Most of the plan is sequential due to template propagation (each piece copies its predecessor's structure). But these clusters are safe to parallelize across agents/sessions if needed:
+
+- **Within Phase 1**: Tasks 1.1 / 1.2 / 1.3 are independent once the template from 1.1 is locked. Could be split.
+- **Within Phase 2**: Task 2.3 is independent of Task 2.2 once Task 2.1 lands (both consume the vector helper).
+- **Within Phase 4**: Tasks 4.1 / 4.3 / 4.4 are fully independent.
+- **Within Phase 5**: Tasks 5.1 / 5.2 / 5.3 are independent (all consume the per-piece factories).
+
+**Must be sequential**: 0.1 → 0.2 (memory needs storage); 2.1 → 2.2; 3.1 → 3.2 → 3.3; 3.4 (after all its subagents); 4.1 → 4.2; 4.4 → 4.5; 5.4/5.5 (after all of 5.1–5.3).
