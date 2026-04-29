@@ -6,6 +6,7 @@ import {
   createObservability,
   resolveModel,
 } from '@harness/mastra';
+import { seedDatasets } from '@harness/mastra/evals';
 import { Mastra } from '@mastra/core';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { MastraEditor } from '@mastra/editor';
@@ -24,4 +25,8 @@ export const mastra = new Mastra({
   logger: createMastraLogger(),
   observability: createObservability({ serviceName: 'harness-studio' }),
   editor: new MastraEditor(),
+});
+
+seedDatasets(mastra).catch((err: unknown) => {
+  console.error('[studio] dataset seeding failed:', err);
 });
