@@ -20,6 +20,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "ci": "bun run lint && bun run typecheck && bun run build && bun test",
+    "reset:db": "rm -f .mastra/mastra.db",
     "prepare": "lefthook install"
   },
   "devDependencies": {
