@@ -40,16 +40,22 @@ Different pieces have different model requirements: trivial agents waste cycles 
 
 ### Tiers
 
+Tier names are bare strings (no `chat:` prefix), passed to `getChatModel(tier)`. Cloud namespace uses `cloud-` prefix for forward-compat (sibling slots reserved below).
+
 | Tier | Default | Override env | Used for |
 |---|---|---|---|
-| `chat:tiny` | `ollama:qwen2.5:0.5b` | `MASTRA_MODEL_TINY` | Trivial shells where processors / scripts do the work |
-| `chat:default` | `ollama:qwen2.5:3b` *(existing `MASTRA_MODEL`)* | `MASTRA_MODEL` | Workhorse chat / structured output / single-hop RAG |
-| `chat:strong` | `ollama:qwen2.5:7b` | `MASTRA_MODEL_STRONG` | Multi-hop reasoning, routing, dynamic-upgrade demo |
+| `tiny` | `ollama:qwen2.5:1.5b` | `MASTRA_MODEL_TINY` | Trivial shells where processors / scripts do the work |
+| `default` | `ollama:qwen2.5:3b` *(existing `MASTRA_MODEL`)* | `MASTRA_MODEL` | Workhorse chat / structured output / single-hop RAG |
+| `strong` | `ollama:qwen2.5:7b` | `MASTRA_MODEL_STRONG` | Multi-hop reasoning, routing, dynamic-upgrade demo |
 | `judge` | `ollama:qwen2.5:14b` *(existing `MASTRA_JUDGE_MODEL`)* | `MASTRA_JUDGE_MODEL` | LLM-judge scorers (`AnswerRelevancyScorer`, `FaithfulnessScorer`, `HallucinationScorer`, custom citation judge) |
 | `embed` | `ollama:nomic-embed-text` *(existing `MASTRA_EMBEDDER`)* | `MASTRA_EMBEDDER` | Vector embeddings for RAG + graph-RAG |
-| `cloud:strong` | `claude-sonnet-4-6` | `MASTRA_CLOUD_STRONG_MODEL` | Cloud demo path — only `mcp-agent` pro tier and explicit overrides |
+| `cloud-strong` | `claude-sonnet-4-6` | `MASTRA_CLOUD_STRONG_MODEL` | Cloud demo path — only `mcp-agent` pro tier and explicit overrides |
+| `cloud-default` | *(reserved — not wired)* | *(reserved)* | Future cloud workhorse slot |
+| `cloud-judge` | *(reserved — not wired)* | *(reserved)* | Future cloud judge slot for high-fidelity eval signal |
 
-The first three (`tiny` / `default` / `strong`) plus `judge` and `embed` form the local-only path that CI and `bun run test:evals` use. `cloud:strong` is opt-in and only resolved when `mcp-agent` receives `requestContext: { tier: 'pro' }`.
+The first three (`tiny` / `default` / `strong`) plus `judge` and `embed` form the local-only path that CI and `bun run test:evals` use. `cloud-strong` is opt-in and only resolved when `mcp-agent` receives `requestContext: { tier: 'pro' }`. Reserved cloud slots exist so a future addition (e.g. cloud judge for higher eval signal) doesn't break the namespace.
+
+**Tiny-tier promotion rule**: if `tiny` produces invalid Zod-shaped output >5% of runs across a piece's eval test, promote that piece to `default` in the per-piece table. Centralized change, no factory rewrite.
 
 ### Per-piece assignment
 
@@ -61,7 +67,7 @@ The first three (`tiny` / `default` / `strong`) plus `judge` and `embed` form th
 | `rag-agent` | `default` | `judge` (citation scorer's `analyze` step + default scorers) | `embed` | Single-hop synthesis + citation |
 | `graph-rag-agent` | `strong` | `judge` (eval only) | `embed` | Multi-hop traversal needs a stronger reasoner |
 | `mcp-agent` (free) | `default` | `judge` (eval only) | — | Baseline path |
-| `mcp-agent` (pro) | `cloud:strong` | — | — | Demonstrates dynamic resolver model swap (Ollama → Claude) |
+| `mcp-agent` (pro) | `cloud-strong` | `judge` (eval only) | — | Demonstrates dynamic resolver model swap (Ollama → Claude) |
 | `supervisor-agent` | `strong` | `judge` (eval only) | — | Routing decisions need to be reliable |
 | `control-flow-workflow` | **none** | **none** (scorer is deterministic) | — | Pure deterministic pipeline |
 | `hitl-workflow` | `default` | `judge` (default workflow scorers) | — | Quote drafting + edit-application |
@@ -69,9 +75,10 @@ The first three (`tiny` / `default` / `strong`) plus `judge` and `embed` form th
 
 Notes:
 
+- **Scorers always use the `judge` tier regardless of the agent's chat tier** — chat tier and judge tier are independent dimensions.
 - "Judge tier (eval only)" means the judge model is used inside `*.eval.test.ts` (gated behind `HARNESS_EVAL=1`) and inside Studio's Evals tab when a scored run completes. It is not part of the agent's chat path.
 - Workflows with `chat tier: none` still appear in Studio's Traces tab — there's just no LLM span. Their scorers are deterministic so judge tier is also `none`.
-- The `cloud:strong` row is the only place this plan reaches outside Ollama. If a developer wants to validate other pieces against Claude, the override envs above swap them transparently.
+- The `cloud-strong` row is the only place this plan reaches outside Ollama. If a developer wants to validate other pieces against Claude, the override envs above swap them transparently.
 
 ### Resolution helper
 
@@ -79,7 +86,7 @@ A new `runtime/models.ts` helper exposes typed accessors so each agent factory i
 
 ```ts
 import {
-  getChatModel,            // takes a tier: 'tiny' | 'default' | 'strong' | 'cloud:strong'
+  getChatModel,            // takes a tier: 'tiny' | 'default' | 'strong' | 'cloud-strong'
   getJudgeModel,
   getEmbedder,
 } from '@harness/mastra/runtime';
@@ -91,6 +98,28 @@ const embedder        = getEmbedder();
 ```
 
 This is wired in Task 0.3 (below). Every agent factory in Phases 1–4 imports from here rather than reading env vars directly, so model swapping stays centralized.
+
+### Local hardware footprint
+
+Default tier set assumes ~16 GB free VRAM (or unified memory) if every model loads concurrently:
+
+| Tier | Default model | Approx. size |
+|---|---|---|
+| `tiny` | `qwen2.5:1.5b` | ~1 GB |
+| `default` | `qwen2.5:3b` | ~2 GB |
+| `strong` | `qwen2.5:7b` | ~4.5 GB |
+| `judge` | `qwen2.5:14b` | ~9 GB |
+| `embed` | `nomic-embed-text` | ~0.3 GB |
+
+Lighter setups should override:
+
+```bash
+# 8 GB box — accept noisier eval signal, slower strong-tier reasoning
+export MASTRA_JUDGE_MODEL=ollama:qwen2.5:7b
+export MASTRA_MODEL_STRONG=ollama:qwen2.5:3b
+```
+
+Models load on first use, not at boot, so peak memory only happens when an eval test runs across multiple tiers in one process.
 
 ---
 
@@ -104,7 +133,14 @@ After `bun run studio:dev` (`http://localhost:4111`), every piece must pass all 
 
 1. **Discoverable** — appears in Studio's Agents/Workflows tab via the `allAgents` / `allWorkflows` barrel.
 2. **Runnable** — at least one demo input from the task's acceptance criteria completes (`success` / `suspended` / `tripwire`).
-3. **Traced** — Traces tab shows a span tree for the run. Probe: `sqlite3 .mastra/mastra.db "SELECT count(*) FROM mastra_ai_spans WHERE name LIKE '%<piece-id>%';"` > 0. Workflow runs additionally show step + `writer.write` events.
+3. **Traced** — Traces tab shows a span tree for the run. Probe template (Task 1.1 verifies the canonical query against real spans and updates this template before Task 1.2 starts):
+   ```sql
+   -- Initial probe (verify in Task 1.1):
+   SELECT count(*) FROM mastra_ai_spans
+   WHERE attributes->>'componentName' = '<piece-id>'
+     AND parent_span_id IS NULL;
+   ```
+   Workflow runs additionally show step + `writer.write` events.
 4. **Scored** — Evals tab shows scorer rows (agents construct with `scorers: defaultAgentScorers(model)`); for dataset-backed pieces, Experiments tab runs the dataset.
 
 If a piece can't take the standard scorer path (e.g. workflows have no constructor `scorers` field per CLAUDE.md), the task description **must** call out the deviation and document the alternative (e.g. "scorers wired per-step via `step.scorer(...)`"). Silent omissions break the template for every later piece.
@@ -113,7 +149,23 @@ If a piece can't take the standard scorer path (e.g. workflows have no construct
 
 Every `*.dataset.ts` under `src/evals/datasets/` registers via the `allDatasets` barrel (Task 0.4) and is consumed by `apps/studio/src/mastra/index.ts`. If the pinned Mastra version doesn't surface dataset registration, the fallback is a `scripts/run-experiment.ts` per piece that loads the dataset, invokes the piece, and persists results to the shared LibSQL DB (so Traces tab remains the comparison surface).
 
+**Dataset sizing guidance:**
+- Deterministic scorer: 3–5 entries (just enough to cover branches).
+- LLM-judged scorer: ≥10 entries (signal-to-noise across stochastic judge output).
+- Routing / intent dataset: ≥1 entry per intent class, plus 1 negative.
+
 If checks 2–4 fail, **the task is not done** — debug before moving on, because every later piece copies this template.
+
+---
+
+## Conventions for Phase 1–4 tasks
+
+These apply to every Phase 1–4 task and are not relisted per task:
+
+- **Models** — every factory imports `getChatModel(<tier>)` / `getJudgeModel()` / `getEmbedder()` from `@harness/mastra/runtime`. Implicit dependency on Task 0.3.
+- **Datasets** — every task that ships an `*.dataset.ts` registers it via the `allDatasets` barrel. Implicit dependency on Task 0.4.
+- **Studio verification** — every task closes only when all four Studio-green checks pass (see protocol above).
+- **Per-piece file template** — copy the layout from the previous piece in build order; deviations must be called out in the task description.
 
 ---
 
@@ -123,26 +175,29 @@ If checks 2–4 fail, **the task is not done** — debug before moving on, becau
 
 Five Phase 0 tasks land the shared infra that every later piece imports against: the MCP dep (0.0), vector + memory helpers (0.1, 0.2), the per-tier model resolver (0.3), and the dataset/Experiments wiring (0.4). The MCP **client** helper is deferred to Phase 3 (needs the stub server to point at), but the dep that ships both `MCPServer` and `MCPClient` lands here so later tasks can `import` cleanly.
 
-#### Task 0.0: Add `@mastra/mcp` dependency
+#### Task 0.0: Add `@mastra/mcp` dependency + `reset:db` script
 
-**Description:** Add `@mastra/mcp` to `packages/mastra/package.json` deps, pinned to a version compatible with `@mastra/core@1.27.0`. Verify import works for both `MCPServer` and `MCPClient`.
+**Description:** Add `@mastra/mcp` to `packages/mastra/package.json` deps, pinned to a version compatible with `@mastra/core@1.27.0`. Verify import works for both `MCPServer` and `MCPClient`. Also add a root `bun run reset:db` script (`rm -f .mastra/mastra.db`) so the recovery path documented in the working-memory risks row is one command.
 
 **Acceptance criteria:**
 - [ ] `@mastra/mcp` appears in `packages/mastra/package.json` `dependencies` with a pinned exact version
 - [ ] `import { MCPServer, MCPClient } from '@mastra/mcp'` typechecks
 - [ ] `bun.lock` is committed
 - [ ] `bun install` from a clean checkout pulls the new dep without conflict against `@mastra/core@1.27.0`
+- [ ] Root `package.json` has a `reset:db` script that deletes `.mastra/mastra.db`
 
 **Verification:**
 - [ ] `bun install` clean
 - [ ] `bun run typecheck` passes
 - [ ] `bun run build` passes
+- [ ] `bun run reset:db` removes the DB file and exits 0 (idempotent — second run does not error)
 
 **Dependencies:** None
 **Files likely touched:**
 - `packages/mastra/package.json`
+- root `package.json` (add `reset:db` script)
 - `bun.lock`
-**Estimated scope:** XS (2 files)
+**Estimated scope:** XS (3 files)
 
 ---
 
@@ -193,13 +248,14 @@ Five Phase 0 tasks land the shared infra that every later piece imports against:
 
 #### Task 0.3: Add `runtime/models.ts` tier helper
 
-**Description:** New helper in `runtime/` exposing `getChatModel(tier)`, `getJudgeModel()`, `getEmbedder()`. Encapsulates the env-resolution logic for the 6 tiers in the "Model tiers" table. Default values match that table; env overrides match too. Cloud-tier resolution lazy-loads `@ai-sdk/anthropic` so local-only runs never reach for cloud creds.
+**Description:** New helper in `runtime/` exposing `getChatModel(tier)`, `getJudgeModel()`, `getEmbedder()`. Encapsulates the env-resolution logic for the 6 wired tiers in the "Model tiers" table (`tiny`, `default`, `strong`, `cloud-strong`, `judge`, `embed`). Default values match that table; env overrides match too. Cloud-tier resolution lazy-loads `@ai-sdk/anthropic` so local-only runs never reach for cloud creds. Reserved tiers (`cloud-default`, `cloud-judge`) are typed in the union but throw a "not yet wired" error at resolution time.
 
 **Acceptance criteria:**
-- [ ] `getChatModel('tiny' | 'default' | 'strong' | 'cloud:strong')` returns a `LanguageModelV2` instance
+- [ ] `getChatModel('tiny' | 'default' | 'strong' | 'cloud-strong')` returns a `LanguageModelV2` instance
 - [ ] `getJudgeModel()` returns the judge model (defaults to `MASTRA_JUDGE_MODEL`)
 - [ ] `getEmbedder()` returns the embedder (defaults to `MASTRA_EMBEDDER`)
 - [ ] Cloud tier resolution throws a clear error if `ANTHROPIC_API_KEY` is unset (no silent fallback)
+- [ ] Reserved cloud tiers (`cloud-default`, `cloud-judge`) accept the type but throw `not yet wired` at resolution
 - [ ] Exported from `@harness/mastra/runtime`
 
 **Verification:**
@@ -247,11 +303,7 @@ Five Phase 0 tasks land the shared infra that every later piece imports against:
 
 ### Phase 1 — Agent fundamentals (pieces 1–3)
 
-Three agents that establish the per-piece template: factory + unit test + eval test + barrel registration + tier-correct model import. Each task is one full vertical slice.
-
-**Phase 1–4 implicit dependencies (do not relist per task):**
-- **Task 0.3 (models)** — every factory imports `getChatModel(<tier>)` / `getJudgeModel()` / `getEmbedder()` from `@harness/mastra/runtime`.
-- **Task 0.4 (datasets)** — every task that ships an `*.dataset.ts` registers it via the `allDatasets` barrel.
+Three agents that establish the per-piece template: factory + unit test + eval test + barrel registration + tier-correct model import. Each task is one full vertical slice. (See "Conventions for Phase 1–4 tasks" above for implicit deps on Tasks 0.3 + 0.4.)
 
 #### Task 1.1: Build `echo-agent` (capability template)
 
@@ -269,7 +321,7 @@ Three agents that establish the per-piece template: factory + unit test + eval t
 - [ ] **Studio verification (all must pass — this is the canonical template):**
   - [ ] Discoverable: `bun run studio:dev` → echo agent appears in Agents tab
   - [ ] Runnable: chat with "Hello there" → structured output returned
-  - [ ] Traced: Traces tab shows a span tree; `sqlite3 .mastra/mastra.db "SELECT count(*) FROM mastra_ai_spans WHERE name LIKE '%echo%';"` > 0
+  - [ ] Traced: Traces tab shows a span tree. **Pin the canonical probe query**: after a successful run, inspect `.mastra/mastra.db` directly (`sqlite3 .mastra/mastra.db ".schema mastra_ai_spans"` + sample rows) to confirm the actual column / attribute that identifies the agent. Update the Studio protocol's probe template (currently `attributes->>'componentName'`) with the verified shape before Task 1.2 starts.
   - [ ] Scored: Evals tab shows `AnswerRelevancyScorer` + `ContentSimilarityScorer` rows with numeric scores
 
 **Dependencies:** None (uses existing `defaultAgentScorers`)
@@ -421,7 +473,8 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Acceptance criteria:**
 - [ ] 9 markdown docs ship at `packages/mastra/src/agents/graph-rag-agent/corpus/` (3 companies + 3 people + 3 products), ~120 words each, prose cross-references, frontmatter `type`
 - [ ] `seed.ts` chunks with size 256/overlap 30 + `extract: { keywords, summary }`
-- [ ] `createGraphRAGTool` configured with `dimension: 768`, `threshold: 0.7`, `randomWalkSteps: 100`, `restartProb: 0.15`
+- [ ] `seed.ts` *probes* the embedder dimension via R4's pattern; the value is not hardcoded
+- [ ] `createGraphRAGTool` configured with `dimension: <probed>`, `threshold: 0.7`, `randomWalkSteps: 100`, `restartProb: 0.15`. The expected value for the default `nomic-embed-text` embedder is 768 — used as a sanity assertion in the seed test, not as a literal in tool config
 - [ ] Wired into `allAgents` barrel
 - [ ] Studio: 3-hop query "Which companies employ designers of Acme's products?" returns sensible traversal
 
@@ -507,13 +560,14 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 3.3: Build `mcp-agent` (runtimeContext + dynamic resolvers)
 
-**Description:** Agent factory accepting `mcp` client. `requestContextSchema` validates `{userId, tier, locale}`. `model` resolver swaps `getChatModel('default')` → `getChatModel('cloud:strong')` when `tier === 'pro'`. `instructions` resolver swaps language by `locale`. **Model tiers: chat = `chat:default`; pro path = `cloud:strong`** — only piece that demos cloud resolution.
+**Description:** Agent factory accepting `mcp` client. `requestContextSchema` validates `{userId, tier, locale}`. `model` resolver swaps `getChatModel('default')` → `getChatModel('cloud-strong')` when `tier === 'pro'` (concrete model ids stay in the tiers table — this task references tiers, not model strings). `instructions` resolver swaps language by `locale`. **Model tiers: chat = `default`; pro path = `cloud-strong`** — only piece that demos cloud resolution.
 
 **Acceptance criteria:**
 - [ ] `createMcpAgent({ model, mcp })` returns Agent with both dynamic resolvers
 - [ ] `requestContextSchema` rejects invalid context
 - [ ] Studio: same prompt with `tier: 'free'` vs `tier: 'pro'` shows different model in trace
 - [ ] Studio: `locale: 'vi'` switches instructions to Vietnamese
+- [ ] Eval test exercises **both** tier paths (mock `cloud-strong` resolver to avoid real cloud cost; assert correct tier resolved per `requestContext`)
 - [ ] Wired into `allAgents` barrel
 
 **Verification:**
@@ -708,7 +762,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 4.5: Expose `sandbox-workflow` via MCPServer
 
-**Description:** Register an `MCPServer` (stdio) that exposes the sandbox workflow as `typecheck_ts` tool. Wire into the same `Mastra` instance via `mcpServers` config (visible in Studio's MCP tab if available; otherwise validated by spawning a test client).
+**Description:** Register an `MCPServer` (stdio) that exposes the sandbox workflow as `typecheck_ts` tool. Wire into the same `Mastra` instance via `mcpServers` config (visible in Studio's MCP tab if available; otherwise validated by spawning a test client). **Coordinates with Task 0.4** — both edit `apps/studio/src/mastra/index.ts` (different keys: `experiments` from 0.4, `mcpServers` here). If 0.4 already shipped, simply add the `mcpServers` key alongside it; if branched in parallel, expect a merge conflict in the same file.
 
 **Acceptance criteria:**
 - [ ] `MCPServer` instance constructed with `workflows: { typecheck_ts: sandboxWorkflow }`
@@ -751,7 +805,8 @@ Each piece becomes a `CapabilityDefinition` matching the existing `simple-chat`/
 **Acceptance criteria:**
 - [ ] Three capability folders exist with the canonical 4-file layout
 - [ ] Each `capability.ts` exports a `CapabilityDefinition`
-- [ ] Each `settings.ts` declares a Zod settings schema
+- [ ] Each `settings.ts` declares a Zod settings schema that includes a `model: ChatTier` field (Zod enum of the wired chat tiers); the runner passes it to `getChatModel(model)` at run time, not at construction
+- [ ] Each capability defaults the `model` setting to the tier listed in the per-piece assignment table
 - [ ] Each capability test passes (matches `capabilities/simple-chat/capability.test.ts` pattern)
 
 **Verification:**
@@ -767,10 +822,12 @@ Each piece becomes a `CapabilityDefinition` matching the existing `simple-chat`/
 
 #### Task 5.2: Wrap pieces 4–7 as CapabilityDefinitions
 
-**Description:** Same wrapping for `rag-agent`, `graph-rag-agent`, `mcp-agent`, `supervisor-agent`.
+**Description:** Same wrapping for `rag-agent`, `graph-rag-agent`, `mcp-agent`, `supervisor-agent`. Settings schemas include `model: ChatTier` like Task 5.1; `mcp-agent` additionally exposes the `tier` field of `requestContext` so callers can choose `free` vs `pro` per request.
 
 **Acceptance criteria:**
 - [ ] Four capability folders exist; tests pass
+- [ ] Each `settings.ts` includes `model: ChatTier` defaulted to the per-piece table value
+- [ ] `mcp-agent` capability surfaces `requestContext.tier` (`free` | `pro`) as a settings or input field
 - [ ] `supervisor-agent` capability injects subagent capabilities (or accepts pre-built supervisor instance — match existing DI pattern)
 
 **Verification:**
@@ -790,6 +847,7 @@ Each piece becomes a `CapabilityDefinition` matching the existing `simple-chat`/
 
 **Acceptance criteria:**
 - [ ] Three workflow capabilities exist; tests pass
+- [ ] `hitl-workflow` settings include `model: ChatTier` (defaulted to `default`); workflows with `chat tier: none` (control-flow, sandbox) **omit** the `model` field entirely — the schema reflects whether a piece needs a model at all
 - [ ] HITL capability surfaces suspend payload via the existing `/runs/:id/approve` mechanism
 
 **Verification:**
@@ -832,6 +890,7 @@ Each piece becomes a `CapabilityDefinition` matching the existing `simple-chat`/
 
 **Acceptance criteria:**
 - [ ] `apps/cli` registers exactly 3 capabilities (plus existing `simple-chat`)
+- [ ] `apps/cli/src/compose.ts` migrates from direct `MASTRA_MODEL` env reads to `getChatModel(tier)` (tier read from CLI args or capability settings)
 - [ ] CLI runs each successfully against an in-memory store
 - [ ] Stdout JSON-lines match expected schema
 
@@ -853,8 +912,7 @@ Each piece becomes a `CapabilityDefinition` matching the existing `simple-chat`/
 - [ ] `apps/api` exposes all 12 capabilities (10 new + 2 existing)
 - [ ] `apps/cli` runs the curated subset
 - [ ] Studio shows all 8 agents + 4 workflows (10 new + 2 existing)
-- [ ] Coverage matrix from spec is fully green
-- [ ] Spec doc updated to mark every section as `done`
+- [ ] **Coverage matrix audit**: every row of the spec doc's coverage matrix has a corresponding piece in this plan; spec doc updated to mark each row `done`. Audit is a literal walkthrough — open `docs/mastra-feature-gallery-plan.md`, tick each row, commit.
 - [ ] Final human review for merge
 
 ---
