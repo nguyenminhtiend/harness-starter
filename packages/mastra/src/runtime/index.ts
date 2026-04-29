@@ -1,5 +1,7 @@
 export type { CreateMastraLoggerOptions } from './logger.ts';
 export { createMastraLogger } from './logger.ts';
+export type { CreateDefaultMemoryOptions } from './memory.ts';
+export { createDefaultMemory } from './memory.ts';
 export type { CreateMastraStorageOptions } from './storage.ts';
 export { createMastraStorage, defaultRepoDbUrl } from './storage.ts';
 export type { CreateObservabilityOptions } from './telemetry.ts';
