@@ -15,7 +15,7 @@ The previous `plan.md` (v2 platform-redesign) is fully shipped; this plan supers
 | Slicing | **Vertical per piece** | Each task ships one piece end-to-end (factory + unit test + Studio verification + barrel registration). |
 | Build order | **Easiest-first** (echo → memory → guardrail → rag → graph-rag → mcp → supervisor → control-flow → hitl → sandbox) | Earliest piece becomes the template every later piece copies; supervisor is built after its 3 subagents exist. |
 | Capability export | **Phase 5, after all 10 pieces are Studio-green** | Reduces churn — no piece gets capability-wrapped until its API surface is stable. |
-| DAG respect | **All work lives in `packages/mastra/`**; `core`/`http`/`bootstrap` untouched | Per CLAUDE.md "deleting `packages/mastra/` must leave core+http+bootstrap building cleanly". `apps/api` and `apps/cli` register capabilities at end. |
+| DAG respect | **Work confined to `packages/mastra/` + thin `apps/studio/` config**; `core`/`http`/`bootstrap` untouched | Per CLAUDE.md "deleting `packages/mastra/` must leave core+http+bootstrap building cleanly". Only Tasks 0.4 + 4.5 add a small block to `apps/studio/src/mastra/index.ts`. `apps/api` + `apps/cli` register capabilities in Phase 5. |
 | TDD policy | **Per CLAUDE.md** — TDD enforced for `packages/*`. Eval tests gated by `HARNESS_EVAL=1`. Use `mockModel()` from `@harness/mastra/testing`. |
 
 ## Package DAG (respected)
@@ -30,7 +30,90 @@ apps/cli
 apps/studio (mastra only)
 ```
 
-All Phase 0–4 work happens inside `packages/mastra/`. Phase 5 touches `apps/api` + `apps/cli`. `core`, `http`, `bootstrap`, `apps/console`, `apps/studio` are not modified.
+Almost all Phase 0–4 work happens inside `packages/mastra/`. The single exception is Task 0.3 (dataset/Experiments wiring) and Task 4.5 (`mcpServers` registration), both of which add a small block to `apps/studio/src/mastra/index.ts`. Phase 5 touches `apps/api` + `apps/cli`. `core`, `http`, `bootstrap`, `apps/console` are not modified.
+
+---
+
+## Model tiers and per-piece assignment
+
+Different pieces have different model requirements: trivial agents waste cycles on a strong model, while multi-hop reasoning collapses on a tiny one. Pick the smallest tier that does the job, override per-env when validating, and pay the cost for judges (where quality dictates eval signal). The starter is local-first by default — every tier resolves to an Ollama model so the gallery runs offline; cloud models are demoed via `mcp-agent`'s pro-tier swap.
+
+### Tiers
+
+| Tier | Default | Override env | Used for |
+|---|---|---|---|
+| `chat:tiny` | `ollama:qwen2.5:0.5b` | `MASTRA_MODEL_TINY` | Trivial shells where processors / scripts do the work |
+| `chat:default` | `ollama:qwen2.5:3b` *(existing `MASTRA_MODEL`)* | `MASTRA_MODEL` | Workhorse chat / structured output / single-hop RAG |
+| `chat:strong` | `ollama:qwen2.5:7b` | `MASTRA_MODEL_STRONG` | Multi-hop reasoning, routing, dynamic-upgrade demo |
+| `judge` | `ollama:qwen2.5:14b` *(existing `MASTRA_JUDGE_MODEL`)* | `MASTRA_JUDGE_MODEL` | LLM-judge scorers (`AnswerRelevancyScorer`, `FaithfulnessScorer`, `HallucinationScorer`, custom citation judge) |
+| `embed` | `ollama:nomic-embed-text` *(existing `MASTRA_EMBEDDER`)* | `MASTRA_EMBEDDER` | Vector embeddings for RAG + graph-RAG |
+| `cloud:strong` | `claude-sonnet-4-6` | `MASTRA_CLOUD_STRONG_MODEL` | Cloud demo path — only `mcp-agent` pro tier and explicit overrides |
+
+The first three (`tiny` / `default` / `strong`) plus `judge` and `embed` form the local-only path that CI and `bun run test:evals` use. `cloud:strong` is opt-in and only resolved when `mcp-agent` receives `requestContext: { tier: 'pro' }`.
+
+### Per-piece assignment
+
+| Piece | Chat tier | Judge tier | Embed | Why |
+|---|---|---|---|---|
+| `echo-agent` | `tiny` | `judge` (eval only) | — | Trivial structured output; no reasoning |
+| `memory-agent` | `default` | `judge` (eval only) | — | Persona summarization needs coherence |
+| `guardrail-agent` | `tiny` | `judge` (eval only) | — | Processor stack is the test surface; agent shell is trivial |
+| `rag-agent` | `default` | `judge` (citation scorer's `analyze` step + default scorers) | `embed` | Single-hop synthesis + citation |
+| `graph-rag-agent` | `strong` | `judge` (eval only) | `embed` | Multi-hop traversal needs a stronger reasoner |
+| `mcp-agent` (free) | `default` | `judge` (eval only) | — | Baseline path |
+| `mcp-agent` (pro) | `cloud:strong` | — | — | Demonstrates dynamic resolver model swap (Ollama → Claude) |
+| `supervisor-agent` | `strong` | `judge` (eval only) | — | Routing decisions need to be reliable |
+| `control-flow-workflow` | **none** | **none** (scorer is deterministic) | — | Pure deterministic pipeline |
+| `hitl-workflow` | `default` | `judge` (default workflow scorers) | — | Quote drafting + edit-application |
+| `sandbox-workflow` | **none** | **none** (deterministic shape scorer) | — | `tsc` + LSP produce the output |
+
+Notes:
+
+- "Judge tier (eval only)" means the judge model is used inside `*.eval.test.ts` (gated behind `HARNESS_EVAL=1`) and inside Studio's Evals tab when a scored run completes. It is not part of the agent's chat path.
+- Workflows with `chat tier: none` still appear in Studio's Traces tab — there's just no LLM span. Their scorers are deterministic so judge tier is also `none`.
+- The `cloud:strong` row is the only place this plan reaches outside Ollama. If a developer wants to validate other pieces against Claude, the override envs above swap them transparently.
+
+### Resolution helper
+
+A new `runtime/models.ts` helper exposes typed accessors so each agent factory imports the right tier without inlining model-id strings:
+
+```ts
+import {
+  getChatModel,            // takes a tier: 'tiny' | 'default' | 'strong' | 'cloud:strong'
+  getJudgeModel,
+  getEmbedder,
+} from '@harness/mastra/runtime';
+
+const echoModel       = getChatModel('tiny');
+const supervisorModel = getChatModel('strong');
+const judge           = getJudgeModel();
+const embedder        = getEmbedder();
+```
+
+This is wired in Task 0.3 (below). Every agent factory in Phases 1–4 imports from here rather than reading env vars directly, so model swapping stays centralized.
+
+---
+
+## Studio verification protocol (per-piece)
+
+Every agent and workflow must be fully exercisable from Studio before its task is "done". Task 1.1 (`echo-agent`) establishes the template; every later task copies it.
+
+### The four "Studio-green" checks
+
+After `bun run studio:dev` (`http://localhost:4111`), every piece must pass all four:
+
+1. **Discoverable** — appears in Studio's Agents/Workflows tab via the `allAgents` / `allWorkflows` barrel.
+2. **Runnable** — at least one demo input from the task's acceptance criteria completes (`success` / `suspended` / `tripwire`).
+3. **Traced** — Traces tab shows a span tree for the run. Probe: `sqlite3 .mastra/mastra.db "SELECT count(*) FROM mastra_ai_spans WHERE name LIKE '%<piece-id>%';"` > 0. Workflow runs additionally show step + `writer.write` events.
+4. **Scored** — Evals tab shows scorer rows (agents construct with `scorers: defaultAgentScorers(model)`); for dataset-backed pieces, Experiments tab runs the dataset.
+
+If a piece can't take the standard scorer path (e.g. workflows have no constructor `scorers` field per CLAUDE.md), the task description **must** call out the deviation and document the alternative (e.g. "scorers wired per-step via `step.scorer(...)`"). Silent omissions break the template for every later piece.
+
+### Dataset registration
+
+Every `*.dataset.ts` under `src/evals/datasets/` registers via the `allDatasets` barrel (Task 0.4) and is consumed by `apps/studio/src/mastra/index.ts`. If the pinned Mastra version doesn't surface dataset registration, the fallback is a `scripts/run-experiment.ts` per piece that loads the dataset, invokes the piece, and persists results to the shared LibSQL DB (so Traces tab remains the comparison surface).
+
+If checks 2–4 fail, **the task is not done** — debug before moving on, because every later piece copies this template.
 
 ---
 
@@ -38,7 +121,7 @@ All Phase 0–4 work happens inside `packages/mastra/`. Phase 5 touches `apps/ap
 
 ### Phase 0 — Foundation helpers
 
-Three small additions: a new dep + two helpers in `runtime/` so the barrel can construct shared infra without inlining setup. The MCP **client** helper is deferred to Phase 3 (needs the stub server to point at), but the dep that ships both `MCPServer` and `MCPClient` lands now so later tasks can `import` cleanly.
+Five Phase 0 tasks land the shared infra that every later piece imports against: the MCP dep (0.0), vector + memory helpers (0.1, 0.2), the per-tier model resolver (0.3), and the dataset/Experiments wiring (0.4). The MCP **client** helper is deferred to Phase 3 (needs the stub server to point at), but the dep that ships both `MCPServer` and `MCPClient` lands here so later tasks can `import` cleanly.
 
 #### Task 0.0: Add `@mastra/mcp` dependency
 
@@ -108,33 +191,86 @@ Three small additions: a new dep + two helpers in `runtime/` so the barrel can c
 
 ---
 
+#### Task 0.3: Add `runtime/models.ts` tier helper
+
+**Description:** New helper in `runtime/` exposing `getChatModel(tier)`, `getJudgeModel()`, `getEmbedder()`. Encapsulates the env-resolution logic for the 6 tiers in the "Model tiers" table. Default values match that table; env overrides match too. Cloud-tier resolution lazy-loads `@ai-sdk/anthropic` so local-only runs never reach for cloud creds.
+
+**Acceptance criteria:**
+- [ ] `getChatModel('tiny' | 'default' | 'strong' | 'cloud:strong')` returns a `LanguageModelV2` instance
+- [ ] `getJudgeModel()` returns the judge model (defaults to `MASTRA_JUDGE_MODEL`)
+- [ ] `getEmbedder()` returns the embedder (defaults to `MASTRA_EMBEDDER`)
+- [ ] Cloud tier resolution throws a clear error if `ANTHROPIC_API_KEY` is unset (no silent fallback)
+- [ ] Exported from `@harness/mastra/runtime`
+
+**Verification:**
+- [ ] Unit test: `bun test packages/mastra/src/runtime/models.test.ts` — covers all 4 chat tiers + judge + embedder, env override per tier, cloud-tier-without-key error
+- [ ] Typecheck + build pass
+
+**Dependencies:** None (this task locks the contract every Phase 1–4 agent imports against, so land it before Task 1.1)
+**Files likely touched:**
+- `packages/mastra/src/runtime/models.ts` (new)
+- `packages/mastra/src/runtime/models.test.ts` (new)
+- `packages/mastra/src/runtime/index.ts` (export)
+**Estimated scope:** Small (3 files)
+
+---
+
+#### Task 0.4: Wire `allDatasets` barrel + Studio Experiments integration
+
+**Description:** Create `packages/mastra/src/evals/datasets/index.ts` exporting an empty `allDatasets` barrel. Update `apps/studio/src/mastra/index.ts` to register datasets with the `Mastra` instance (via whatever config key the pinned `@mastra/core@1.27.0` exposes — verify during the task). If Mastra doesn't surface dataset registration, document the fallback: each piece ships a `scripts/run-experiment.ts` that loads its dataset, invokes the piece, and persists results into the shared LibSQL DB so traces remain comparable.
+
+**Acceptance criteria:**
+- [ ] `allDatasets` barrel exists and is consumed by `apps/studio/src/mastra/index.ts`
+- [ ] One throwaway dummy dataset registered to verify Studio's Experiments tab actually surfaces it (delete after verification)
+- [ ] If Mastra version doesn't support dataset registration, fallback `run-experiment.ts` template documented in this plan and a stub committed under `packages/mastra/src/evals/datasets/_template/`
+
+**Verification:**
+- [ ] `bun run studio:dev` → Experiments tab lists the dummy dataset
+- [ ] Removing the dummy keeps the barrel green for future task additions
+
+**Dependencies:** None
+**Files likely touched:**
+- `packages/mastra/src/evals/datasets/index.ts` (new)
+- `apps/studio/src/mastra/index.ts` (updated — only file outside `packages/mastra` touched in Phase 0)
+**Estimated scope:** Small (2 files)
+
+---
+
 ### Checkpoint: Foundation
 - [ ] `bun run ci` passes
 - [ ] Helpers exported and importable from `@harness/mastra/runtime`
-- [ ] Studio entry (`apps/studio/src/mastra/index.ts`) still works unchanged
+- [ ] Studio entry (`apps/studio/src/mastra/index.ts`) still works; Experiments tab is wired (even if empty)
+- [ ] Studio verification protocol from top-of-doc is now mechanically supported (barrel + dataset wiring in place)
 - [ ] Human review
 
 ---
 
 ### Phase 1 — Agent fundamentals (pieces 1–3)
 
-Three agents that establish the per-piece template: factory + unit test + eval test + barrel registration. Each task is one full vertical slice.
+Three agents that establish the per-piece template: factory + unit test + eval test + barrel registration + tier-correct model import. Each task is one full vertical slice.
+
+**Phase 1–4 implicit dependencies (do not relist per task):**
+- **Task 0.3 (models)** — every factory imports `getChatModel(<tier>)` / `getJudgeModel()` / `getEmbedder()` from `@harness/mastra/runtime`.
+- **Task 0.4 (datasets)** — every task that ships an `*.dataset.ts` registers it via the `allDatasets` barrel.
 
 #### Task 1.1: Build `echo-agent` (capability template)
 
-**Description:** Smallest-possible Agent with Zod `structuredOutput` for `{intent, payload, tokens}`. No tools, no memory. Sets the file-layout + test-shape template every later agent copies.
+**Description:** Smallest-possible Agent with Zod `structuredOutput` for `{intent, payload, tokens}`. No tools, no memory. **Model tier: `chat:tiny`** (factory imports `getChatModel('tiny')` from `@harness/mastra/runtime`). **This task locks the template every later agent copies** — file layout, test shape, model-tier import, and the four-point Studio verification block (per "Studio verification protocol" above).
 
 **Acceptance criteria:**
 - [ ] `createEchoAgent({ model, scorers? })` returns `Agent` with `structuredOutput.schema`
-- [ ] Defaults `scorers` to `defaultAgentScorers(model)`
-- [ ] Wired into `allAgents` barrel as `echoAgent`
-- [ ] Visible + chattable in Studio Agents tab
+- [ ] Defaults `scorers` to `defaultAgentScorers(model)` (locks the "Scored" verification step for every later agent)
+- [ ] Wired into `allAgents` barrel as `echoAgent` (locks the "Discoverable" step)
 - [ ] Returns valid Zod-shaped output for "Hello there"
 
 **Verification:**
 - [ ] Unit test (mockModel): `bun test packages/mastra/src/agents/echo-agent.test.ts`
 - [ ] Eval test (gated): `HARNESS_EVAL=1 bun test packages/mastra/src/agents/echo-agent.eval.test.ts`
-- [ ] Studio smoke: `bun run studio:dev` → chat with echo agent → see structured output
+- [ ] **Studio verification (all must pass — this is the canonical template):**
+  - [ ] Discoverable: `bun run studio:dev` → echo agent appears in Agents tab
+  - [ ] Runnable: chat with "Hello there" → structured output returned
+  - [ ] Traced: Traces tab shows a span tree; `sqlite3 .mastra/mastra.db "SELECT count(*) FROM mastra_ai_spans WHERE name LIKE '%echo%';"` > 0
+  - [ ] Scored: Evals tab shows `AnswerRelevancyScorer` + `ContentSimilarityScorer` rows with numeric scores
 
 **Dependencies:** None (uses existing `defaultAgentScorers`)
 **Files likely touched:**
@@ -148,7 +284,7 @@ Three agents that establish the per-piece template: factory + unit test + eval t
 
 #### Task 1.2: Build `memory-agent` (Memory template)
 
-**Description:** Persona-profile chat using `createDefaultMemory()`. Override the working-memory schema with `PersonaProfile` Zod. `scope: 'resource'` for both working memory and semantic recall.
+**Description:** Persona-profile chat using `createDefaultMemory()`. Override the working-memory schema with `PersonaProfile` Zod. `scope: 'resource'` for both working memory and semantic recall. **Model tier: `chat:default`** (`getChatModel('default')`).
 
 **Acceptance criteria:**
 - [ ] `createMemoryAgent({ model, memory })` accepts injected memory
@@ -160,7 +296,11 @@ Three agents that establish the per-piece template: factory + unit test + eval t
 **Verification:**
 - [ ] Unit test (mockModel + in-memory storage): `bun test packages/mastra/src/agents/memory-agent.test.ts`
 - [ ] Eval test (gated): asserts cross-thread recall
-- [ ] Studio smoke: 2 threads same user → working memory persists
+- [ ] **Studio verification (per protocol):**
+  - [ ] Discoverable: appears in Studio's Agents tab
+  - [ ] Runnable: 2 threads under the same `resourceId` → second thread recalls profile from first
+  - [ ] Traced: Traces tab shows working-memory + semantic-recall spans for both runs
+  - [ ] Scored: Evals tab shows scorer rows from `defaultAgentScorers(model)`
 
 **Dependencies:** Task 0.2
 **Files likely touched:**
@@ -174,7 +314,7 @@ Three agents that establish the per-piece template: factory + unit test + eval t
 
 #### Task 1.3: Build `guardrail-agent` (processor stack)
 
-**Description:** Trivial-purpose Agent with full input processor stack (`UnicodeNormalizer`, `LanguageDetector`, `PIIDetector`, `PromptInjectionDetector`, `ModerationProcessor`) and `SensitiveDataFilter` output processor. Tripwire on injection / moderation / unsupported language. PII redacts in place.
+**Description:** Trivial-purpose Agent with full input processor stack (`UnicodeNormalizer`, `LanguageDetector`, `PIIDetector`, `PromptInjectionDetector`, `ModerationProcessor`) and `SensitiveDataFilter` output processor. Tripwire on injection / moderation / unsupported language. PII redacts in place. **Model tier: `chat:tiny`** (processors do the test work; agent shell is trivial).
 
 **Acceptance criteria:**
 - [ ] `createGuardrailAgent({ model })` returns Agent with processor stack
@@ -185,7 +325,11 @@ Three agents that establish the per-piece template: factory + unit test + eval t
 
 **Verification:**
 - [ ] Unit test: 4 prompts, 4 expected outcomes (one normal, three trip variants)
-- [ ] Studio smoke: trip each processor; trace shows redaction / tripwire
+- [ ] **Studio verification (per protocol):**
+  - [ ] Discoverable: appears in Studio's Agents tab
+  - [ ] Runnable: send the 4 demo prompts; each terminates as expected (1 normal, 3 tripwires)
+  - [ ] Traced: Traces tab shows the processor stack and tripwire reason on each tripped run
+  - [ ] Scored: Evals tab shows `defaultAgentScorers(model)` rows on the normal run
 
 **Dependencies:** None (processors come from `@mastra/core`)
 **Files likely touched:**
@@ -199,8 +343,9 @@ Three agents that establish the per-piece template: factory + unit test + eval t
 
 ### Checkpoint: Agent fundamentals
 - [ ] `bun run ci` passes
-- [ ] Three new agents visible in Studio
-- [ ] Per-piece file template established (factory + unit test + eval test + barrel update)
+- [ ] Three new agents Studio-green per protocol (Discoverable / Runnable / Traced / Scored)
+- [ ] Per-piece file template established (factory + unit test + eval test + barrel update + Studio verification block)
+- [ ] Confirm a developer can copy `echo-agent` files, rename, and reach Studio-green for a hypothetical new piece without consulting the plan
 - [ ] Human review of template before scaling
 
 ---
@@ -214,7 +359,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Description:** Scaffold `agents/rag-agent/` folder with 5 fictional Acme Vacuum 3000 markdown docs (frontmatter: `section`, `last_updated`). Add `seed.ts` (idempotent: chunk → embed → upsert into `LibSQLVector` index `acme_docs`). Add root `bun run rag:seed` script.
 
 **Acceptance criteria:**
-- [ ] 5 markdown docs ship in repo at `agents/rag-agent/corpus/*.md`, ~200 words each
+- [ ] 5 markdown docs ship at `packages/mastra/src/agents/rag-agent/corpus/*.md`, ~200 words each
 - [ ] `seed.ts` chunks with `MDocument.fromMarkdown` + markdown strategy (size 512, overlap 50)
 - [ ] Embeds with Ollama `nomic-embed-text` by default; `MASTRA_EMBEDDER` env override works
 - [ ] Idempotent: running twice doesn't duplicate
@@ -236,7 +381,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 2.2: Build `rag-agent` factory + custom citation scorer
 
-**Description:** Agent factory with `createVectorQueryTool` + `rerankWithScorer` (deterministic content-similarity rerank). Custom `citation-format` scorer using full `createScorer` chain (preprocess regex → analyze LLM judge → score precision → reason). 10-entry dataset.
+**Description:** Agent factory with `createVectorQueryTool` + `rerankWithScorer` (deterministic content-similarity rerank). Custom `citation-format` scorer using full `createScorer` chain (preprocess regex → analyze LLM judge → score precision → reason). 10-entry dataset. **Model tiers: chat = `chat:default`; embedder = `embed`; citation scorer's `analyze` step = `judge`** (`getChatModel('default')` + `getEmbedder()` + `getJudgeModel()`).
 
 **Acceptance criteria:**
 - [ ] `createRagAgent({ model, vector, memory })` returns Agent with vector query + rerank
@@ -249,7 +394,11 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 - [ ] Unit test (mockModel + in-memory vector seed): `bun test packages/mastra/src/agents/rag-agent/agent.test.ts`
 - [ ] Scorer unit test: `bun test packages/mastra/src/agents/rag-agent/scorer.test.ts`
 - [ ] Eval test gated: asserts citation precision ≥ 0.7 across dataset
-- [ ] Studio smoke: rag agent answers warranty + filter questions
+- [ ] **Studio verification (per protocol):**
+  - [ ] Discoverable: appears in Studio's Agents tab; `rag-agent.dataset.ts` registered + visible in Experiments tab
+  - [ ] Runnable: "What's the warranty period?" returns answer with `[doc:warranty.md]` citation
+  - [ ] Traced: Traces tab shows vector-query + rerank spans + citation-format scorer span
+  - [ ] Scored: Evals tab shows `citation-format` + `defaultAgentScorers` rows; Experiments tab can run the 10-entry dataset end-to-end
 
 **Dependencies:** Tasks 0.1, 0.2, 2.1
 **Files likely touched:**
@@ -267,10 +416,10 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 2.3: Build `graph-rag-agent` (multi-hop)
 
-**Description:** 9 fictional org-universe docs with cross-references. Same vector store as RAG, separate index `org_graph`. `createGraphRAGTool` with documented graph options. `bun run graph-rag:seed` script.
+**Description:** 9 fictional org-universe docs with cross-references. Same vector store as RAG, separate index `org_graph`. `createGraphRAGTool` with documented graph options. `bun run graph-rag:seed` script. **Model tiers: chat = `chat:strong`** (multi-hop reasoning); **embedder = `embed`**.
 
 **Acceptance criteria:**
-- [ ] 9 markdown docs ship in `agents/graph-rag-agent/corpus/` (3 companies + 3 people + 3 products), ~120 words each, prose cross-references, frontmatter `type`
+- [ ] 9 markdown docs ship at `packages/mastra/src/agents/graph-rag-agent/corpus/` (3 companies + 3 people + 3 products), ~120 words each, prose cross-references, frontmatter `type`
 - [ ] `seed.ts` chunks with size 256/overlap 30 + `extract: { keywords, summary }`
 - [ ] `createGraphRAGTool` configured with `dimension: 768`, `threshold: 0.7`, `randomWalkSteps: 100`, `restartProb: 0.15`
 - [ ] Wired into `allAgents` barrel
@@ -279,7 +428,11 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Verification:**
 - [ ] Unit test (mockModel + seeded in-memory vector)
 - [ ] Eval test gated: 4 demo queries (1, 1-reverse, 2, 3 hops) — assert top-1 retrieval correctness
-- [ ] Studio smoke: same 4 demo queries
+- [ ] **Studio verification (per protocol):**
+  - [ ] Discoverable: appears in Studio's Agents tab; `graph-rag-agent.dataset.ts` (4-entry) registered + visible in Experiments tab
+  - [ ] Runnable: 3-hop demo query returns sensible traversal in Studio chat
+  - [ ] Traced: Traces tab shows graph-traversal spans (random walk steps logged)
+  - [ ] Scored: Evals tab shows `defaultAgentScorers` rows; Experiments tab can run the 4 demo queries
 
 **Dependencies:** Tasks 0.1, 2.1 (vector infra pattern)
 **Files likely touched:**
@@ -299,7 +452,8 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 - [ ] `bun run ci` passes
 - [ ] Both seed scripts run idempotently from a fresh clone
 - [ ] Two indexes coexist in same `.mastra/mastra.db`
-- [ ] 3-hop query visibly succeeds in Studio (vs flat-RAG fail)
+- [ ] Both agents Studio-green per protocol; both datasets runnable from Studio's Experiments tab
+- [ ] 3-hop query visibly succeeds in Studio (vs flat-RAG fail) with traces showing graph traversal
 - [ ] Human review
 
 ---
@@ -353,7 +507,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 3.3: Build `mcp-agent` (runtimeContext + dynamic resolvers)
 
-**Description:** Agent factory accepting `mcp` client. `requestContextSchema` validates `{userId, tier, locale}`. `model` resolver swaps Ollama → `claude-sonnet-4-6` when `tier === 'pro'`. `instructions` resolver swaps language by `locale`.
+**Description:** Agent factory accepting `mcp` client. `requestContextSchema` validates `{userId, tier, locale}`. `model` resolver swaps `getChatModel('default')` → `getChatModel('cloud:strong')` when `tier === 'pro'`. `instructions` resolver swaps language by `locale`. **Model tiers: chat = `chat:default`; pro path = `cloud:strong`** — only piece that demos cloud resolution.
 
 **Acceptance criteria:**
 - [ ] `createMcpAgent({ model, mcp })` returns Agent with both dynamic resolvers
@@ -365,7 +519,11 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Verification:**
 - [ ] Unit test (mockModel + stubbed MCPClient): asserts both resolvers fire on requestContext changes
 - [ ] Eval test gated
-- [ ] Studio smoke: `send_notification` triggers approval UI; approve → tool call completes
+- [ ] **Studio verification (per protocol):**
+  - [ ] Discoverable: appears in Studio's Agents tab
+  - [ ] Runnable: same prompt with `tier: 'free'` vs `'pro'` shows different model in trace; `locale: 'vi'` swaps instructions; `send_notification` triggers approval UI → approve → completes
+  - [ ] Traced: Traces tab shows model swap + MCP tool calls + approval span
+  - [ ] Scored: Evals tab shows `defaultAgentScorers` rows
 
 **Dependencies:** Tasks 3.1, 3.2
 **Files likely touched:**
@@ -379,7 +537,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 3.4: Build `supervisor-agent` (delegation hooks)
 
-**Description:** Supervisor binds `ragAgent`, `graphRagAgent`, `mcpAgent` via `agents:{}`. All four delegation hook usages (PII redact + off-topic reject in `onDelegationStart`; quality bail in `onDelegationComplete`; `messageFilter` for mcpAgent only). Observational memory + thread-scoped working memory (deliberate contrast with `memory-agent`).
+**Description:** Supervisor binds `ragAgent`, `graphRagAgent`, `mcpAgent` via `agents:{}`. All four delegation hook usages (PII redact + off-topic reject in `onDelegationStart`; quality bail in `onDelegationComplete`; `messageFilter` for mcpAgent only). Observational memory + thread-scoped working memory (deliberate contrast with `memory-agent`). **Model tier: `chat:strong`** — routing reliability matters; cheaper tiers misroute.
 
 **Acceptance criteria:**
 - [ ] `createSupervisorAgent({ model, subagents: { ragAgent, graphRagAgent, mcpAgent } })` returns Agent
@@ -393,7 +551,11 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Verification:**
 - [ ] Unit test (mockModel for each subagent, scripted delegation outcomes)
 - [ ] Eval test gated: 5 prompts → asserts correct delegation target per prompt
-- [ ] Studio smoke: 5 demo prompts; verify trace shows `delegation_start` → subagent → `delegation_complete`
+- [ ] **Studio verification (per protocol):**
+  - [ ] Discoverable: appears in Studio's Agents tab; 5-prompt dataset registered + visible in Experiments tab
+  - [ ] Runnable: 5 demo prompts → each routes to expected subagent (rag / graph-rag / mcp)
+  - [ ] Traced: Traces tab shows `delegation_start` → subagent span tree → `delegation_complete`; PII redact + bail events visible
+  - [ ] Scored: Evals tab shows `defaultAgentScorers` rows on supervisor; Experiments tab runs the 5-prompt routing dataset
 
 **Dependencies:** Tasks 1.2, 2.2, 2.3, 3.3
 **Files likely touched:**
@@ -407,9 +569,10 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 ### Checkpoint: MCP + supervisor
 - [ ] `bun run ci` passes
-- [ ] All 7 agents visible + functional in Studio
-- [ ] Approval flow works end-to-end (Studio approval UI → tool call resumes)
-- [ ] Supervisor traces show 3-way routing
+- [ ] All 7 agents Studio-green per protocol
+- [ ] Approval flow works end-to-end (Studio approval UI → tool call resumes; trace span captures approval)
+- [ ] Supervisor traces show 3-way routing with delegation hooks visible
+- [ ] All registered datasets runnable from Studio's Experiments tab
 - [ ] Human review
 
 ---
@@ -418,7 +581,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 4.1: Build `control-flow-workflow` (every primitive)
 
-**Description:** Deterministic word-stats pipeline using all 8 control primitives + nested workflow + streaming. Tripwire on empty/oversized input. 5-entry dataset.
+**Description:** Deterministic word-stats pipeline using all 8 control primitives + nested workflow + streaming. Tripwire on empty/oversized input. 5-entry dataset. **Model tier: none** (pure deterministic; no model spans in the trace).
 
 **Acceptance criteria:**
 - [ ] Workflow uses every primitive: `.then` `.map` `.parallel` `.branch` `.foreach` `.dountil` `.dowhile` `.sleep`
@@ -430,7 +593,11 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Verification:**
 - [ ] Unit test: feeds 3 inputs (small, large, malformed) → asserts shape + tripwire
 - [ ] Eval test gated: deterministic, runs over 5-entry dataset
-- [ ] Studio smoke: trace shows fan-out, branch decision, foreach iterations, dountil loop
+- [ ] **Studio verification (per protocol — workflow variant):**
+  - [ ] Discoverable: appears in Studio's Workflows tab; `control-flow.dataset.ts` registered + visible in Experiments tab
+  - [ ] Runnable: small / large / malformed inputs each terminate as expected (success / success / tripwire)
+  - [ ] Traced: Traces tab shows fan-out, branch decision, foreach iterations (concurrency 2), dountil loop, nested per-sentence workflow span; `writer.write` events appear in timeline
+  - [ ] Scored: scorer is wired per-run (Task 4.2 attaches `stats-coverage` deterministic scorer); after Task 4.2 lands, Evals/Experiments tab shows scorer rows
 
 **Dependencies:** None (pure deterministic logic)
 **Files likely touched:**
@@ -458,6 +625,9 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Verification:**
 - [ ] Unit test: scorer over 3 hand-crafted outputs (consistent / inconsistent / partial)
 - [ ] Manual: run control-flow once → `bun run wf:replay <runId>` → new run shows up in Studio
+- [ ] **Studio verification (closes the workflow scoring loop):**
+  - [ ] Scored: after this task lands, Evals tab on `control-flow-workflow` shows `stats-coverage` scorer rows; Experiments tab runs the 5-entry dataset with scorer output
+  - [ ] Replay traced: replayed run appears as a distinct run in Traces tab with its own span tree
 
 **Dependencies:** Task 4.1
 **Files likely touched:**
@@ -471,7 +641,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 4.3: Build `hitl-workflow` (suspend/resume + snapshots)
 
-**Description:** Quote-approval workflow with rich Zod `suspendSchema` + `resumeSchema`. Three-way `.branch` on resume payload (approved / approved-with-edits / rejected). `shouldPersistSnapshot: true` enables Studio time-travel.
+**Description:** Quote-approval workflow with rich Zod `suspendSchema` + `resumeSchema`. Three-way `.branch` on resume payload (approved / approved-with-edits / rejected). `shouldPersistSnapshot: true` enables Studio time-travel. **Model tier: `chat:default`** for the drafting / edit-application steps; `judge` tier for `defaultWorkflowScorers(model)`.
 
 **Acceptance criteria:**
 - [ ] All four schemas declared (`inputSchema`, `suspendSchema`, `resumeSchema`, `outputSchema`)
@@ -486,7 +656,11 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 **Verification:**
 - [ ] Unit test: 3 resume scenarios → 3 distinct outputs
 - [ ] Eval test gated: 3-entry dataset
-- [ ] Studio smoke: suspend → approve in UI → completes; replay from step → completes again
+- [ ] **Studio verification (per protocol — workflow variant):**
+  - [ ] Discoverable: appears in Studio's Workflows tab; `hitl.dataset.ts` registered + visible in Experiments tab
+  - [ ] Runnable: 3 resume scenarios from Studio UI (approve / approve-with-edits / reject) → 3 distinct branches complete
+  - [ ] Traced: Traces tab shows `suspended` → resume → branch span; snapshots persist (verify time-travel "replay from step" works)
+  - [ ] Scored: `defaultWorkflowScorers(model)` attached per-step; Evals tab shows scorer rows on each completed branch
 
 **Dependencies:** None
 **Files likely touched:**
@@ -503,7 +677,7 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 #### Task 4.4: Build `sandbox-workflow` (Workspaces + LSP)
 
-**Description:** TS type-check pipeline. Workspace with `LocalFilesystem`, `LocalSandbox`, `TypeScriptLSP`. Pipeline: setup → write file → spawn `tsc --noEmit` → parse diagnostics → enrich via LSP hover.
+**Description:** TS type-check pipeline. Workspace with `LocalFilesystem`, `LocalSandbox`, `TypeScriptLSP`. Pipeline: setup → write file → spawn `tsc --noEmit` → parse diagnostics → enrich via LSP hover. **Model tier: none** (`tsc` + LSP produce the output; deterministic shape scorer asserts schema).
 
 **Acceptance criteria:**
 - [ ] `Workspace` constructed once in barrel-side helper
@@ -514,7 +688,11 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 **Verification:**
 - [ ] Unit test: 2 inputs (clean snippet → `ok: true`; broken snippet → diagnostics with line/col)
-- [ ] Studio smoke: submit broken snippet → see diagnostic in output panel
+- [ ] **Studio verification (per protocol — workflow variant):**
+  - [ ] Discoverable: appears in Studio's Workflows tab; sandbox dataset (clean + broken) registered + visible in Experiments tab
+  - [ ] Runnable: submit broken snippet from Studio → see structured diagnostics in output panel
+  - [ ] Traced: Traces tab shows setup → write → spawn(`tsc`) → parse → LSP-hover spans
+  - [ ] Scored: deterministic scorer (e.g. `diagnostics-shape`) wired per-run; Evals/Experiments shows scorer rows
 
 **Dependencies:** None (workspace primitives ship in `@mastra/core/workspace`; already pinned at 1.27.0 — see R1)
 **Files likely touched:**
@@ -553,8 +731,9 @@ Two pieces share vector infrastructure. Land RAG first (sets corpus + seed patte
 
 ### Checkpoint: Workflows
 - [ ] `bun run ci` passes
-- [ ] All 3 workflows visible + runnable in Studio
-- [ ] Suspend/resume + time-travel verified manually
+- [ ] All 3 workflows Studio-green per protocol (workflow variant — per-step scorers, not constructor)
+- [ ] Suspend/resume + time-travel verified manually in Studio Traces tab
+- [ ] All 3 workflow datasets runnable from Studio's Experiments tab with scorer output
 - [ ] MCPServer round-trip verified (external client can call `typecheck_ts`)
 - [ ] Coverage matrix from spec is fully green
 - [ ] Human review
@@ -684,7 +863,8 @@ Each piece becomes a `CapabilityDefinition` matching the existing `simple-chat`/
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Ollama `qwen2.5:3b` produces unreliable structured output for `echo-agent` and beyond | High — derails Phase 1 | Eval tests use `errorStrategy: 'warn'` initially; can swap to `'fallback'` if extraction fails. `MASTRA_MODEL` env override lets you test against a stronger model when validating templates. |
+| Ollama `qwen2.5:0.5b` (tiny tier) produces unreliable structured output for `echo-agent` / `guardrail-agent` | High — derails Phase 1 | Per-tier env overrides (`MASTRA_MODEL_TINY`, `MASTRA_MODEL`, `MASTRA_MODEL_STRONG`) let you bump up without rewiring the factory. Eval tests use `errorStrategy: 'warn'` initially; can swap to `'fallback'` if extraction fails. If `tiny` tier is consistently flaky, promote affected pieces to `chat:default` in the per-piece table — central change, no factory rewrites. |
+| Cloud-tier (`cloud:strong`) leaks into local-only test runs | Medium — CI hits Anthropic, eats budget | `getChatModel('cloud:strong')` throws when `ANTHROPIC_API_KEY` unset (Task 0.3). `mcp-agent` is the only piece that wires it, gated on `requestContext.tier === 'pro'` — never default. Eval tests use `default` / `judge` only. |
 | `nomic-embed-text` quality on graph-rag relationship extraction is poor | Medium — graph queries return noisy results | Accepted per `Q9` answer (Ollama default); `MASTRA_EMBEDDER` override to OpenAI for verification. Eval test asserts top-1 not top-N. |
 | `LocalSandbox` runs `tsc` on host; output paths could collide between runs | Low — flaky tests | `LocalFilesystem` root is per-run `tmpdir()`; tests clean up. |
 | `MCPServer` registration changes Studio's startup behavior | Medium — Studio breakage halts iteration | Phase 4.5 lands last; if it breaks Studio, `mcpServers` config is gated behind an env flag. |
@@ -724,7 +904,7 @@ const sandboxMcpServer = new MCPServer({
 new Mastra({ /* … */ mcpServers: { sandbox: sandboxMcpServer } });
 ```
 
-**Action item folded into Phase 0**: add `@mastra/mcp` to `packages/mastra/package.json` dependencies. Pin to a version compatible with `@mastra/core@1.27.0` (verify on `npm view @mastra/mcp` during Phase 0).
+Covered by Task 0.0 (add `@mastra/mcp` dep, pin compatible with `@mastra/core@1.27.0`).
 
 ### R3. Register all 10 capabilities unconditionally in `apps/api` — no env gate
 The starter's purpose is to demo the gallery; gating capabilities behind `HARNESS_GALLERY=1` would hide them from the people the starter exists for. Anyone deploying this code into production forks `apps/api/src/compose.ts` and edits the registration list — that's the clone-and-own invariant in CLAUDE.md (line 9). An env flag would add config surface for zero benefit.
@@ -760,4 +940,4 @@ Most of the plan is sequential due to template propagation (each piece copies it
 - **Within Phase 4**: Tasks 4.1 / 4.3 / 4.4 are fully independent.
 - **Within Phase 5**: Tasks 5.1 / 5.2 / 5.3 are independent (all consume the per-piece factories).
 
-**Must be sequential**: 0.1 → 0.2 (memory needs storage); 2.1 → 2.2; 3.1 → 3.2 → 3.3; 3.4 (after all its subagents); 4.1 → 4.2; 4.4 → 4.5; 5.4/5.5 (after all of 5.1–5.3).
+**Must be sequential**: 0.1 → 0.2 (memory needs storage); 0.3 (models) before every Phase 1–4 piece (locks the tier contract); 0.4 (datasets) before any task that ships a dataset (2.2, 2.3, 3.4, 4.1, 4.3, 4.4); 2.1 → 2.2; 3.1 → 3.2 → 3.3; 3.4 (after all its subagents); 4.1 → 4.2; 4.4 → 4.5; 5.4/5.5 (after all of 5.1–5.3).
